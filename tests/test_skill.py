@@ -4,7 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from flowmark.skill import get_docs_content, get_skill_content, install_skill
+from flowmark.skill import (
+    DOC_VERSION_PIN,
+    compose_skill,
+    flowmark_version,
+    get_docs_content,
+    get_skill_content,
+    install_skill,
+)
 
 
 class TestGetSkillContent:
@@ -27,7 +34,32 @@ class TestGetSkillContent:
         """SKILL.md contains usage instructions."""
         content = get_skill_content()
         assert "# Flowmark" in content
-        assert "uvx flowmark" in content
+        assert "flowmark --auto" in content
+
+
+class TestComposeSkill:
+    """Tests for compose_skill version rendering."""
+
+    def test_compose_substitutes_explicit_version(self) -> None:
+        rendered = compose_skill("1.2.3")
+        assert "flowmark==1.2.3" in rendered
+        assert "__FLOWMARK_VERSION__" not in rendered
+
+    def test_compose_default_pins_installed_version(self) -> None:
+        rendered = compose_skill()
+        assert "__FLOWMARK_VERSION__" not in rendered
+        assert f"flowmark=={flowmark_version()}" in rendered
+
+    def test_compose_doc_pin_is_stable(self) -> None:
+        # The committed/published copy uses a literal placeholder, not a real version,
+        # so it never churns across releases.
+        rendered = compose_skill(DOC_VERSION_PIN)
+        assert f"flowmark=={DOC_VERSION_PIN}" in rendered
+        assert rendered == compose_skill(DOC_VERSION_PIN)  # deterministic
+
+    def test_compose_preserves_frontmatter(self) -> None:
+        rendered = compose_skill("1.2.3")
+        assert rendered.startswith("---\nname: flowmark\n")
 
     def test_skill_content_has_vscode_cursor_setup(self) -> None:
         """SKILL.md includes VS Code/Cursor run-on-save guidance."""

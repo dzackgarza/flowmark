@@ -21,8 +21,8 @@ behavior.
 $ flowmark --skill | sed -n '1,6p'
 ---
 name: flowmark
-description: Auto-format Markdown with semantic line breaks, smart quotes, and diff-friendly output. Use for formatting Markdown files, normalizing LLM outputs, or when user mentions flowmark, markdown formatting, or semantic line breaks.
-allowed-tools: Bash(flowmark:*), Bash(uvx flowmark@latest:*), Read, Write
+description: Auto-format Markdown — semantic line breaks, smart quotes, diff-friendly output. Use when creating, editing, or normalizing Markdown (.md) files, cleaning up LLM Markdown output, or when the user mentions flowmark, markdown formatting, or semantic line breaks.
+allowed-tools: Bash(flowmark:*), Bash(uvx:*), Read, Write
 ---
 # Flowmark - Markdown Auto-Formatter
 ```
@@ -56,6 +56,6 @@ nested dirs created
 ## V5: Skill output contains required frontmatter
 
 ```console
-$ flowmark --skill | grep -F -- "uvx flowmark@latest --docs" | sed 's/^> //'
-**Full documentation: Run `uvx flowmark@latest --docs` for all options and usage.**
+$ flowmark --skill | grep -F -- "flowmark --docs" | sed 's/^> //'
+**Full documentation: run `flowmark --docs` for all options and usage.**
 ```

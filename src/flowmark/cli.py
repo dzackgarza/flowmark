@@ -402,9 +402,9 @@ def main(args: list[str] | None = None) -> int:
         return 0
 
     if options.skill_instructions:
-        from flowmark.skill import get_skill_content
+        from flowmark.skill import compose_skill
 
-        print(get_skill_content())
+        print(compose_skill())
         return 0
 
     if options.docs:

@@ -10,12 +10,26 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# Format version for generated skill artifacts. Stamped onto install artifacts so a
+# future flowmark can detect and safely upgrade older generated files (and refuse to
+# clobber a newer format it doesn't understand).
+SKILL_FORMAT = "f01"
+
+# Placeholder in the authored SKILL.md, replaced by `compose_skill` with a concrete
+# version pin for the local-first runner fallback (see SKILL.md).
+_VERSION_PLACEHOLDER = "__FLOWMARK_VERSION__"
+
+# Literal pin shown in committed/published artifacts (the in-repo discovery copy), where
+# embedding a concrete version would churn on every release. Real installs substitute the
+# installed version instead.
+DOC_VERSION_PIN = "<version>"
+
 
 def get_skill_content() -> str:
-    """Read SKILL.md from package data.
+    """Read the authored SKILL.md template from package data.
 
-    Returns:
-        The content of the SKILL.md file as a string.
+    The returned text still contains the version placeholder; use `compose_skill` to
+    render an installable/publishable copy.
 
     Raises:
         ImportError: If package resources cannot be accessed.
@@ -27,6 +41,30 @@ def get_skill_content() -> str:
 
     skill_file = files("flowmark").joinpath("skills/SKILL.md")
     return skill_file.read_text(encoding="utf-8")
+
+
+def flowmark_version() -> str:
+    """The installed flowmark version, or the doc placeholder if it can't be determined."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("flowmark")
+    except PackageNotFoundError:
+        return DOC_VERSION_PIN
+
+
+def compose_skill(version: str | None = None) -> str:
+    """
+    Render the SKILL.md template into a final skill document.
+
+    `version` is substituted into the pinned-runner fallback. Pass an explicit string
+    (e.g. `DOC_VERSION_PIN` for the committed discovery copy) for a stable, drift-free
+    artifact; pass `None` to pin to the installed flowmark version (used when installing
+    into an agent on a user's machine). Deterministic: same inputs always yield identical
+    output.
+    """
+    pin = flowmark_version() if version is None else version
+    return get_skill_content().replace(_VERSION_PLACEHOLDER, pin)
 
 
 def get_docs_content() -> str:
@@ -79,9 +117,9 @@ def install_skill(agent_base: str | None = None) -> None:
 
     skill_dir = base_dir / "skills" / "flowmark"
 
-    # Load skill content from package data
+    # Load skill content from package data (version-pinned to the installed flowmark)
     try:
-        skill_content = get_skill_content()
+        skill_content = compose_skill()
     except (ImportError, FileNotFoundError) as e:
         print(f"\n✗ Error: Could not load skill content: {e}", file=sys.stderr)
         print("\nThis command requires flowmark to be installed as a package.", file=sys.stderr)

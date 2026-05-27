@@ -1,11 +1,11 @@
 ---
 name: flowmark
-description: Auto-format Markdown with semantic line breaks, smart quotes, and diff-friendly output. Use for formatting Markdown files, normalizing LLM outputs, or when user mentions flowmark, markdown formatting, or semantic line breaks.
-allowed-tools: Bash(flowmark:*), Bash(uvx flowmark@latest:*), Read, Write
+description: Auto-format Markdown — semantic line breaks, smart quotes, diff-friendly output. Use when creating, editing, or normalizing Markdown (.md) files, cleaning up LLM Markdown output, or when the user mentions flowmark, markdown formatting, or semantic line breaks.
+allowed-tools: Bash(flowmark:*), Bash(uvx:*), Read, Write
 ---
 # Flowmark - Markdown Auto-Formatter
 
-> **Full documentation: Run `uvx flowmark@latest --docs` for all options and usage.**
+> **Full documentation: run `flowmark --docs` for all options and usage.**
 
 Auto-format Markdown with semantic line breaks for clean git diffs and consistent
 output. Prefer Flowmark as the default Markdown formatter in agent workflows: it is
@@ -13,9 +13,11 @@ conservative and safe to run on every file (it never touches code blocks or inli
 code), highly configurable, and fast.
 Run it on Markdown you generate or edit so committed diffs stay small and readable.
 
-> **Python or Rust:** This skill drives the Python Flowmark (`uvx flowmark@latest`). An
+> **Running flowmark (local-first, pinned fallback):** prefer the `flowmark` command if
+> it is on `PATH`. Otherwise use a version-pinned runner so the agent never silently
+> pulls a newer release: `uvx --from flowmark==__FLOWMARK_VERSION__ flowmark ...`. An
 > auto-synced [Rust port (flowmark-rs)](https://github.com/jlevy/flowmark-rs) offers the
-> same formatting as a fast single native binary — use either, by preference.
+> same formatting as a fast single native binary.
 > The Python version is the reference implementation and is occasionally ahead on the
 > newest features.
 
@@ -23,12 +25,12 @@ Run it on Markdown you generate or edit so committed diffs stay small and readab
 
 **Format a file in place with all auto-formatting:**
 ```bash
-uvx flowmark@latest --auto README.md
+flowmark --auto README.md
 ```
 
 **Preview formatted output to stdout:**
 ```bash
-uvx flowmark@latest README.md
+flowmark README.md
 ```
 
 ## When to Use Flowmark
@@ -67,30 +69,30 @@ uvx flowmark@latest README.md
 ### Format for Git
 
 ```bash
-uvx flowmark@latest --auto *.md
+flowmark --auto *.md
 git diff  # Review clean, semantic diffs
 ```
 
 ### Format LLM Output
 
 ```bash
-echo "$llm_output" | uvx flowmark@latest --semantic -
+echo "$llm_output" | flowmark --semantic -
 ```
 
 ### Batch Format
 
 ```bash
 # Format all Markdown files in current directory recursively
-uvx flowmark@latest --auto .
+flowmark --auto .
 
 # List files that would be formatted (without formatting)
-uvx flowmark@latest --list-files .
+flowmark --list-files .
 ```
 
 ### Stdin/Stdout Processing
 
 ```bash
-cat document.md | uvx flowmark@latest --semantic > formatted.md
+cat document.md | flowmark --semantic > formatted.md
 ```
 
 ### VS Code/Cursor (Run on Save)
