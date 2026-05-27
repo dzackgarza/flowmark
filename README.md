@@ -56,6 +56,14 @@ workflows, especially when committing documents to git repositories.
 
 You can use Flowmark as a CLI, as an autoformatter in your IDE, or as a Python library.
 
+Flowmark comes in two flavors: this Python reference implementation and an auto-synced
+[Rust port (flowmark-rs)](https://github.com/jlevy/flowmark-rs).
+For CLI auto-formatting either works and produces the same output — the Rust port is a
+fast single native binary, while the Python version is the reference and is sometimes
+ahead on the newest features.
+Pick whichever fits your environment; for heavy or latency-sensitive formatting the Rust
+binary is the faster choice.
+
 ## Comparison With Other Formatters
 
 Flowmark supports both [CommonMark](https://spec.commonmark.org/0.31.2/) and
