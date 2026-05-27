@@ -20,6 +20,8 @@ Note: We use simple heuristics rather than full Marko parsing because:
 
 from __future__ import annotations
 
+import re
+
 
 def line_is_table_row(line: str) -> bool:
     """
@@ -69,8 +71,6 @@ def line_is_list_item(line: str) -> bool:
 
     return False
 
-
-import re
 
 _TABLE_SEPARATOR_RE = re.compile(r"^\|(\s*:?-+:?\s*\|)+\s*$")
 

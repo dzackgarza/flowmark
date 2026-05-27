@@ -27,6 +27,14 @@ jobs:
     # Linux only by default. Use ${{ matrix.os }} for other OSes.
     runs-on: ${{ matrix.os }}
 
+    env:
+      # 14-day install cool-off for any resolution in CI (e.g. the pinned pip-audit
+      # tool below). The friendly duration needs uv >= 0.9 (we pin a newer uv).
+      # `uv sync --frozen` does not re-resolve, so this is belt-and-suspenders for it.
+      # NOTE: deliberately NOT setting UV_NO_BUILD — it blocks building the editable
+      # local package and breaks `uv sync`. See SUPPLY-CHAIN-SECURITY.md.
+      UV_EXCLUDE_NEWER: "14 days"
+
     steps:
       # Generally following uv docs:
       # https://docs.astral.sh/uv/guides/integration/github/
@@ -41,7 +49,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           # Update this as needed:
-          version: "0.9.25"
+          version: "0.11.13"
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
@@ -55,7 +63,9 @@ jobs:
       #     python-version: ${{ matrix.python-version }}
 
       - name: Install all dependencies
-        run: uv sync --all-extras
+        # --frozen: install exactly from uv.lock, never re-resolving in CI.
+        # See SUPPLY-CHAIN-SECURITY.md.
+        run: uv sync --all-extras --frozen
 
       - name: Run linting
         run: uv run python devtools/lint.py
@@ -63,8 +73,19 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
+      - name: Audit dependencies (pip-audit)
+        # Audit the locked deps with a pinned, isolated pip-audit so the scanner's own
+        # (large) transitive tree never enters uv.lock or our cool-off/audit surface.
+        # See SUPPLY-CHAIN-SECURITY.md and upstream guidelines/hardening-pypi.md.
+        # Non-blocking for now; flip continue-on-error to false once the advisory
+        # backlog is cleared.
+        continue-on-error: true
+        run: |
+          uv export --frozen --no-emit-project --all-extras --format requirements-txt > /tmp/reqs.txt
+          uvx --from "pip-audit==2.10.0" pip-audit -r /tmp/reqs.txt
+
       - name: Check golden coverage
         run: bash scripts/check-golden-coverage.sh
 
       - name: Run golden tests
-        run: npx tryscript@latest run tests/tryscript/*.tryscript.md
+        run: npx tryscript@0.1.7 run tests/tryscript/*.tryscript.md

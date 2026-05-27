@@ -156,28 +156,42 @@ Follow this checklist for each new release.
 
 ### Release Notes Format
 
-Use this structure for release notes:
+Use this structure for release notes.
+List sections in this order, from most to least disruptive, and **omit any section that
+is empty** (do not pad with “none”):
 
 ```markdown
 ## What's Changed
-
-### Bug Fixes
-
-**Short title of fix**
-
-Description of what was fixed and why it matters.
-
-### New Features
-
-**Short title of feature**
-
-Description of the new capability.
 
 ### Breaking Changes
 
 **Short title of breaking change**
 
-Description of what changed and how to migrate.
+What was removed or changed incompatibly (API signature, CLI flag, removed behavior) and
+how to migrate.
+
+### Behavior & Compatibility Changes
+
+**Short title of behavior change**
+
+A change to default *output* or runtime behavior that is not an API break — e.g. the
+formatter now produces different (but valid) Markdown for some input, line breaks land
+differently, or default option values changed. Say exactly which inputs are affected and
+whether the result is rendering-equivalent.
+
+### New Features & API
+
+**Short title of feature or new public API**
+
+New capabilities, new CLI flags, and new public functions/types. Additive only — anything
+that *changes* existing behavior belongs above, not here.
+
+### Bug Fixes
+
+**Short title of fix**
+
+What was fixed and why it matters. If the fix changes output for previously-broken input,
+note that here (it is a fix, not a behavior change) but be explicit that output differs.
 
 ### Full Changelog
 
@@ -188,8 +202,35 @@ Guidelines:
 
 - Use `## What's Changed` as the top-level heading.
 
-- Group changes under `### Bug Fixes`, `### New Features`, `### Breaking Changes`, etc.
-  as appropriate.
+- The four categories are deliberately distinct.
+  Classify each change by asking, in order:
+
+  1. Does it remove or incompatibly change a public API, CLI flag, or documented
+     behavior? → **Breaking Changes**.
+
+  2. For the same input, does the tool now produce different output or behave
+     differently (even if valid and rendering-equivalent), or did a default change?
+     → **Behavior & Compatibility Changes**. This is the category most often missed: a
+     formatter whose output drifts between versions is a compatibility concern (diffs,
+     golden tests, re-flowed files) even when nothing is strictly “broken”.
+
+  3. Is it purely additive — new flag, new public function/type, new capability, with no
+     change to existing behavior?
+     → **New Features & API**.
+
+  4. Did it correct previously-wrong or broken output?
+     → **Bug Fixes** (and state plainly when output changes as a result).
+
+- When in doubt between *Behavior & Compatibility* and *Bug Fixes*, prefer **Behavior &
+  Compatibility** and explain — readers diffing reformatted files care about *any*
+  output change regardless of intent.
+
+- Describe the **aggregate delta** between the previous release and this one, not
+  individual commits. If a feature was added and then fixed before release, describe the
+  feature as it now works rather than listing the intermediate fix separately.
+
+- Skip **internal-only** changes that users never see — CI/tooling, pure refactors,
+  test-only work, and dependency or doc housekeeping.
 
 - Use `**bold**` for short titles of individual changes.
 
@@ -197,7 +238,9 @@ Guidelines:
 
 - Always include the Full Changelog compare link at the end.
 
-- For small releases, a simple bullet list is acceptable instead of full sections.
+- For small releases, a simple bullet list is acceptable — but still group it under
+  these headings so behavior/compatibility changes are never buried among features or
+  fixes.
 
 * * *
 
