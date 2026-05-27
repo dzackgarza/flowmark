@@ -14,6 +14,7 @@ from flowmark.atomic import (
     AtomicPattern,
     iter_atomic_spans,
     iter_atomic_words,
+    split_sentences_atomic,
     split_sentences_with_spans,
 )
 
