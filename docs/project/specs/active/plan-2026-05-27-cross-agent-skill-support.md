@@ -16,9 +16,9 @@ Codex, Gemini CLI, and other agents can discover, plus a public discovery copy s
 `npx skills add jlevy/flowmark` works.
 
 It follows the tbd guideline `cli-agent-skill-patterns` (run
-`tbd guidelines cli-agent-skill-patterns`). Flowmark is a **Tier 1** tool in that
-guideline’s terms — a *single capability* (a Markdown formatter) exposed as a pure skill
-invoked via a pinned runner.
+`tbd guidelines cli-agent-skill-patterns`), verified current against tbd v0.1.30.
+Flowmark is a **Tier 1** tool in that guideline’s terms — a *single capability* (a
+Markdown formatter) exposed as a pure skill invoked via a pinned runner.
 It deliberately does **not** adopt the Tier 2 knowledge-injection machinery (no
 `guidelines`/`shortcut` subcommand library, no format-migration engine); it only borrows
 the lighter multi-agent *install* patterns (§6.6): a marker-bounded `AGENTS.md` block,
@@ -148,6 +148,9 @@ Output must be byte-deterministic and flowmark-stable.
   invocation examples (local-first: `flowmark` → `uvx --from flowmark==<version>`).
 - [ ] Update `src/flowmark/skills/SKILL.md` examples to the pinned local-first form;
   keep the Python/Rust (`flowmark-rs`) note.
+- [ ] Tighten the skill `description` to the two-part rule (§4.2): front-load trigger
+  keywords, state capability + when-to-use; keep `allowed-tools` minimally scoped
+  (`Bash(flowmark:*)`, `Read`, `Write`).
 - [ ] Extend `install_skill` to write both `.agents/skills/flowmark/SKILL.md` (portable)
   and `.claude/skills/flowmark/SKILL.md` (mirror), project-local by default; copy the
   payload to both (no symlinks).
@@ -165,6 +168,11 @@ Output must be byte-deterministic and flowmark-stable.
   forward-compat guard.
 - [ ] Generate the repo-root `skills/flowmark/SKILL.md` discovery copy from
   `compose_skill`; open it with a pinned bootstrap line.
+  Keep it flowmark-`--auto`-stable (it is committed and formatted by `make format-docs`)
+  rather than adding it to `.flowmarkignore`.
+- [ ] Validate the published skill: lint frontmatter (required `name`/`description`,
+  length caps), confirm referenced links resolve (§4.4), and run
+  `npx skills-ref validate skills/flowmark` before publishing (§6.8).
 - [ ] Drift test: regenerate all committed generated artifacts and fail on difference;
   assert `flowmark --auto` over the generated `AGENTS.md` block is a no-op.
 - [ ] Update README “Agent Use” section and `docs/` to document cross-agent install and
@@ -180,6 +188,9 @@ Output must be byte-deterministic and flowmark-stable.
   suite.
 - **Drift/determinism**: regenerate == committed (byte-identical); two runs identical;
   `flowmark --auto` over the generated `AGENTS.md` block produces no change.
+- **Skill validation** (CI): frontmatter lint (required `name`/`description`, length
+  caps) and a check that every link/file the skill references resolves (§4.4);
+  `npx skills-ref validate skills/flowmark` on the discovery copy.
 - **Activation (manual)**: positive prompts trigger the skill in Claude Code and Codex;
   nearby negative prompts do not; sandbox/read-only and no-network degrade with a clear
   message.
