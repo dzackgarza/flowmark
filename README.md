@@ -476,27 +476,44 @@ own.
 
 ### Install the Skill
 
-`flowmark --install-skill` installs the skill for Claude Code (to `~/.claude` by
-default, or a project’s `./.claude`):
+By default `flowmark --install-skill` installs the skill **project-locally** into both
+the portable `.agents/skills/flowmark/` location (read by Codex, Gemini CLI, pi, and
+others) and the `.claude/skills/flowmark/` mirror (Claude Code reads only that path),
+and adds a small marker-bounded block to the project’s `AGENTS.md`:
 
 ```bash
-# Install globally (available to all projects)
+# Project-local cross-agent install (run from the repo root)
 flowmark --install-skill
 
-# Or install to current project only
-flowmark --install-skill --agent-base ./.claude
+# Pick specific surfaces (tri-state: --all / --claude / --codex / --skip-*)
+flowmark --install-skill --claude        # only the .claude surface
+flowmark --install-skill --skip-codex    # everything except the portable surface
+
+# Install to a single explicit base, e.g. a global Claude config
+flowmark --install-skill --agent-base ~/.claude
 ```
 
-After installation, Claude Code will automatically recognize when to use Flowmark for
-Markdown formatting tasks.
+Installs are idempotent (re-running an up-to-date install changes nothing) and
+version-pinned to the installed flowmark.
+Generated files are marked `DO NOT EDIT`.
+
+You can also install the published skill into any supported agent with the cross-agent
+package manager — no flowmark install required first, since the skill bootstraps its own
+pinned CLI:
+
+```bash
+npx skills add jlevy/flowmark
+```
 
 ### Agent Skill Options
 
 | Flag | Description |
 | --- | --- |
-| `--skill` | Print skill instructions (SKILL.md content) |
-| `--install-skill` | Install Claude Code skill for flowmark |
-| `--agent-base DIR` | Agent config directory (default: ~/.claude) |
+| `--skill` | Print the composed skill (SKILL.md content) |
+| `--install-skill` | Install the flowmark skill (project-local cross-agent by default) |
+| `--all` / `--claude` / `--codex` | Select which project-local surfaces to install |
+| `--skip-claude` / `--skip-codex` | Skip a surface that would otherwise be installed |
+| `--agent-base DIR` | Install to a single explicit base dir (e.g. `~/.claude`) |
 | `--docs` | Print full documentation |
 
 ### Manual Usage in Agents
@@ -567,3 +584,4 @@ latency-sensitive agent loops).
 ## Project Docs
 
 For development workflows, see [development.md](docs/development.md).
+
