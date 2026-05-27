@@ -252,8 +252,13 @@ def iter_atomic_spans(
     Atomic spans match one of `patterns` — a Markdown/templating construct that must not
     be broken mid-construct (code span, link, autolink, URL, tag); non-atomic spans are
     the plain-text gaps between them. Round-trips: `"".join(s.text ...) == text` and
-    `text[s.start:s.end] == s.text` for every span.
+    `text[s.start:s.end] == s.text` for every span. An empty `patterns` yields the whole
+    input as a single non-atomic span.
     """
+    if not patterns:
+        if text:
+            yield AtomicSpan(text, 0, len(text), False)
+        return
     regex = _combined_pattern(patterns)
     pos = 0
     for m in regex.finditer(text):

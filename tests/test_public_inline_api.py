@@ -86,6 +86,16 @@ def test_images_excluded_by_default_included_on_request():
     assert extract_links(doc, include_images=True) == [Link("alt", "img.png", None)]
 
 
+def test_email_autolink_text_is_display_not_destination():
+    doc = _parse("<user@example.com>\n")
+    assert extract_links(doc) == [Link("user@example.com", "mailto:user@example.com", None)]
+
+
+def test_empty_link_title_is_preserved_distinct_from_none():
+    assert extract_links(_parse('[x](http://u "")\n')) == [Link("x", "http://u", "")]
+    assert extract_links(_parse("[x](http://u)\n")) == [Link("x", "http://u", None)]
+
+
 def test_angle_autolink_and_bare_url_extraction():
     doc = _parse("<http://auto.com> and https://bare.com/x\n")
     urls = [link.url for link in extract_links(doc)]
@@ -127,6 +137,13 @@ def test_iter_atomic_spans_round_trip_and_offsets():
     assert "".join(sp.text for sp in spans) == s
     assert all(s[sp.start : sp.end] == sp.text for sp in spans)
     assert [sp.text for sp in spans if sp.is_atomic] == ["[a b](http://x.com)", "`co de`"]
+
+
+def test_iter_atomic_spans_empty_patterns_yields_single_nonatomic_span():
+    from flowmark.atomic import AtomicSpan
+
+    assert list(iter_atomic_spans("abc", patterns=())) == [AtomicSpan("abc", 0, 3, False)]
+    assert list(iter_atomic_spans("", patterns=())) == []
 
 
 def test_iter_atomic_words_glues_atomic_and_keeps_offsets():

@@ -94,7 +94,7 @@ Add two public submodules, strictly additively:
   atomic-aware `split_sentences_with_spans(text)` built on the same primitive.
 - **`flowmark.ast`** — publish a read-only `walk_elements(element)` and a convenience
   `extract_links(doc) -> list[Link]` where `Link(text, url, title)` carries **no span**
-  (per the identity-vs-spans principle), built on the existing `transform_tree`.
+  (per the identity-vs-spans principle), built on a small generic AST walk.
 
 Keep marko an implementation detail everywhere except `flowmark.ast`, where the AST is
 unavoidably part of the contract.
@@ -240,17 +240,21 @@ def walk_elements(element: Element) -> Iterator[Element]:
 
 def extract_links(doc: Document) -> list[Link]:
     """All links in document order, via the marko AST (reference links, autolinks
-    resolved; images excluded). Built on transform_tree."""
+    resolved; images excluded). Built on walk_elements."""
 ```
 
-`walk_elements` is a thin read-only generic tree walk (same shape as `transform_tree`);
+`walk_elements` is a standalone read-only depth-first walk over any element with list
+`children` (it does NOT reuse `transform_tree`, whose recursion is gated to a fixed set of
+container types; the generic walk is the better public behavior);
 `extract_links` filters for `inline.Link` (and `inline.AutoLink` / `gfm_elements.Url` as
 appropriate), reading `dest`/`title` and rendering child `RawText` for `text`.
 
 ## Stage 3: Refine Architecture (reuse)
 
-- **`transform_tree`** (`doc_transforms.py:37`) already does the robust container walk —
-  `walk_elements` and `extract_links` use it; no new traversal logic.
+- **`transform_tree`** (`doc_transforms.py:37`) is the internal smart-quotes/rewrite walk
+  (recursion gated to known container types). `walk_elements` is intentionally a separate,
+  ungated generic walk so link extraction reaches links in any block; it does not reuse
+  `transform_tree`.
 - **`ATOMIC_CONSTRUCT_PATTERN` construction** (`atomic_patterns.py:186`) — reused to build
   the combined regex per pattern set.
 - **`_extract_atomic_constructs`** (`text_wrapping.py:39`) — reimplemented on
@@ -267,8 +271,8 @@ appropriate), reading `dest`/`title` and rendering child `RawText` for `text`.
 - [x] Make `AtomicPattern`'s delimiter fields default to `""` so it is a usable public
       type (`AtomicPattern(name=..., pattern=...)`).
 - [x] Add `AUTOLINK` + `BARE_URL` patterns; include them in `MARKDOWN_INLINE_PATTERNS`.
-- [x] Create `src/flowmark/ast.py` with `Link`, `walk_elements`, `extract_links` on top of
-      `transform_tree`.
+- [x] Create `src/flowmark/ast.py` with `Link`, `walk_elements` (standalone generic AST
+      walk), `extract_links`.
 - [x] Tests: `extract_links` identity cases (inline, reference, collapsed, autolink,
       image-excluded); nested/escaped/reference/duplicate cases; code-block exclusion.
 - [x] Keep `flowmark/__init__.py` `__all__` conservative (top-level `Link` /

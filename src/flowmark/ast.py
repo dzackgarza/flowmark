@@ -86,13 +86,15 @@ def extract_links(
     links: list[Link] = []
     for element in walk_elements(doc):
         if isinstance(element, inline.Link):
-            links.append(Link(_inline_text(element), element.dest, element.title or None))
+            links.append(Link(_inline_text(element), element.dest, element.title))
         elif isinstance(element, inline.Image):
             if include_images:
-                links.append(Link(_inline_text(element), element.dest, element.title or None))
+                links.append(Link(_inline_text(element), element.dest, element.title))
         elif isinstance(element, inline.AutoLink):
             if include_autolinks:
-                links.append(Link(element.dest, element.dest, None))
+                # `dest` carries the scheme (e.g. `mailto:` for `<user@example.com>`);
+                # the display text is the rendered link text. Autolinks have no title.
+                links.append(Link(_inline_text(element), element.dest, None))
     return links
 
 
