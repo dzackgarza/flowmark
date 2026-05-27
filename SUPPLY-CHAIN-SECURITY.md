@@ -9,7 +9,7 @@ PyPI/uv specifics are in
 This file is the repo-specific summary for a `uv`-managed Python project and should stay
 in alignment with that upstream.
 
-## The default: a 14-day cool-off
+## The Default: a 14-Day Cool-Off
 
 **Never add or upgrade to a package version less than 14 days old** unless a documented
 exception applies.
@@ -52,7 +52,7 @@ retrofit just those without re-resolving the rest of the graph:
 uv lock --upgrade-package "certifi==<pre-cutoff>" --upgrade-package "idna==<pre-cutoff>"
 ```
 
-## Install rules
+## Install Rules
 
 1. **Never install unthinkingly.** Confirm the package is needed, the name is spelled
    correctly (typosquats are common), and the version clears the cool-off.
@@ -95,10 +95,14 @@ patch):
 
 **Agents never self-approve an exception** — prepare the record and a human signs off.
 
-## What this does and doesn’t cover
+## What This Does and Doesn’t Cover
 
 A cool-off plus lockfile discipline neutralizes the dominant fast-yanked-incident
 pattern. It does **not** stop long-lived typosquats, a lockfile that already captured a
 bad version, payloads that fire on import/build, or publish-pipeline compromises.
 Publishing here uses PyPI OIDC trusted publishing (`publish.yml`); keep release tooling
 and GitHub Actions reviewed.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

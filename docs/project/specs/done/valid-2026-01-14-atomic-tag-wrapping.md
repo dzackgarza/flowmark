@@ -115,3 +115,7 @@ Expected: Tags should format consistently without breaking.
 ## Open Questions
 
 None - the implementation matches the expected behavior documented in the plan spec.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

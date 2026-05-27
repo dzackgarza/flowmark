@@ -211,3 +211,7 @@ Secondary checks:
 - F2 suite import/adaptation: `fm-kulj`
 - F3 config/gates: `fm-l04j`
 - F4 validation/reconciliation: `fm-nj3v`
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

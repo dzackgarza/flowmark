@@ -807,3 +807,7 @@ DEFAULT_EXCLUDES = [
 This list covers the union of Ruff’s and Black’s defaults plus common
 JavaScript/TypeScript build directories, ensuring Flowmark never accidentally formats
 content in dependency or build directories.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

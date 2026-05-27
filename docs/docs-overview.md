@@ -49,3 +49,7 @@ Project-specific specifications, architecture, and research docs:
   docs (templates and output go here)
 
 - @docs/project/research/ — Research notes and technical investigations
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

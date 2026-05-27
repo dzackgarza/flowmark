@@ -455,3 +455,7 @@ find . -name "*.md" -exec uvx flowmark@latest --auto {} \;
 - `Makefile` - add format target
 - `README.md` - add Agent Use section
 ```
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

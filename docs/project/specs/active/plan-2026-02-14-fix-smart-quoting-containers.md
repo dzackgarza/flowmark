@@ -165,3 +165,7 @@ string to match them as a pair.
 - Smart quotes conversion is always length-preserving (verified by code inspection)
 - `SetextHeading` is converted to `Heading` during parsing and doesn’t need separate
   handling in `InlineScope`
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

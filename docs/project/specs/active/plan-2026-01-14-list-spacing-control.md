@@ -333,3 +333,7 @@ def test_multi_para_stays_loose():
 - [x] `make lint` passes
 - [x] `make test` passes
 - [x] Manual testing with real documents confirms expected behavior
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

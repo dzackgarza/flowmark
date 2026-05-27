@@ -224,3 +224,7 @@ Existing `--install-skill`/`--agent-base` usage keeps working.
 - `SUPPLY-CHAIN-SECURITY.md` (pinned-runner rule)
 - Agent Skills standard: https://agentskills.io ; AGENTS.md: https://agents.md
 - Rust port: https://github.com/jlevy/flowmark-rs
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

@@ -426,3 +426,7 @@ def test_default_is_atomic():
 - [x] `make lint` passes
 - [x] `make test` passes
 - [x] Long tags wrap correctly at internal whitespace boundaries
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

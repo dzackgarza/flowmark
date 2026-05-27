@@ -329,3 +329,7 @@ wrapping is atomic-aware by default.
 - `split_sentences_regex`’s existing callers (`line_wrappers.py:31`,
   `markdown_filling.py:33`) rely on its normalized-join behavior and must be left intact
   in Phases A–B.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

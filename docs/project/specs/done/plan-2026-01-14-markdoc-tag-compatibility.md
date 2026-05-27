@@ -490,3 +490,7 @@ regardless of list style.
   `test_wrapping.py`)
 - **Lines of code**: ~500 new lines in tag handling modules
 - **Backward compatible**: All existing tests pass unchanged
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

@@ -930,3 +930,7 @@ file:
 | `files` default | Changed: `["-"]` → `[]` | Done |
 | `main()` error check | Added: check for `not options.files` with three error messages | Done |
 | Module docstring examples | All already use explicit args | Done |
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

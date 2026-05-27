@@ -85,3 +85,7 @@ The following are all covered by automated tests:
 - Multi-paragraph items
 - CLI argument parsing
 - File processing (in-place and stdout)
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

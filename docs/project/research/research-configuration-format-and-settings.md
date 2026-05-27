@@ -611,3 +611,7 @@ have both a proper config file system and file size limits.
 - [`serde_yaml` Deprecation Discussion](https://users.rust-lang.org/t/serde-yaml-deprecation-alternatives/108868)
 - [Prettier Configuration](https://prettier.io/docs/configuration)
 - [mdformat Configuration](https://mdformat.readthedocs.io/en/stable/)
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
