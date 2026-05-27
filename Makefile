@@ -4,16 +4,34 @@
 
 .DEFAULT_GOAL := default
 
-.PHONY: default install lint test test-golden test-golden-coverage upgrade build clean format format-docs gen-skill validate-skill benchmark profile
+.PHONY: default install lint test test-golden test-golden-coverage upgrade build clean \
+        format format-docs generate generate-readme generate-skill validate-skill \
+        benchmark profile reset-ref-docs
 
 default: format install lint test
 
-format: format-docs gen-skill
+## ─────────────── Format and Generate ───────────────
 
-# Regenerate the committed repo-root skill discovery copy from the authored SKILL.md.
-# The drift test (tests/test_skill_artifacts.py) fails if this is out of date.
-gen-skill:
-	uv run python -c "from pathlib import Path; from flowmark.skill import discovery_skill_text; Path('skills/flowmark/SKILL.md').write_text(discovery_skill_text(), encoding='utf-8')"
+# Auto-format the project: regenerate the checked-in generated docs from their sources,
+# then run flowmark over the tree. Generation runs first so the format pass leaves the
+# generated output canonical too.
+format: generate format-docs
+
+# Run flowmark --auto over the tree (respects .gitignore and .flowmarkignore).
+format-docs:
+	uv run flowmark --auto .
+
+# Regenerate checked-in generated docs from their sources:
+#   README.md            <- docs/shared + docs/templates (generate-python-readme.py)
+#   skills/flowmark/SKILL.md (published discovery copy) <- generate-skill-discovery.py
+# The skill drift test (tests/test_skill_artifacts.py) fails if the discovery copy is stale.
+generate: generate-readme generate-skill
+
+generate-readme:
+	uv run --python 3.14 scripts/generate-python-readme.py
+
+generate-skill:
+	uv run scripts/generate-skill-discovery.py
 
 # Validate the published skill against the Agent Skills spec (needs network/npx).
 validate-skill:
@@ -48,9 +66,6 @@ clean:
 	-rm -rf .mypy_cache/
 	-rm -rf .venv/
 	-find . -type d -name "__pycache__" -exec rm -rf {} +
-
-format-docs:
-	uv run flowmark --auto .
 
 benchmark:
 	uv run devtools/benchmark.py --compare 0.6.0
