@@ -225,6 +225,13 @@ Guidelines:
   Compatibility** and explain — readers diffing reformatted files care about *any*
   output change regardless of intent.
 
+- Describe the **aggregate delta** between the previous release and this one, not
+  individual commits. If a feature was added and then fixed before release, describe the
+  feature as it now works rather than listing the intermediate fix separately.
+
+- Skip **internal-only** changes that users never see — CI/tooling, pure refactors,
+  test-only work, and dependency or doc housekeeping.
+
 - Use `**bold**` for short titles of individual changes.
 
 - Include technical details only when helpful for users.

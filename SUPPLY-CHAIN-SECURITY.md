@@ -35,9 +35,11 @@ planned upgrade.
 
 1. **Never install unthinkingly.** Confirm the package is needed, the name is spelled
    correctly (typosquats are common), and the version clears the cool-off.
-2. **Prefer wheels; be wary of sdist builds.** A source build runs arbitrary code.
-   Set `UV_NO_BUILD_ISOLATION=0` defaults aside and prefer binary wheels; review any
-   package that must build from sdist.
+2. **Prefer wheels; be wary of sdist builds.** Building from an sdist runs arbitrary
+   `setup.py`/build-backend code at install time.
+   Prefer binary wheels, and review any package that must build from source.
+   To forbid source builds entirely, set `UV_NO_BUILD=1` (uv) or `PIP_ONLY_BINARY=:all:`
+   (pip).
 3. **Commit the lockfile; install frozen.** `uv.lock` is committed and CI runs
    `uv sync --frozen`. Never let an upgrade slip in unreviewed — treat a `uv.lock` diff
    like a code diff.
