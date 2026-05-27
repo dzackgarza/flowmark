@@ -1,7 +1,53 @@
+<!-- Generated from docs/shared/flowmark-readme-shared.md via
+scripts/generate-python-readme.py.
+-->
+
 # flowmark
 
-Flowmark is a pure Python Markdown auto-formatter designed for **better LLM workflows**,
-**clean git diffs**, and **flexible use from CLI, from IDEs, or as a library**.
+[![Follow @ojoshe on X](https://img.shields.io/badge/follow_%40ojoshe-black?logo=x&logoColor=white)](https://x.com/ojoshe)
+[![CI](https://github.com/jlevy/flowmark/actions/workflows/ci.yml/badge.svg)](https://github.com/jlevy/flowmark/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/flowmark)](https://pypi.org/project/flowmark/)
+[![Python versions](https://img.shields.io/pypi/pyversions/flowmark)](https://pypi.org/project/flowmark/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+
+## Original Python Flowmark
+
+> [!TIP]
+> This repository is the Python reference implementation of Flowmark.
+> 
+> For fastest CLI usage via a single native binary, consider the auto-synced Rust port:
+> [flowmark-rs](https://github.com/jlevy/flowmark-rs).
+
+## Installing Python Flowmark CLI
+
+The simplest way to use the Python version is [uv](https://github.com/astral-sh/uv).
+
+Run with `uvx flowmark --help` or install it as a tool:
+
+```shell
+uv tool install --upgrade flowmark
+```
+
+Then:
+
+```shell
+flowmark --help
+```
+
+For use in Python projects, add the [`flowmark`](https://pypi.org/project/flowmark/)
+package via uv, poetry, or pip.
+
+Primary command: `flowmark`. Alias available in this repo: `flowmark-py`.
+
+* * *
+
+## Why Use Flowmark?
+
+Flowmark is a Markdown auto-formatter, written
+[in Python](https://github.com/jlevy/flowmark) with an auto-synced
+[Rust port](https://github.com/jlevy/flowmark-rs), designed for **better LLM
+workflows**, **clean git diffs**, and **flexible use from CLI, from IDEs, or as a
+library**.
 
 With AI tools increasingly using Markdown, having consistent, diff-friendly formatting
 has become essential for modern writing, editing, and document processing workflows.
@@ -10,7 +56,9 @@ workflows, especially when committing documents to git repositories.
 
 You can use Flowmark as a CLI, as an autoformatter in your IDE, or as a Python library.
 
-It supports both [CommonMark](https://spec.commonmark.org/0.31.2/) and
+## Comparison With Other Formatters
+
+Flowmark supports both [CommonMark](https://spec.commonmark.org/0.31.2/) and
 [GitHub-Flavored Markdown (GFM)](https://github.github.com/gfm/) via
 [Marko](https://github.com/frostming/marko).
 
@@ -47,25 +95,6 @@ General philosophy:
   [`regex`](https://pypi.org/project/regex/), and
   [`strif`](https://github.com/jlevy/strif).
 
-## Installation
-
-The simplest way to use the tool is to use [uv](https://github.com/astral-sh/uv).
-
-Run with `uvx flowmark --help` or install it as a tool:
-
-```shell
-uv tool install --upgrade flowmark
-```
-
-Then
-
-```
-flowmark --help
-```
-
-For use in Python projects, add the [`flowmark`](https://pypi.org/project/flowmark/)
-package via uv, poetry, or pip.
-
 ## Use Cases
 
 The main ways to use Flowmark are:
@@ -95,7 +124,6 @@ The main ways to use Flowmark are:
 ## Semantic Line Breaks
 
 > [!TIP]
-> 
 > For an example of what an auto-formatted Markdown doc looks with semantic line breaks
 > looks like, see
 > [the Markdown source](https://github.com/jlevy/flowmark/blob/main/README.md?plain=1)
@@ -104,9 +132,9 @@ The main ways to use Flowmark are:
 Some Markdown auto-formatters never wrap lines, while others wrap at a fixed width.
 Flowmark supports both, via the `--width` option.
 
-Default line wrapping behavior is **88 columns**. The “[90-ish
-columns](https://youtu.be/esZLCuWs_2Y?si=lUj055ROI--6tVU8&t=1288)” compromise was
-popularized by Black and also works well for Markdown.
+Default line wrapping behavior is **88 columns**. The
+“[90-ish columns](https://youtu.be/esZLCuWs_2Y?si=lUj055ROI--6tVU8&t=1288)” compromise
+was popularized by Black and also works well for Markdown.
 
 However, in addition, unlike traditional formatters, Flowmark also offers the option to
 use a heuristic that prefers line breaks at sentence boundaries.
@@ -172,7 +200,6 @@ between `---` delimiters at the front of a file) is always preserved exactly.
 YAML is not normalized.
 
 > [!TIP]
-> 
 > See the [frontmatter format](https://github.com/jlevy/frontmatter-format) repo for
 > more discussion of YAML frontmatter and its benefits.
 
@@ -222,7 +249,7 @@ find . -name "*.md" -exec flowmark --auto {} \;
 The main flags:
 
 | Flag | Description |
-|------|-------------|
+| --- | --- |
 | `-o, --output FILE` | Output file (use `-` for stdout) |
 | `-w, --width WIDTH` | Line width (default: 88, 0 = disable wrapping) |
 | `-p, --plaintext` | Process as plaintext (no Markdown parsing) |
@@ -238,8 +265,8 @@ The main flags:
 File discovery flags:
 
 | Flag | Description |
-|------|-------------|
-| `--list-files` | Print resolved file paths, don't format |
+| --- | --- |
+| `--list-files` | Print resolved file paths, don’t format |
 | `--extend-include PATTERN` | Additional file patterns (e.g., `*.mdx`) |
 | `--exclude PATTERN` | Replace all default exclusions |
 | `--extend-exclude PATTERN` | Add to default exclusions (e.g., `drafts/`) |
@@ -301,7 +328,7 @@ flowmark --auto docs/**/*.md
 
 Without quoting, the shell may expand `**` as a single `*` (matching only one directory
 level) or pass nothing if there are no matches.
-Flowmark uses Python's `pathlib.Path.glob()` internally, which always supports `**` for
+Flowmark uses Python’s `pathlib.Path.glob()` internally, which always supports `**` for
 recursive matching regardless of shell settings.
 
 Note: The `--extend-include` and `--extend-exclude` flags use gitignore-style patterns
@@ -356,11 +383,11 @@ extend-exclude = ["drafts/"]
 ### Config vs `--auto`
 
 The `--auto` flag is a fixed formatting preset that always enables `--semantic`,
-`--cleanups`, `--smartquotes`, and `--ellipses`.
-It ignores formatting settings from config files.
+`--cleanups`, `--smartquotes`, and `--ellipses`. It ignores formatting settings from
+config files.
 
-However, `width` and file discovery settings (excludes, max size, etc.) are always
-read from config regardless of `--auto`.
+However, `width` and file discovery settings (excludes, max size, etc.)
+are always read from config regardless of `--auto`.
 
 When not using `--auto`, all formatting settings can be configured via the config file
 and overridden by explicit CLI flags.
@@ -396,10 +423,10 @@ enabling automatic Markdown formatting in agent workflows.
 
 ```bash
 # Install globally (available to all projects)
-uvx flowmark@latest --install-skill
+flowmark --install-skill
 
 # Or install to current project only
-uvx flowmark@latest --install-skill --agent-base ./.claude
+flowmark --install-skill --agent-base ./.claude
 ```
 
 After installation, Claude Code will automatically recognize when to use Flowmark for
@@ -408,7 +435,7 @@ Markdown formatting tasks.
 ### Agent Skill Options
 
 | Flag | Description |
-|------|-------------|
+| --- | --- |
 | `--skill` | Print skill instructions (SKILL.md content) |
 | `--install-skill` | Install Claude Code skill for flowmark |
 | `--agent-base DIR` | Agent config directory (default: ~/.claude) |
@@ -420,13 +447,13 @@ If you prefer to use Flowmark manually within agent sessions:
 
 ```bash
 # Format with all auto-formatting options
-uvx flowmark@latest --auto README.md
+flowmark --auto README.md
 
 # Preview formatted output
-uvx flowmark@latest README.md
+flowmark README.md
 
 # Format LLM output (use '-' for stdin)
-echo "$llm_output" | uvx flowmark@latest --semantic -
+echo "$llm_output" | flowmark --semantic -
 ```
 
 ## Why Another Markdown Formatter?
@@ -463,13 +490,5 @@ found most useful.
 
 ## Project Docs
 
-For how to install uv and Python, see [installation.md](docs/installation.md).
-
 For development workflows, see [development.md](docs/development.md).
 
-For instructions on publishing to PyPI, see [publishing.md](docs/publishing.md).
-
-* * *
-
-*This project was built from
-[simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
