@@ -148,3 +148,9 @@ def test_sentence_span_never_bisects_a_link_with_spaces():
     assert all(s[sp.start : sp.end] == sp.text for sp in spans)
     # The whole link stays inside a single sentence span (never split on its inner space).
     assert any("[click here for info](http://x.com)" in sp.text for sp in spans)
+
+
+def test_split_sentences_atomic_does_not_break_inside_link_with_period():
+    # "St." inside the link text must not end a sentence (it does with the plain splitter).
+    s = "He attended [St. John's School](http://x.com) in England."
+    assert split_sentences_atomic(s, min_length=0) == [s]

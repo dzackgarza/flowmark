@@ -46,6 +46,7 @@ from flowmark.linewrapping.atomic_patterns import (
 )
 from flowmark.linewrapping.sentence_split_regex import (
     SentenceSpan,
+    split_sentences_atomic,
     split_sentences_with_spans,
 )
 
@@ -74,4 +75,5 @@ __all__ = (
     "iter_atomic_words",
     "SentenceSpan",
     "split_sentences_with_spans",
+    "split_sentences_atomic",
 )

@@ -141,3 +141,19 @@ def split_sentences_with_spans(
     if s_start >= 0:
         sentences.append(SentenceSpan(text[s_start:s_end], s_start, s_end))
     return sentences
+
+
+def split_sentences_atomic(
+    text: str,
+    min_length: int = SENTENCE_MIN_LENGTH,
+    heuristic: Callable[[str], bool] = heuristic_end_of_sentence,
+) -> list[str]:
+    """
+    Atomic-aware sentence splitter returning sentence strings (a drop-in
+    `SentenceSplitter`). Like `split_sentences_regex` but never splits inside a link,
+    code span, or URL. Suitable as the `split_sentences` argument to
+    `line_wrap_by_sentence`.
+    """
+    return [
+        s.text for s in split_sentences_with_spans(text, min_length=min_length, heuristic=heuristic)
+    ]
