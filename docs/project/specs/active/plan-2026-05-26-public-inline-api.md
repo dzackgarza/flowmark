@@ -182,6 +182,7 @@ class AtomicSpan(NamedTuple):
     start: int
     end: int
     is_atomic: bool
+    name: str | None = None  # matched AtomicPattern.name for atomic spans; None for gaps
 
 def iter_atomic_spans(
     text: str,
