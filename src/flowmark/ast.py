@@ -1,0 +1,100 @@
+"""
+Public, read-only helpers for walking a parsed Markdown AST and extracting inline
+structure (currently links).
+
+Parse documents with :func:`flowmark.flowmark_markdown` (GFM + footnote), then use these
+helpers instead of re-implementing marko tree walks that must track GFM/footnote element
+types.
+
+**Identity, not spans.** marko does not record source offsets for inline elements, so
+:func:`extract_links` returns link *text/url/title* but no source span. A consumer that
+needs spans recovers them by locating the link text in its own source.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from typing import NamedTuple
+
+from marko import inline
+from marko.block import Document
+from marko.element import Element
+from marko.ext.gfm import elements as gfm_elements
+
+
+class Link(NamedTuple):
+    """
+    A link found in a Markdown document.
+
+    `text` is the rendered link text (empty for autolinks/bare URLs, where the URL is the
+    text). `url` is the destination. `title` is the optional link title. No source span:
+    marko does not position inline elements (see module docstring).
+    """
+
+    text: str
+    url: str
+    title: str | None
+
+
+def iter_inline(element: Element) -> Iterator[Element]:
+    """
+    Depth-first iteration over all descendant elements of `element`, in document order.
+
+    Read-only: yields each child/descendant element without modifying the tree. The root
+    `element` itself is not yielded.
+    """
+    children = getattr(element, "children", None)
+    if isinstance(children, list):
+        for child in children:
+            yield child
+            yield from iter_inline(child)
+
+
+def _inline_text(element: Element) -> str:
+    """Concatenate the plain text content of an element's inline subtree."""
+    children = getattr(element, "children", None)
+    if isinstance(children, str):
+        return children
+    if isinstance(children, list):
+        return "".join(_inline_text(child) for child in children)
+    return ""
+
+
+def extract_links(
+    doc: Document,
+    *,
+    include_autolinks: bool = True,
+    include_images: bool = False,
+) -> list[Link]:
+    """
+    Extract all links from a parsed Markdown document, in document order.
+
+    Reflects what Markdown actually treats as a link (reference links resolved, escapes
+    honored), unlike the regex patterns in :mod:`flowmark.atomic`.
+
+    :param include_autolinks: include ``<url>`` autolinks and GFM bare-URL autolinks
+        (their `text` equals the URL).
+    :param include_images: include images (``![alt](url)``); off by default since images
+        are not navigable links.
+    """
+    links: list[Link] = []
+    for element in iter_inline(doc):
+        if isinstance(element, inline.Link):
+            links.append(Link(_inline_text(element), element.dest, element.title or None))
+        elif isinstance(element, inline.Image):
+            if include_images:
+                links.append(Link(_inline_text(element), element.dest, element.title or None))
+        elif isinstance(element, inline.AutoLink):
+            if include_autolinks:
+                links.append(Link(element.dest, element.dest, None))
+        elif isinstance(element, gfm_elements.Url):
+            if include_autolinks:
+                links.append(Link(element.dest, element.dest, None))
+    return links
+
+
+__all__ = (
+    "Link",
+    "iter_inline",
+    "extract_links",
+)

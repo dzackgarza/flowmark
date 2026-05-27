@@ -14,8 +14,23 @@ __all__ = (
     "wrap_paragraph",
     "wrap_paragraph_lines",
     "Wrap",
+    # Public Markdown-inline API (see flowmark.atomic and flowmark.ast for the full surface).
+    "AtomicPattern",
+    "ATOMIC_PATTERNS",
+    "ATOMIC_CONSTRUCT_PATTERN",
+    "MARKDOWN_INLINE_PATTERNS",
+    "Link",
+    "iter_inline",
+    "extract_links",
 )
 
+from flowmark.ast import Link, extract_links, iter_inline
+from flowmark.atomic import (
+    ATOMIC_CONSTRUCT_PATTERN,
+    ATOMIC_PATTERNS,
+    MARKDOWN_INLINE_PATTERNS,
+    AtomicPattern,
+)
 from flowmark.formats.flowmark_markdown import flowmark_markdown
 from flowmark.linewrapping.line_wrappers import line_wrap_by_sentence, line_wrap_to_width
 from flowmark.linewrapping.markdown_filling import fill_markdown
