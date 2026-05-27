@@ -8,7 +8,10 @@ template tag, etc.) that should be kept together as a single token during line w
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import cache
+from typing import NamedTuple
 
 
 @dataclass(frozen=True)
@@ -205,3 +208,101 @@ ATOMIC_CONSTRUCT_PATTERN: re.Pattern[str] = re.compile(
     "|".join(p.pattern for p in ATOMIC_PATTERNS),
     re.DOTALL,
 )
+
+# A focused subset for prose: the Markdown-inline constructs (code spans, links, and
+# autolinks/bare URLs), excluding the HTML/Jinja templating patterns in the full wrapping
+# set. Useful for sentence splitting and other text analysis that only cares about
+# Markdown inlines. Not a subset of `ATOMIC_PATTERNS`: the two sets are purpose-built (the
+# wrapping set keeps URLs whole via whitespace and matches `<...>` as an HTML tag, so it
+# omits the dedicated URL patterns this prose set needs).
+MARKDOWN_INLINE_PATTERNS: tuple[AtomicPattern, ...] = (
+    INLINE_CODE_SPAN,
+    MARKDOWN_LINK,
+    AUTOLINK,
+    BARE_URL,
+)
+
+
+class AtomicSpan(NamedTuple):
+    """
+    A contiguous span of source text with its exact `[start, end)` offsets. `is_atomic`
+    marks the spans that match an atomic construct (must not be split); the rest are the
+    plain-text gaps between them.
+    """
+
+    text: str
+    start: int
+    end: int
+    is_atomic: bool
+
+
+@cache
+def _combined_pattern(patterns: tuple[AtomicPattern, ...]) -> re.Pattern[str]:
+    return re.compile("|".join(p.pattern for p in patterns), re.DOTALL)
+
+
+def iter_atomic_spans(
+    text: str, patterns: tuple[AtomicPattern, ...] = ATOMIC_PATTERNS
+) -> Iterator[AtomicSpan]:
+    """
+    Split `text` into contiguous spans covering it exactly, each flagged `is_atomic`.
+
+    Atomic spans match one of `patterns` (a construct that must not be broken); non-atomic
+    spans are the gaps between them. Round-trips: `"".join(s.text ...) == text` and
+    `text[s.start:s.end] == s.text` for every span.
+    """
+    regex = _combined_pattern(patterns)
+    pos = 0
+    for m in regex.finditer(text):
+        if m.start() > pos:
+            yield AtomicSpan(text[pos : m.start()], pos, m.start(), False)
+        yield AtomicSpan(m.group(0), m.start(), m.end(), True)
+        pos = m.end()
+    if pos < len(text):
+        yield AtomicSpan(text[pos:], pos, len(text), False)
+
+
+_WHITESPACE_OR_WORD = re.compile(r"\S+|\s+")
+
+
+class AtomicWord(NamedTuple):
+    text: str
+    start: int
+    end: int
+
+
+def iter_atomic_words(
+    text: str, patterns: tuple[AtomicPattern, ...] = ATOMIC_PATTERNS
+) -> Iterator[AtomicWord]:
+    """
+    Yield whitespace-delimited words with their exact offsets, treating each atomic
+    construct as indivisible: a construct's internal whitespace never splits a word, and a
+    construct glues to adjacent non-space characters (e.g. `foo[a](b)bar` is one word).
+
+    This is the offset-carrying basis for both the wrapping word splitter and
+    `split_sentences_with_spans`.
+    """
+    buf: list[str] = []
+    w_start = -1
+    w_end = -1
+    for sp in iter_atomic_spans(text, patterns):
+        if sp.is_atomic:
+            if w_start < 0:
+                w_start = sp.start
+            buf.append(sp.text)
+            w_end = sp.end
+        else:
+            for tok in _WHITESPACE_OR_WORD.finditer(sp.text):
+                if tok.group().isspace():
+                    if buf:
+                        yield AtomicWord("".join(buf), w_start, w_end)
+                        buf = []
+                        w_start = -1
+                        w_end = -1
+                else:
+                    if w_start < 0:
+                        w_start = sp.start + tok.start()
+                    buf.append(tok.group())
+                    w_end = sp.start + tok.end()
+    if buf:
+        yield AtomicWord("".join(buf), w_start, w_end)

@@ -12,6 +12,9 @@ from flowmark.atomic import (
     MARKDOWN_INLINE_PATTERNS,
     MARKDOWN_LINK,
     AtomicPattern,
+    iter_atomic_spans,
+    iter_atomic_words,
+    split_sentences_with_spans,
 )
 
 
@@ -115,3 +118,33 @@ def test_walk_elements_is_read_only():
     before = flowmark_markdown().render(doc)
     list(walk_elements(doc))
     assert flowmark_markdown().render(doc) == before
+
+
+def test_iter_atomic_spans_round_trip_and_offsets():
+    s = "See [a b](http://x.com) and `co de` end."
+    spans = list(iter_atomic_spans(s))
+    assert "".join(sp.text for sp in spans) == s
+    assert all(s[sp.start : sp.end] == sp.text for sp in spans)
+    assert [sp.text for sp in spans if sp.is_atomic] == ["[a b](http://x.com)", "`co de`"]
+
+
+def test_iter_atomic_words_glues_atomic_and_keeps_offsets():
+    s = "foo[a](b)bar [click here](u) end"
+    words = list(iter_atomic_words(s))
+    assert [w.text for w in words] == ["foo[a](b)bar", "[click here](u)", "end"]
+    assert all(s[w.start : w.end] == w.text for w in words)
+
+
+def test_split_sentences_with_spans_are_verbatim():
+    s = "This is one sentence. Here is the second one."
+    spans = split_sentences_with_spans(s, min_length=0)
+    assert all(s[sp.start : sp.end] == sp.text for sp in spans)
+    assert [sp.text for sp in spans] == ["This is one sentence.", "Here is the second one."]
+
+
+def test_sentence_span_never_bisects_a_link_with_spaces():
+    s = "See [click here for info](http://x.com) now. Done with it."
+    spans = split_sentences_with_spans(s, min_length=0)
+    assert all(s[sp.start : sp.end] == sp.text for sp in spans)
+    # The whole link stays inside a single sentence span (never split on its inner space).
+    assert any("[click here for info](http://x.com)" in sp.text for sp in spans)

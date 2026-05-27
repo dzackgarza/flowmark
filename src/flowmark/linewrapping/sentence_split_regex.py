@@ -1,6 +1,15 @@
+from __future__ import annotations
+
 from collections.abc import Callable
+from typing import NamedTuple
 
 import regex
+
+from flowmark.linewrapping.atomic_patterns import (
+    MARKDOWN_INLINE_PATTERNS,
+    AtomicPattern,
+    iter_atomic_words,
+)
 
 # XXX: Could also handle rare cases with both quotes and parentheses at sentence end
 # but may not be worth it. Also does not detect sentences ending in numerals, which
@@ -84,3 +93,51 @@ def first_sentence(
     """
     sentences = split_sentences_regex(text, min_length=min_length, heuristic=heuristic)
     return sentences[0] if sentences else text
+
+
+class SentenceSpan(NamedTuple):
+    """A sentence with its exact `[start, end)` offsets into the source text."""
+
+    text: str
+    start: int
+    end: int
+
+
+def split_sentences_with_spans(
+    text: str,
+    min_length: int = SENTENCE_MIN_LENGTH,
+    heuristic: Callable[[str], bool] = heuristic_end_of_sentence,
+    patterns: tuple[AtomicPattern, ...] = MARKDOWN_INLINE_PATTERNS,
+) -> list[SentenceSpan]:
+    """
+    Offset-preserving, atomic-aware variant of `split_sentences_regex`.
+
+    Unlike `split_sentences_regex` (which normalizes whitespace via `split()`/`join()`
+    and can bisect a link whose text contains spaces), this keeps each atomic construct
+    (link, code span, autolink, URL) whole, applies the end-of-sentence heuristic only at
+    word boundaries between constructs, and returns verbatim spans: each
+    `SentenceSpan.text == text[start:end]`. A sentence boundary therefore never falls
+    inside a link or code span.
+    """
+    sentences: list[SentenceSpan] = []
+    s_start = -1
+    s_end = -1
+    char_count = 0
+    word_count = 0
+    for word in iter_atomic_words(text, patterns):
+        if s_start < 0:
+            s_start = word.start
+        s_end = word.end
+        char_count += len(word.text)
+        word_count += 1
+        # Mirror split_sentences_regex's length accounting (words plus single spaces).
+        sentence_len = char_count + word_count - 1
+        if heuristic(word.text) and sentence_len >= min_length:
+            sentences.append(SentenceSpan(text[s_start:s_end], s_start, s_end))
+            s_start = -1
+            s_end = -1
+            char_count = 0
+            word_count = 0
+    if s_start >= 0:
+        sentences.append(SentenceSpan(text[s_start:s_end], s_start, s_end))
+    return sentences

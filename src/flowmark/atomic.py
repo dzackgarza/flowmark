@@ -12,6 +12,10 @@ does not resolve reference links, handle nested brackets, distinguish images, or
 escapes. Do **not** use them to enumerate links — for that, parse with
 :func:`flowmark.flowmark_markdown` and use :func:`flowmark.ast.extract_links`, which
 reflects what Markdown actually treats as a link.
+
+This module also exposes the offset-preserving tokenizers built on these patterns
+(:func:`iter_atomic_spans`, :func:`iter_atomic_words`) and the atomic-aware sentence
+splitter :func:`split_sentences_with_spans`.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from flowmark.linewrapping.atomic_patterns import (
     HTML_CLOSE_TAG,
     HTML_OPEN_TAG,
     INLINE_CODE_SPAN,
+    MARKDOWN_INLINE_PATTERNS,
     MARKDOWN_LINK,
     PAIRED_HTML_COMMENT,
     PAIRED_JINJA_COMMENT,
@@ -34,19 +39,14 @@ from flowmark.linewrapping.atomic_patterns import (
     SINGLE_JINJA_TAG,
     SINGLE_JINJA_VAR,
     AtomicPattern,
+    AtomicSpan,
+    AtomicWord,
+    iter_atomic_spans,
+    iter_atomic_words,
 )
-
-# A focused subset for prose: the Markdown-inline constructs (code spans, links, and
-# autolinks/bare URLs), excluding the HTML/Jinja templating patterns in the full wrapping
-# set. Useful for sentence splitting and other text analysis that only cares about
-# Markdown inlines. Not a subset of ATOMIC_PATTERNS: the two sets are purpose-built (the
-# wrapping set keeps URLs whole via whitespace and matches `<...>` as an HTML tag, so it
-# omits the dedicated URL patterns this prose set needs).
-MARKDOWN_INLINE_PATTERNS: tuple[AtomicPattern, ...] = (
-    INLINE_CODE_SPAN,
-    MARKDOWN_LINK,
-    AUTOLINK,
-    BARE_URL,
+from flowmark.linewrapping.sentence_split_regex import (
+    SentenceSpan,
+    split_sentences_with_spans,
 )
 
 __all__ = (
@@ -68,4 +68,10 @@ __all__ = (
     "PAIRED_HTML_COMMENT",
     "HTML_OPEN_TAG",
     "HTML_CLOSE_TAG",
+    "AtomicSpan",
+    "AtomicWord",
+    "iter_atomic_spans",
+    "iter_atomic_words",
+    "SentenceSpan",
+    "split_sentences_with_spans",
 )
