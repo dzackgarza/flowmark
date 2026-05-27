@@ -19,6 +19,8 @@ from __future__ import annotations
 from flowmark.linewrapping.atomic_patterns import (
     ATOMIC_CONSTRUCT_PATTERN,
     ATOMIC_PATTERNS,
+    AUTOLINK,
+    BARE_URL,
     HTML_CLOSE_TAG,
     HTML_OPEN_TAG,
     INLINE_CODE_SPAN,
@@ -34,12 +36,17 @@ from flowmark.linewrapping.atomic_patterns import (
     AtomicPattern,
 )
 
-# A focused subset for prose: just the Markdown-inline constructs (code spans and links),
-# excluding the HTML/Jinja templating patterns in the full wrapping set. Useful for
-# sentence splitting and other text analysis that only cares about Markdown inlines.
+# A focused subset for prose: the Markdown-inline constructs (code spans, links, and
+# autolinks/bare URLs), excluding the HTML/Jinja templating patterns in the full wrapping
+# set. Useful for sentence splitting and other text analysis that only cares about
+# Markdown inlines. Not a subset of ATOMIC_PATTERNS: the two sets are purpose-built (the
+# wrapping set keeps URLs whole via whitespace and matches `<...>` as an HTML tag, so it
+# omits the dedicated URL patterns this prose set needs).
 MARKDOWN_INLINE_PATTERNS: tuple[AtomicPattern, ...] = (
     INLINE_CODE_SPAN,
     MARKDOWN_LINK,
+    AUTOLINK,
+    BARE_URL,
 )
 
 __all__ = (
@@ -49,6 +56,8 @@ __all__ = (
     "MARKDOWN_INLINE_PATTERNS",
     "INLINE_CODE_SPAN",
     "MARKDOWN_LINK",
+    "AUTOLINK",
+    "BARE_URL",
     "SINGLE_JINJA_TAG",
     "PAIRED_JINJA_TAG",
     "SINGLE_JINJA_COMMENT",

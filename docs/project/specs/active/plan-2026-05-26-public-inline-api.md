@@ -92,7 +92,7 @@ Add two public submodules, strictly additively:
   `(text, start, end, is_atomic)`. Make this the single atomic-span primitive and
   reimplement the wrapping word splitter on top of it. Add an offset-preserving,
   atomic-aware `split_sentences_with_spans(text)` built on the same primitive.
-- **`flowmark.ast`** — publish a read-only `iter_inline(element)` and a convenience
+- **`flowmark.ast`** — publish a read-only `walk_elements(element)` and a convenience
   `extract_links(doc) -> list[Link]` where `Link(text, url, title)` carries **no span**
   (per the identity-vs-spans principle), built on the existing `transform_tree`.
 
@@ -115,7 +115,7 @@ unavoidably part of the contract.
 
 - `from flowmark.atomic import ATOMIC_PATTERNS, ATOMIC_CONSTRUCT_PATTERN, iter_atomic_spans, split_sentences_with_spans`
   works and is covered by `__all__`.
-- `from flowmark.ast import iter_inline, extract_links, Link` works and is in `__all__`.
+- `from flowmark.ast import walk_elements, extract_links, Link` works and is in `__all__`.
 - `iter_atomic_spans` round-trips: `"".join(sp.text for sp in iter_atomic_spans(s)) == s`
   and every span's `s[start:end] == text`.
 - `split_sentences_with_spans(s)` never returns a span that bisects an atomic span; for
@@ -163,7 +163,9 @@ a `patterns` argument (the unit of flexibility) and flowmark ships named sets as
 convenient defaults, not as the only options:
 
 - `ATOMIC_PATTERNS` — the full wrapping set (current behavior, default for wrapping).
-- `MARKDOWN_INLINE_PATTERNS` — code spans + links (+ autolinks/URLs) only, for prose.
+- `MARKDOWN_INLINE_PATTERNS` — code spans, links, angle autolinks, and bare URLs only,
+  for prose. Purpose-built, not a subset of `ATOMIC_PATTERNS` (the wrapping set keeps URLs
+  whole via whitespace and matches `<...>` as an HTML tag, so it omits these URL patterns).
 - Consumers may pass any `tuple[AtomicPattern, ...]`, including their own constructs.
 
 ## Stage 2: Architecture Stage
@@ -233,22 +235,22 @@ class Link(NamedTuple):
     # No span: marko provides no inline source offsets. Recover spans by locating
     # `text`/`url` in the source (consumer responsibility).
 
-def iter_inline(element: Element) -> Iterator[Element]:
-    """Read-only depth-first iteration over inline elements within an inline scope."""
+def walk_elements(element: Element) -> Iterator[Element]:
+    """Read-only depth-first iteration over all descendant elements (generic tree walk)."""
 
 def extract_links(doc: Document) -> list[Link]:
     """All links in document order, via the marko AST (reference links, autolinks
     resolved; images excluded). Built on transform_tree."""
 ```
 
-`iter_inline` is a thin read-only wrapper over the existing `transform_tree` walk;
+`walk_elements` is a thin read-only generic tree walk (same shape as `transform_tree`);
 `extract_links` filters for `inline.Link` (and `inline.AutoLink` / `gfm_elements.Url` as
 appropriate), reading `dest`/`title` and rendering child `RawText` for `text`.
 
 ## Stage 3: Refine Architecture (reuse)
 
 - **`transform_tree`** (`doc_transforms.py:37`) already does the robust container walk —
-  `iter_inline` and `extract_links` wrap it; no new traversal logic.
+  `walk_elements` and `extract_links` use it; no new traversal logic.
 - **`ATOMIC_CONSTRUCT_PATTERN` construction** (`atomic_patterns.py:186`) — reused to build
   the combined regex per pattern set.
 - **`_extract_atomic_constructs`** (`text_wrapping.py:39`) — reimplemented on
@@ -260,13 +262,17 @@ appropriate), reading `dest`/`title` and rendering child `RawText` for `text`.
 
 ### Phase A — publish patterns + AST helpers
 
-- [ ] Create `src/flowmark/atomic.py` re-exporting the patterns + `AtomicPattern`; add
+- [x] Create `src/flowmark/atomic.py` re-exporting the patterns + `AtomicPattern`; add
       `MARKDOWN_INLINE_PATTERNS`; add the heuristic-vs-parser warning in the docstring.
-- [ ] Create `src/flowmark/ast.py` with `Link`, `iter_inline`, `extract_links` on top of
+- [x] Make `AtomicPattern`'s delimiter fields default to `""` so it is a usable public
+      type (`AtomicPattern(name=..., pattern=...)`).
+- [x] Add `AUTOLINK` + `BARE_URL` patterns; include them in `MARKDOWN_INLINE_PATTERNS`.
+- [x] Create `src/flowmark/ast.py` with `Link`, `walk_elements`, `extract_links` on top of
       `transform_tree`.
-- [ ] Tests: `extract_links` identity cases (inline, reference, collapsed, autolink,
-      image-excluded); `iter_inline` ordering.
-- [ ] Add the new names to `flowmark/__init__.py` `__all__` (or document submodule imports).
+- [x] Tests: `extract_links` identity cases (inline, reference, collapsed, autolink,
+      image-excluded); nested/escaped/reference/duplicate cases; code-block exclusion.
+- [x] Keep `flowmark/__init__.py` `__all__` conservative (top-level `Link` /
+      `extract_links`; submodules canonical for the rest).
 
 ### Phase B — offset-preserving span splitter + sentence spans
 
@@ -282,15 +288,15 @@ appropriate), reading `dest`/`title` and rendering child `RawText` for `text`.
 
 ### Status
 
-Planning. Not started.
+**Phase A: complete** (`flowmark.atomic`, `flowmark.ast`, patterns, tests). Phase B and
+Phase C in progress.
 
-### Open Questions
+### Open Questions (resolved)
 
-- Export the new names at top-level `flowmark.__all__` too, or only via the
-  `flowmark.atomic` / `flowmark.ast` submodules? (Leaning: submodules are canonical;
-  top-level re-export the few most-used names.)
-- Should `extract_links` include images and autolinks by default, or take flags? (Leaning:
-  links only by default; `include_images` / `include_autolinks` flags.)
+- Top-level `__all__`: resolved — submodules are canonical; top level re-exports only
+  `Link` / `extract_links`.
+- `extract_links` defaults: resolved — links only by default; `include_images` /
+  `include_autolinks` flags.
 - Move `atomic_patterns.py` under `flowmark/atomic/` eventually, or keep re-export
   indefinitely? (Leaning: re-export now; revisit if internals churn.)
 

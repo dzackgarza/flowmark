@@ -7,8 +7,10 @@ helpers instead of re-implementing marko tree walks that must track GFM/footnote
 types.
 
 **Identity, not spans.** marko does not record source offsets for inline elements, so
-:func:`extract_links` returns link *text/url/title* but no source span. A consumer that
-needs spans recovers them by locating the link text in its own source.
+:func:`extract_links` returns link *text/url/title* but no source span. Recovering a span
+is a source-mapping problem the consumer owns: duplicate link text, reference links,
+escaped text, and nested inline markup mean it is not simply "find the link text" — it
+must be reconciled against the original source.
 """
 
 from __future__ import annotations
@@ -19,7 +21,6 @@ from typing import NamedTuple, cast
 from marko import inline
 from marko.block import Document
 from marko.element import Element
-from marko.ext.gfm import elements as gfm_elements
 
 
 class Link(NamedTuple):
@@ -36,18 +37,20 @@ class Link(NamedTuple):
     title: str | None
 
 
-def iter_inline(element: Element) -> Iterator[Element]:
+def walk_elements(element: Element) -> Iterator[Element]:
     """
     Depth-first iteration over all descendant elements of `element`, in document order.
 
     Read-only: yields each child/descendant element without modifying the tree. The root
-    `element` itself is not yielded.
+    `element` itself is not yielded. This is a generic tree walk — it yields block
+    elements, inline elements, and the raw text inside code blocks alike, so callers
+    filter by element type.
     """
     children = getattr(element, "children", None)
     if isinstance(children, list):
         for child in cast("list[Element]", children):
             yield child
-            yield from iter_inline(child)
+            yield from walk_elements(child)
 
 
 def _inline_text(element: Element) -> str:
@@ -73,12 +76,13 @@ def extract_links(
     honored), unlike the regex patterns in :mod:`flowmark.atomic`.
 
     :param include_autolinks: include ``<url>`` autolinks and GFM bare-URL autolinks
-        (their `text` equals the URL).
+        (their `text` equals the URL). GFM bare URLs (`gfm_elements.Url`) subclass
+        `inline.AutoLink`, so both are covered by the one autolink case.
     :param include_images: include images (``![alt](url)``); off by default since images
         are not navigable links.
     """
     links: list[Link] = []
-    for element in iter_inline(doc):
+    for element in walk_elements(doc):
         if isinstance(element, inline.Link):
             links.append(Link(_inline_text(element), element.dest, element.title or None))
         elif isinstance(element, inline.Image):
@@ -87,14 +91,11 @@ def extract_links(
         elif isinstance(element, inline.AutoLink):
             if include_autolinks:
                 links.append(Link(element.dest, element.dest, None))
-        elif isinstance(element, gfm_elements.Url):
-            if include_autolinks:
-                links.append(Link(element.dest, element.dest, None))
     return links
 
 
 __all__ = (
     "Link",
-    "iter_inline",
+    "walk_elements",
     "extract_links",
 )

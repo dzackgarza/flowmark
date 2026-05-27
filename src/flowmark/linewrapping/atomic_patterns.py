@@ -16,17 +16,21 @@ class AtomicPattern:
     """
     Defines a regex pattern for an atomic construct that should not be broken.
 
-    For delimiter-based patterns (tags, comments), `open_delim`/`close_delim` store
-    the raw delimiters and `open_re`/`close_re` store regex-escaped versions.
-    For non-delimiter patterns, these are empty strings.
+    Only `name` and `pattern` are needed to define a construct for tokenization; a
+    consumer adding a custom construct can write `AtomicPattern(name=..., pattern=...)`.
+
+    The delimiter fields are used only by the tag-adjacency handling for paired
+    template tags: `open_delim`/`close_delim` store the raw delimiters and
+    `open_re`/`close_re` store regex-escaped versions. They default to empty for
+    non-delimiter patterns (code spans, links, etc.).
     """
 
     name: str
     pattern: str
-    open_delim: str
-    close_delim: str
-    open_re: str
-    close_re: str
+    open_delim: str = ""
+    close_delim: str = ""
+    open_re: str = ""
+    close_re: str = ""
 
 
 def _make_paired_pattern(open_re: str, close_re: str, middle_char: str) -> str:
@@ -61,6 +65,20 @@ MARKDOWN_LINK = AtomicPattern(
     close_delim="",
     open_re="",
     close_re="",
+)
+
+# Angle-bracket autolinks: <scheme:...> (CommonMark URI autolink) or <email>.
+AUTOLINK = AtomicPattern(
+    name="autolink",
+    pattern=r"<[A-Za-z][A-Za-z0-9+.\-]*:[^\s<>]*>|<[^\s<>@]+@[^\s<>]+>",
+)
+
+# Bare URLs (GFM autolinks): http(s):// or www. runs. The final character class
+# excludes trailing sentence punctuation so a period/comma/paren ending a sentence is
+# not swallowed into the URL (mirrors GFM's trailing-punctuation trimming).
+BARE_URL = AtomicPattern(
+    name="bare_url",
+    pattern=r"(?:https?://|www\.)[^\s<>]*[^\s<>?!.,:;*_~'\")\]]",
 )
 
 # Jinja/Markdoc template tags: {% tag %}, {% /tag %}
