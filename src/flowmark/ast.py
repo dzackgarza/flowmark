@@ -14,7 +14,7 @@ needs spans recovers them by locating the link text in its own source.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 from marko import inline
 from marko.block import Document
@@ -45,7 +45,7 @@ def iter_inline(element: Element) -> Iterator[Element]:
     """
     children = getattr(element, "children", None)
     if isinstance(children, list):
-        for child in children:
+        for child in cast("list[Element]", children):
             yield child
             yield from iter_inline(child)
 
@@ -56,7 +56,7 @@ def _inline_text(element: Element) -> str:
     if isinstance(children, str):
         return children
     if isinstance(children, list):
-        return "".join(_inline_text(child) for child in children)
+        return "".join(_inline_text(child) for child in cast("list[Element]", children))
     return ""
 
 
