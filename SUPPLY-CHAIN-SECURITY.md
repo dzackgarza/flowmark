@@ -3,8 +3,11 @@
 This repo follows a supply-chain hardening policy.
 **Read this before adding or upgrading any dependency.** The full cross-ecosystem policy
 and rationale are in the
-[Supply Chain Hardening guidebook](https://github.com/jlevy/supply-chain-hardening);
-this file is the repo-specific summary for a `uv`-managed Python project.
+[Supply Chain Hardening guidebook](https://github.com/jlevy/supply-chain-hardening); the
+PyPI/uv specifics are in
+[`guidelines/hardening-pypi.md`](https://github.com/jlevy/supply-chain-hardening/blob/main/guidelines/hardening-pypi.md).
+This file is the repo-specific summary for a `uv`-managed Python project and should stay
+in alignment with that upstream.
 
 ## The default: a 14-day cool-off
 
@@ -13,11 +16,14 @@ exception applies.
 Malicious releases are typically detected and yanked within minutes to
 days, so waiting costs only slightly staler dependencies.
 
-With `uv`, gate resolution by publish date:
+With `uv`, gate resolution by publish date.
+`uv`’s `--exclude-newer` takes an absolute date (`YYYY-MM-DD`), **not** a duration like
+`"14 days"` (that is rejected), so compute a rolling cutoff:
 
 ```bash
-export UV_EXCLUDE_NEWER="14 days"   # exclude anything published in the last 14 days
-uv lock --upgrade                   # re-resolve under the cool-off
+export UV_EXCLUDE_NEWER="$(date -u -d '14 days ago' +%F)"   # GNU/Linux
+# macOS/BSD: export UV_EXCLUDE_NEWER="$(date -u -v-14d +%F)"
+uv lock --upgrade                                           # re-resolve under the cool-off
 ```
 
 To check one version’s publish time before pinning it:
@@ -31,6 +37,20 @@ group (build/test tooling runs with full privileges and is historically a more d
 vector). Pins already in `uv.lock` before this policy are grandfathered until their next
 planned upgrade.
 
+**The cool-off applies to the whole resolved set, not just the package you name.**
+Adding one dependency can pull in many transitive packages, any of which may be
+brand-new. Always review the **full `uv.lock` diff** and confirm every *added* package
+clears the window — not only the direct dependency.
+If the gate was not active when you locked (so the lock captured too-new packages),
+retrofit just those without re-resolving the rest of the graph:
+
+```bash
+# Downgrade only the offending packages to the newest pre-cutoff version.
+# (A bare `UV_EXCLUDE_NEWER=... uv lock` re-resolves everything and churns
+# unrelated pins, so prefer targeted pins.)
+uv lock --upgrade-package "certifi==<pre-cutoff>" --upgrade-package "idna==<pre-cutoff>"
+```
+
 ## Install rules
 
 1. **Never install unthinkingly.** Confirm the package is needed, the name is spelled
@@ -38,13 +58,22 @@ planned upgrade.
 2. **Prefer wheels; be wary of sdist builds.** Building from an sdist runs arbitrary
    `setup.py`/build-backend code at install time.
    Prefer binary wheels, and review any package that must build from source.
-   To forbid source builds entirely, set `UV_NO_BUILD=1` (uv) or `PIP_ONLY_BINARY=:all:`
-   (pip).
+   `UV_NO_BUILD=true` / `PIP_ONLY_BINARY=:all:` forbid source builds, but **do not set
+   `UV_NO_BUILD` for `uv sync` here** — it also blocks building this project’s own
+   editable package and breaks the sync.
+   Apply it to third-party installs instead.
 3. **Commit the lockfile; install frozen.** `uv.lock` is committed and CI runs
    `uv sync --frozen`. Never let an upgrade slip in unreviewed — treat a `uv.lock` diff
    like a code diff.
-4. **Audit after changes.** Run `uv run pip-audit` (also wired into CI) and address
-   findings before continuing.
+4. **Audit after changes — with a pinned, isolated scanner.** Audit the locked deps, but
+   do **not** add the scanner to this project (it drags a large transitive tree into
+   `uv.lock` and under our own cool-off/audit surface).
+   Run it isolated and pinned:
+   ```bash
+   uv export --frozen --no-emit-project --all-extras --format requirements-txt > /tmp/reqs.txt
+   uvx --from "pip-audit==2.10.0" pip-audit -r /tmp/reqs.txt
+   ```
+   This is also wired into CI. Address findings before continuing.
 5. **Don’t update for its own sake.** The safest update is the one you skip.
    Bump only for a concrete reason (a needed fix or a CVE patch), not on a schedule.
 6. **No unpinned zero-install runners.** Pin `uvx`/`npx`/`pnpm dlx` invocations to an

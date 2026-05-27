@@ -66,10 +66,15 @@ jobs:
         run: uv run pytest
 
       - name: Audit dependencies (pip-audit)
-        # Non-blocking for now; flip continue-on-error to false once the
-        # advisory backlog (if any) is cleared. See SUPPLY-CHAIN-SECURITY.md.
+        # Audit the locked deps with a pinned, isolated pip-audit so the scanner's own
+        # (large) transitive tree never enters uv.lock or our cool-off/audit surface.
+        # See SUPPLY-CHAIN-SECURITY.md and upstream guidelines/hardening-pypi.md.
+        # Non-blocking for now; flip continue-on-error to false once the advisory
+        # backlog is cleared.
         continue-on-error: true
-        run: uv run pip-audit
+        run: |
+          uv export --frozen --no-emit-project --all-extras --format requirements-txt > /tmp/reqs.txt
+          uvx --from "pip-audit==2.10.0" pip-audit -r /tmp/reqs.txt
 
       - name: Check golden coverage
         run: bash scripts/check-golden-coverage.sh
