@@ -108,7 +108,9 @@ a - b a – b a — b.
 
 This is a display formula:
 
-$$ L = \frac{1}{2} \rho v^2 S C_L $$
+$$
+L = \frac{1}{2} \rho v^2 S C_L
+$$
 
 And here is a formula in inline form as $L = \frac{1}{2} \rho v^2 S C_L$ with more text
 following. If the noteholders had converted their $420K at the 20% discount, they would

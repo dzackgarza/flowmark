@@ -268,11 +268,77 @@ class CustomFencedCode(block.FencedCode):
         )
 
 
+class CustomDisplayMath(block.BlockElement):
+    """
+    Display math block: ``\\[...\\]`` or ``$$...$$``.
+
+    Content between delimiters is preserved verbatim. Parsed as a block-level
+    element so it never passes through paragraph line-wrapping (which would join
+    the delimiters and content onto one line) or hard-break normalization (which
+    would corrupt ``\\[`` followed by two trailing spaces into ``\\[\\``).
+    """
+
+    priority = 7
+    parse_children = True
+    pattern = re.compile(r"( {,3})(\\\[|\$\$)\s*$", re.MULTILINE)
+
+    opener: str
+    prefix: str
+
+    def __init__(self, match: tuple[str, str]) -> None:
+        self.opener = match[0]
+        self.prefix = match[1]
+        self.children = [inline.RawText(match[2], False)]
+
+    @override
+    @classmethod
+    def match(cls, source: Source) -> re.Match[str] | None:
+        m = source.expect_re(cls.pattern)
+        if not m:
+            return None
+        prefix, opener = m.groups()
+        source.context.math_info = (prefix, opener)
+        return m
+
+    @override
+    @classmethod
+    def parse(cls, source: Source) -> tuple[str, str, str]:
+        prefix, opener = source.context.math_info
+        source.next_line()
+        source.consume()
+
+        closer = "\\]" if "[" in opener else "$$"
+        closer_pat = re.compile(r" {,3}" + re.escape(closer) + r"\s*$")
+
+        lines: list[str] = []
+        while not source.exhausted:
+            line = source.next_line()
+            if line is None:
+                break
+            source.consume()
+            if closer_pat.match(line):
+                break
+            prefix_len = source.match_prefix(prefix, line)
+            if prefix_len >= 0:
+                line = line[prefix_len:]
+            else:
+                line = line.lstrip()
+            lines.append(line)
+
+        return (opener, prefix, "".join(lines))
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "display_math" if snake_case else "DisplayMath"
+
+
 class CustomParser(Parser):
     def __init__(self) -> None:
         super().__init__()
         self.block_elements["HTMLBlock"] = CustomHTMLBlock
         self.block_elements["FencedCode"] = CustomFencedCode
+        self.block_elements["DisplayMath"] = CustomDisplayMath
 
 
 class MarkdownNormalizer(Renderer):
@@ -475,6 +541,25 @@ class MarkdownNormalizer(Renderer):
     def render_code_block(self, element: block.CodeBlock) -> str:
         # Convert indented code blocks to fenced code blocks.
         return self._render_code(element)
+
+    def render_display_math(self, element: CustomDisplayMath) -> str:
+        self._skip_next_blank_line = False
+        opener = element.opener
+        closer = "\\]" if "[" in opener else "$$"
+        code_child = cast(inline.RawText, element.children[0])
+        content = code_child.children.rstrip("\n")
+
+        lines = [f"{self._prefix}{opener}"]
+        empty_line_prefix = self._second_prefix.rstrip()
+        for line in content.splitlines():
+            if line:
+                lines.append(f"{self._second_prefix}{line}")
+            else:
+                lines.append(empty_line_prefix)
+        lines.append(f"{self._second_prefix}{closer}")
+        self._prefix = self._second_prefix
+        self._suppress_item_break = False
+        return "\n".join(lines) + "\n"
 
     def render_html_block(self, element: block.HTMLBlock) -> str:
         result = f"{self._prefix}{element.body}"
