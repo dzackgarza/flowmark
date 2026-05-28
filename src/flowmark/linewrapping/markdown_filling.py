@@ -95,8 +95,8 @@ def fill_markdown(
         rewrite_text_content(document, apply_ellipses, coalesce_lines=True)
     result = marko.render(document)
 
-    # Reattach frontmatter if it was present
+    # Reattach frontmatter if it was present, with a blank line separator
     if frontmatter:
-        result = frontmatter + result
+        result = frontmatter + "\n" + result
 
     return result
