@@ -452,6 +452,12 @@ def main(args: list[str] | None = None) -> int:
             print(f)
         return 0
 
+    # When --semantic is set without an explicit --width, use pure semantic
+    # splitting with no column-width constraint. --semantic --width N still
+    # applies both.
+    if options.semantic and "width" not in explicit_flags:
+        options.width = 0
+
     try:
         reformat_files(
             files=resolved_files,
