@@ -308,7 +308,6 @@ class CustomDisplayMath(block.BlockElement):
         source.consume()
 
         closer = "\\]" if "[" in opener else "$$"
-        closer_pat = re.compile(r" {,3}" + re.escape(closer) + r"\s*$")
 
         lines: list[str] = []
         while not source.exhausted:
@@ -316,8 +315,18 @@ class CustomDisplayMath(block.BlockElement):
             if line is None:
                 break
             source.consume()
-            if closer_pat.match(line):
+
+            # Check if the line ends with the closer (after stripping
+            # trailing whitespace).  The closer can appear at line-start
+            # (like a code fence) or after content on the same line
+            # (like `\\frac{1}{2},\\]`).
+            stripped = line.rstrip()
+            if stripped.endswith(closer):
+                before = stripped[: -len(closer)].rstrip()
+                if before:
+                    lines.append(before + "\n")
                 break
+
             prefix_len = source.match_prefix(prefix, line)
             if prefix_len >= 0:
                 line = line[prefix_len:]
@@ -468,6 +477,37 @@ class CustomLatexEnvironment(block.BlockElement):
         return "latex_environment" if snake_case else "LatexEnvironment"
 
 
+class CustomParagraph(block.Paragraph):
+    """
+    Paragraph that also checks our custom block elements on continuation
+    lines.  Marko's built-in ``break_paragraph`` only checks ``Quote``,
+    ``Heading``, ``BlankLine``, and ``FencedCode`` — which means custom
+    blocks (``DisplayMath``, ``FencedDiv``, ``LatexEnvironment``) never
+    interrupt a paragraph and their content gets mangled by the wrapper.
+    """
+
+    @override
+    @classmethod
+    def break_paragraph(cls, source: Source, lazy: bool = False) -> bool:
+        # Delegate to the original logic first.
+        if block.Paragraph.break_paragraph(source, lazy):
+            return True
+        parser = source.parser
+        # Also break when any of our custom block elements match.
+        for key in ("DisplayMath", "FencedDiv", "LatexEnvironment"):
+            if parser.block_elements[key].match(source):
+                return True
+        return False
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        # Must return "paragraph" so the renderer dispatches to render_paragraph.
+        # The default Element.get_type would return "custom_paragraph" since
+        # we didn't set cls.override when subclassing.
+        return "paragraph"
+
+
 class CustomParser(Parser):
     def __init__(self) -> None:
         super().__init__()
@@ -476,6 +516,8 @@ class CustomParser(Parser):
         self.block_elements["DisplayMath"] = CustomDisplayMath
         self.block_elements["FencedDiv"] = CustomFencedDiv
         self.block_elements["LatexEnvironment"] = CustomLatexEnvironment
+        # Override Paragraph so continuation lines also check our custom blocks
+        self.block_elements["Paragraph"] = CustomParagraph
 
 
 class MarkdownNormalizer(Renderer):
@@ -1056,6 +1098,9 @@ def flowmark_markdown(
                     e not in custom_parser.block_elements and e not in custom_parser.inline_elements
                 )
                 custom_parser.add_element(e)
+            # GFM's Paragraph overwrites our CustomParagraph (same "Paragraph" key).
+            # Re-register so that break_paragraph checks our custom block elements.
+            custom_parser.block_elements["Paragraph"] = CustomParagraph
             self.parser: Parser = custom_parser
             self.renderer: Renderer = CustomRenderer()
 
