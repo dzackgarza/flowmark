@@ -404,6 +404,70 @@ class CustomFencedDiv(block.BlockElement):
         return "fenced_div" if snake_case else "FencedDiv"
 
 
+class CustomLatexEnvironment(block.BlockElement):
+    """
+    LaTeX environment: ``\\begin{env}`` ... ``\\end{env}``.
+
+    Content between the delimiters is preserved verbatim.  The opening
+    ``\\begin`` line carries the environment name; the closer must be the
+    matching ``\\end{env}``.
+    """
+
+    priority = 7
+    parse_children = True
+    pattern = re.compile(r"( {,3})\\begin\{([^}]+)\}[^\n\S]*$", re.MULTILINE)
+
+    env_name: str
+    prefix: str
+
+    def __init__(self, match: tuple[str, str, str]) -> None:
+        self.env_name = match[0]
+        self.prefix = match[1]
+        self.children = [inline.RawText(match[2], False)]
+
+    @override
+    @classmethod
+    def match(cls, source: Source) -> re.Match[str] | None:
+        m = source.expect_re(cls.pattern)
+        if not m:
+            return None
+        prefix, env_name = m.groups()
+        source.context.latex_env_info = (prefix, env_name)
+        return m
+
+    @override
+    @classmethod
+    def parse(cls, source: Source) -> tuple[str, str, str]:
+        prefix, env_name = source.context.latex_env_info
+        source.next_line()
+        source.consume()
+
+        closer = rf"\\end{{{re.escape(env_name)}}}"
+        closer_pat = re.compile(r" {,3}" + closer + r"\s*$")
+
+        lines: list[str] = []
+        while not source.exhausted:
+            line = source.next_line()
+            if line is None:
+                break
+            source.consume()
+            if closer_pat.match(line):
+                break
+            prefix_len = source.match_prefix(prefix, line)
+            if prefix_len >= 0:
+                line = line[prefix_len:]
+            else:
+                line = line.lstrip()
+            lines.append(line)
+
+        return (env_name, prefix, "".join(lines))
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "latex_environment" if snake_case else "LatexEnvironment"
+
+
 class CustomParser(Parser):
     def __init__(self) -> None:
         super().__init__()
@@ -411,6 +475,7 @@ class CustomParser(Parser):
         self.block_elements["FencedCode"] = CustomFencedCode
         self.block_elements["DisplayMath"] = CustomDisplayMath
         self.block_elements["FencedDiv"] = CustomFencedDiv
+        self.block_elements["LatexEnvironment"] = CustomLatexEnvironment
 
 
 class MarkdownNormalizer(Renderer):
@@ -639,6 +704,26 @@ class MarkdownNormalizer(Renderer):
         if element.attrs:
             opener += element.attrs
         closer = ":::"
+        code_child = cast(inline.RawText, element.children[0])
+        content = code_child.children.rstrip("\n")
+
+        lines = [f"{self._prefix}{opener}"]
+        empty_line_prefix = self._second_prefix.rstrip()
+        for line in content.splitlines():
+            if line:
+                lines.append(f"{self._second_prefix}{line}")
+            else:
+                lines.append(empty_line_prefix)
+        lines.append(f"{self._second_prefix}{closer}")
+        self._prefix = self._second_prefix
+        self._suppress_item_break = False
+        return "\n".join(lines) + "\n"
+
+    def render_latex_environment(self, element: CustomLatexEnvironment) -> str:
+        self._skip_next_blank_line = False
+        env_name = element.env_name
+        opener = rf"\begin{{{env_name}}}"
+        closer = rf"\end{{{env_name}}}"
         code_child = cast(inline.RawText, element.children[0])
         content = code_child.children.rstrip("\n")
 
