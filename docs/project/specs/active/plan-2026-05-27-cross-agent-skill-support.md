@@ -158,8 +158,8 @@ Output must be byte-deterministic and flowmark-stable.
 - [ ] Extend `install_skill` to write both `.agents/skills/flowmark/SKILL.md` (portable)
   and `.claude/skills/flowmark/SKILL.md` (mirror), project-local by default; copy the
   payload to both (no symlinks).
-  Mark each `DO NOT EDIT` with the unified `format={FLOWMARK_FORMAT} surface=skill-md`
-  stamp (same single `fNN` used on the AGENTS.md block).
+  Mark each `DO NOT EDIT` with the unified `format=fNN surface=skill-md` stamp (the same
+  single `fNN` used on the AGENTS.md block).
 - [ ] Add tri-state CLI flags (`--all`, `--claude`, `--codex`, `--skip-*`); default to
   detection-based, project-local; keep `--agent-base` for custom/global.
 - [ ] Idempotency + itemized summary; forward-compat guard for too-new format stamps.

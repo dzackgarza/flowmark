@@ -153,7 +153,10 @@ AGENTS_END_MARKER = "<!-- END FLOWMARK INTEGRATION -->"
 _AGENTS_BLOCK_RE = re.compile(
     re.escape(AGENTS_BEGIN_PREFIX) + r".*?" + re.escape(AGENTS_END_MARKER), re.DOTALL
 )
-_AGENTS_FORMAT_RE = re.compile(re.escape(AGENTS_BEGIN_PREFIX) + r"\s+format=f(\d+)")
+# Regex for the format stamp parsed off the AGENTS.md BEGIN marker line — anchored
+# on the BEGIN prefix so a stray `format=fXX` elsewhere in the file can't fool the
+# forward-compat guard. Same `format=fNN` shape as on every other surface.
+_AGENTS_BEGIN_STAMP_RE = re.compile(re.escape(AGENTS_BEGIN_PREFIX) + r"\s+format=f(\d+)")
 
 
 def agents_md_block(version: str | None = None) -> str:
@@ -194,7 +197,7 @@ def update_agents_md(path: Path, version: str | None = None) -> InstallResult:
     surface = "AGENTS.md (flowmark block)"
     existing = path.read_text(encoding="utf-8") if path.is_file() else None
 
-    if existing is not None and (m := _AGENTS_FORMAT_RE.search(existing)):
+    if existing is not None and (m := _AGENTS_BEGIN_STAMP_RE.search(existing)):
         if int(m.group(1)) > _format_num():
             return InstallResult(surface, path, "blocked-newer")
 
