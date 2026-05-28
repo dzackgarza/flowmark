@@ -2,11 +2,14 @@
 
 from pathlib import Path
 
+import pytest
+
 from flowmark import reformat_text
+from flowmark.cli import main as cli_main
 from flowmark.skill import (
     AGENTS_BEGIN_PREFIX,
     AGENTS_END_MARKER,
-    DOC_VERSION_PIN,
+    DISCOVERY_VERSION,
     agents_md_block,
     compose_skill,
     flowmark_version,
@@ -56,9 +59,9 @@ class TestComposeSkill:
     def test_compose_doc_pin_is_stable(self) -> None:
         # The committed/published copy uses a literal placeholder, not a real version,
         # so it never churns across releases.
-        rendered = compose_skill(DOC_VERSION_PIN)
-        assert f"flowmark=={DOC_VERSION_PIN}" in rendered
-        assert rendered == compose_skill(DOC_VERSION_PIN)  # deterministic
+        rendered = compose_skill(DISCOVERY_VERSION)
+        assert f"flowmark=={DISCOVERY_VERSION}" in rendered
+        assert rendered == compose_skill(DISCOVERY_VERSION)  # deterministic
 
     def test_compose_preserves_frontmatter(self) -> None:
         rendered = compose_skill("1.2.3")
@@ -185,6 +188,23 @@ class TestAgentsMdBlock:
         assert update_agents_md(path, version="0.7.0").action == "installed"
         assert update_agents_md(path, version="0.7.0").action == "unchanged"
 
+    def test_update_collapses_duplicate_stale_blocks(self, tmp_path: Path) -> None:
+        """Multiple stale flowmark blocks collapse to one current block on re-run."""
+        path = tmp_path / "AGENTS.md"
+        stale = agents_md_block("1.0.0")
+        path.write_text(
+            f"# Project\n\nUser-authored notes.\n\n{stale}\n\n## User Section\n\nKeep me.\n\n{stale}\n",
+            encoding="utf-8",
+        )
+
+        update_agents_md(path, version="2.0.0")
+
+        content = path.read_text()
+        assert content.count(AGENTS_BEGIN_PREFIX) == 1  # collapsed to one block
+        assert "flowmark==1.0.0" not in content  # stale pins removed
+        assert "flowmark==2.0.0" in content  # current pin written
+        assert "Keep me." in content  # user content preserved
+
     def test_update_guard_blocks_newer_format(self, tmp_path: Path) -> None:
         path = tmp_path / "AGENTS.md"
         path.write_text(
@@ -231,3 +251,38 @@ class TestAgentsMdBlock:
         content = skill_file.read_text()
         assert "old content" not in content
         assert "name: flowmark" in content
+
+
+class TestInstallSkillCli:
+    """CLI-level tests for `flowmark --install-skill` target-set resolution."""
+
+    def test_empty_target_set_errors_out(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--install-skill with every target skipped must fail with a clear error,
+        not silently exit 0 with no files written."""
+        monkeypatch.chdir(tmp_path)
+        rc = cli_main(["--install-skill", "--skip-claude", "--skip-codex"])
+        assert rc != 0
+        err = capsys.readouterr().err
+        assert "at least one target surface" in err
+        # And nothing was written:
+        assert not (tmp_path / ".claude").exists()
+        assert not (tmp_path / ".agents").exists()
+        assert not (tmp_path / "AGENTS.md").exists()
+
+    def test_self_cancelling_flag_pair_errors_out(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`--claude --skip-claude` (with no --codex) resolves to an empty target set."""
+        monkeypatch.chdir(tmp_path)
+        rc = cli_main(["--install-skill", "--claude", "--skip-claude"])
+        assert rc != 0
+        err = capsys.readouterr().err
+        assert "at least one target surface" in err

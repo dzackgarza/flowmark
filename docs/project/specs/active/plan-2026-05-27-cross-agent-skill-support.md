@@ -4,7 +4,8 @@
 
 **Author:** Flowmark maintainers
 
-**Status:** Draft
+**Status:** Implemented (in review on PR #49; will move to `docs/project/specs/done/`
+after merge)
 
 ## Overview
 
@@ -148,39 +149,39 @@ Output must be byte-deterministic and flowmark-stable.
 
 ### Phase 1: Compose + portable/Claude install + pinned invocation
 
-- [ ] Add `compose_skill(version)` to `skill.py`; substitute a pinned version into the
+- [x] Add `compose_skill(version)` to `skill.py`; substitute a pinned version into the
   invocation examples (local-first: `flowmark` → `uvx --from flowmark==<version>`).
-- [ ] Update `src/flowmark/skills/SKILL.md` examples to the pinned local-first form;
+- [x] Update `src/flowmark/skills/SKILL.md` examples to the pinned local-first form;
   keep the Python/Rust (`flowmark-rs`) note.
-- [ ] Tighten the skill `description` to the two-part rule (§4.2): front-load trigger
+- [x] Tighten the skill `description` to the two-part rule (§4.2): front-load trigger
   keywords, state capability + when-to-use; keep `allowed-tools` minimally scoped
   (`Bash(flowmark:*)`, `Read`, `Write`).
-- [ ] Extend `install_skill` to write both `.agents/skills/flowmark/SKILL.md` (portable)
+- [x] Extend `install_skill` to write both `.agents/skills/flowmark/SKILL.md` (portable)
   and `.claude/skills/flowmark/SKILL.md` (mirror), project-local by default; copy the
   payload to both (no symlinks).
   Mark each `DO NOT EDIT` with the unified `format=fNN surface=skill-md` stamp (the same
   single `fNN` used on the AGENTS.md block).
-- [ ] Add tri-state CLI flags (`--all`, `--claude`, `--codex`, `--skip-*`); default to
+- [x] Add tri-state CLI flags (`--all`, `--claude`, `--codex`, `--skip-*`); default to
   detection-based, project-local; keep `--agent-base` for custom/global.
-- [ ] Idempotency + itemized summary; forward-compat guard for too-new format stamps.
-- [ ] Tests: install paths, idempotent re-run, pinned-version substitution, summary.
+- [x] Idempotency + itemized summary; forward-compat guard for too-new format stamps.
+- [x] Tests: install paths, idempotent re-run, pinned-version substitution, summary.
 
 ### Phase 2: AGENTS.md block + public discovery + drift test
 
-- [ ] `agents_md_block(version)`: compact marker-bounded block, deterministic and
+- [x] `agents_md_block(version)`: compact marker-bounded block, deterministic and
   **flowmark-`--auto`-stable** (no mid-document frontmatter).
   Install/update it in place, preserving user content; remove stale blocks; honor the
   forward-compat guard.
-- [ ] Generate the repo-root `skills/flowmark/SKILL.md` discovery copy from
+- [x] Generate the repo-root `skills/flowmark/SKILL.md` discovery copy from
   `compose_skill`; open it with a pinned bootstrap line.
   Keep it flowmark-`--auto`-stable (it is committed and formatted by `make format-docs`)
   rather than adding it to `.flowmarkignore`.
-- [ ] Validate the published skill: lint frontmatter (required `name`/`description`,
+- [x] Validate the published skill: lint frontmatter (required `name`/`description`,
   length caps), confirm referenced links resolve (§4.4), and run
   `npx skills-ref validate skills/flowmark` before publishing (§6.8).
-- [ ] Drift test: regenerate all committed generated artifacts and fail on difference;
+- [x] Drift test: regenerate all committed generated artifacts and fail on difference;
   assert `flowmark --auto` over the generated `AGENTS.md` block is a no-op.
-- [ ] Update README “Agent Use” section and `docs/` to document cross-agent install and
+- [x] Update README “Agent Use” section and `docs/` to document cross-agent install and
   `npx skills add jlevy/flowmark`.
 
 ## Testing Strategy

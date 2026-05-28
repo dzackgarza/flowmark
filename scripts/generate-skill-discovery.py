@@ -12,13 +12,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from strif import atomic_output_file
+
 from flowmark.skill import discovery_skill_text
 
 
 def main() -> None:
     output = Path(__file__).resolve().parents[1] / "skills" / "flowmark" / "SKILL.md"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(discovery_skill_text(), encoding="utf-8")
+    with atomic_output_file(output, make_parents=True) as tmp:
+        Path(tmp).write_text(discovery_skill_text(), encoding="utf-8")
     print(f"Generated {output}")
 
 

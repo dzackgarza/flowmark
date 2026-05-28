@@ -104,9 +104,29 @@ Follow this checklist for each new release.
 
    - **Major** (e.g., `v0.6.0` → `v1.0.0`): Breaking changes
 
+5. **Bump the committed discovery-copy version pin:**
+
+   The repo-root `skills/flowmark/SKILL.md` is shipped to users of
+   `npx skills add jlevy/flowmark`, who do *not* have flowmark pre-installed.
+   Its `uvx --from flowmark==<X.Y.Z>` bootstrap line must therefore reference a real,
+   PyPI-installable release — never a `<version>` placeholder or a `.dev`/ local-suffix
+   string. Bump the `DISCOVERY_VERSION` constant in `src/flowmark/skill.py` to the
+   about-to-be-released version, then re-run `make format` to regenerate the discovery
+   copy, and commit before tagging:
+
+   ```shell
+   # In src/flowmark/skill.py: DISCOVERY_VERSION = "<NEW_TAG without leading v>"
+   make format
+   git add src/flowmark/skill.py skills/flowmark/SKILL.md
+   git commit -m "skill: bump DISCOVERY_VERSION to vX.Y.Z"
+   ```
+
+   `tests/test_skill_artifacts.py::test_discovery_copy_has_resolvable_version_pin`
+   guards against shipping a non-resolvable pin.
+
 #### Create the Release
 
-5. **Generate release notes content:**
+6. **Generate release notes content:**
 
    Review changes since the last release:
 
@@ -121,7 +141,7 @@ Follow this checklist for each new release.
    git diff ${LAST_TAG}..HEAD
    ```
 
-6. **Create the release with `gh`:**
+7. **Create the release with `gh`:**
 
    ```shell
    NEW_TAG="vX.Y.Z"  # Replace with actual version
@@ -144,7 +164,7 @@ Follow this checklist for each new release.
    Alternatively, use `--generate-notes` for GitHub’s auto-generated notes, or
    `--notes-file FILENAME` to read from a file.
 
-7. **Verify the release published successfully:**
+8. **Verify the release published successfully:**
 
    ```shell
    # Check the release workflow:

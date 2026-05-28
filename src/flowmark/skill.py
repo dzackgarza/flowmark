@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
+from strif import atomic_output_file
+
 # Format version for all flowmark-generated artifacts (skill SKILL.md mirrors and
 # the AGENTS.md block). One monotonically-increasing `fNN` across the project: every
 # artifact stamps with the same current value; the `surface=` field distinguishes
@@ -27,10 +29,14 @@ FLOWMARK_FORMAT = "f02"
 # version pin for the local-first runner fallback (see SKILL.md).
 _VERSION_PLACEHOLDER = "__FLOWMARK_VERSION__"
 
-# Literal pin shown in committed/published artifacts (the in-repo discovery copy), where
-# embedding a concrete version would churn on every release. Real installs substitute the
-# installed version instead.
-DOC_VERSION_PIN = "<version>"
+# Concrete released-version pin baked into the committed repo-root discovery copy
+# (`skills/flowmark/SKILL.md`), the artifact `npx skills add jlevy/flowmark` and
+# skill indexers consume without flowmark needing to be pre-installed. Must be a
+# real, PyPI-installable version — never a `<version>` placeholder or a `.dev`/
+# local-suffix string — so the bootstrap `uvx --from flowmark==<X.Y.Z>` example
+# in the discovery copy actually runs. Bump this together with the published
+# version (see docs/publishing.md release checklist) and re-run `make format`.
+DISCOVERY_VERSION = "0.7.0"
 
 
 def get_skill_content() -> str:
@@ -52,13 +58,13 @@ def get_skill_content() -> str:
 
 
 def flowmark_version() -> str:
-    """The installed flowmark version, or the doc placeholder if it can't be determined."""
+    """The installed flowmark version, or the discovery-pin fallback if unknown."""
     from importlib.metadata import PackageNotFoundError, version
 
     try:
         return version("flowmark")
     except PackageNotFoundError:
-        return DOC_VERSION_PIN
+        return DISCOVERY_VERSION
 
 
 def compose_skill(version: str | None = None) -> str:
@@ -66,7 +72,7 @@ def compose_skill(version: str | None = None) -> str:
     Render the SKILL.md template into a final skill document.
 
     `version` is substituted into the pinned-runner fallback. Pass an explicit string
-    (e.g. `DOC_VERSION_PIN` for the committed discovery copy) for a stable, drift-free
+    (e.g. `DISCOVERY_VERSION` for the committed discovery copy) for a stable, drift-free
     artifact; pass `None` to pin to the installed flowmark version (used when installing
     into an agent on a user's machine). Deterministic: same inputs always yield identical
     output.
@@ -134,10 +140,12 @@ def render_skill_file(version: str | None = None) -> str:
 def discovery_skill_text() -> str:
     """
     The committed repo-root discovery copy (`skills/flowmark/SKILL.md`) used by
-    `npx skills add` and skill indexers. Pinned to the stable `<version>` placeholder so
-    it never churns across releases; install-time copies pin the real installed version.
+    `npx skills add` and skill indexers. Pinned to `DISCOVERY_VERSION` (a real
+    PyPI-installable release) so the `uvx --from flowmark==<X.Y.Z>` bootstrap line
+    in the published copy is directly runnable without flowmark pre-installed.
+    Install-time copies, by contrast, pin to the actually-installed version.
     """
-    return render_skill_file(DOC_VERSION_PIN)
+    return render_skill_file(DISCOVERY_VERSION)
 
 
 def _existing_format(path: Path) -> int | None:
@@ -189,10 +197,30 @@ class InstallResult(NamedTuple):
     action: str
 
 
+def _replace_all_flowmark_blocks(existing: str, block: str) -> str:
+    """Replace every flowmark BEGIN/END region in `existing` with a single fresh block.
+
+    Preserves user-authored content outside the markers; collapses duplicate or stale
+    blocks (e.g. left behind by an older install) to exactly one current block at the
+    location of the first removed region.
+    """
+    matches = list(_AGENTS_BLOCK_RE.finditer(existing))
+    if not matches:
+        return existing
+    head = existing[: matches[0].start()]
+    tail_parts = [
+        existing[matches[i - 1].end() : matches[i].start()] for i in range(1, len(matches))
+    ]
+    tail_parts.append(existing[matches[-1].end() :])
+    tail = "".join(tail_parts)
+    return head + block + tail
+
+
 def update_agents_md(path: Path, version: str | None = None) -> InstallResult:
     """
     Insert or refresh the flowmark block in `AGENTS.md`, preserving all content outside
-    the markers. Idempotent; honors the forward-compatibility guard.
+    the markers. Idempotent; honors the forward-compatibility guard; collapses duplicate
+    or stale flowmark blocks to one current block.
     """
     surface = "AGENTS.md (flowmark block)"
     existing = path.read_text(encoding="utf-8") if path.is_file() else None
@@ -209,12 +237,13 @@ def update_agents_md(path: Path, version: str | None = None) -> InstallResult:
             sep = "\n" if existing.endswith("\n") else "\n\n"
             new_content = existing + sep + block + "\n"
     else:
-        new_content = _AGENTS_BLOCK_RE.sub(lambda _: block, existing, count=1)
+        new_content = _replace_all_flowmark_blocks(existing, block)
 
     if existing == new_content:
         return InstallResult(surface, path, "unchanged")
     action = "updated" if existing is not None else "installed"
-    path.write_text(new_content, encoding="utf-8")
+    with atomic_output_file(path, make_parents=True) as tmp:
+        Path(tmp).write_text(new_content, encoding="utf-8")
     return InstallResult(surface, path, action)
 
 
@@ -227,8 +256,8 @@ def _write_surface(skill_dir: Path, surface: str, content: str) -> InstallResult
     if target.is_file() and target.read_text(encoding="utf-8") == content:
         return InstallResult(surface, target, "unchanged")
     action = "updated" if target.exists() else "installed"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
+    with atomic_output_file(target, make_parents=True) as tmp:
+        Path(tmp).write_text(content, encoding="utf-8")
     return InstallResult(surface, target, action)
 
 
@@ -306,11 +335,11 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Install flowmark Claude Code skill",
+        description="Install the cross-agent flowmark skill",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s                        # Project-local: .agents/skills + .claude/skills
+  %(prog)s                        # Project-local: .agents/skills + .claude/skills + AGENTS.md
   %(prog)s --agent-base ~/.claude # Single explicit base (global): ~/.claude/skills
         """,
     )
@@ -319,7 +348,7 @@ Examples:
         "--agent-base",
         dest="agent_base",
         metavar="DIR",
-        help="agent config directory (defaults to ~/.claude)",
+        help="explicit single-base install (e.g. ~/.claude); bypasses project-local default",
     )
 
     args = parser.parse_args()

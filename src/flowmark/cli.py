@@ -219,7 +219,7 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         "--skill",
         action="store_true",
         dest="skill_instructions",
-        help="Print skill instructions (SKILL.md content) for Claude Code",
+        help="Print the flowmark agent skill (SKILL.md content) to stdout",
     )
     parser.add_argument(
         "--install-skill",
@@ -453,6 +453,14 @@ def main(args: list[str] | None = None) -> int:
                 claude = False
             if options.skill_skip_codex:
                 codex = False
+            if not claude and not codex:
+                print(
+                    "Error: --install-skill needs at least one target surface; "
+                    "the combination of flags resolved to none (every surface was "
+                    "skipped). Pass --all, --claude, --codex, or omit --skip-* flags.",
+                    file=sys.stderr,
+                )
+                return 2
             results = install_skill(claude=claude, codex=codex)
         # Forward-compat guard: fail if any surface was newer than this build understands.
         return 1 if any(r.action == "blocked-newer" for r in results) else 0

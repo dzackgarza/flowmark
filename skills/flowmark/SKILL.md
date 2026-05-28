@@ -28,7 +28,7 @@ If `flowmark` is not installed, use a version-pinned zero-install runner (never
 `@latest`, so the agent can’t silently pull a newer release):
 
 ```bash
-uvx --from flowmark==<version> flowmark --auto FILE
+uvx --from flowmark==0.7.0 flowmark --auto FILE
 ```
 
 ## Quick Start

@@ -48,7 +48,7 @@ make upgrade
 # To run tests by hand:
 uv run pytest   # all tests
 uv run pytest -s src/module/some_file.py  # one test, showing outputs
-npx tryscript@latest run tests/tryscript/*.tryscript.md  # tryscript suite
+npx tryscript@0.1.7 run tests/tryscript/*.tryscript.md  # tryscript suite (pinned; matches CI/Makefile)
 bash scripts/check-golden-coverage.sh  # quality/coverage checks
 
 # Build and install current dev executables, to let you use your dev copies
