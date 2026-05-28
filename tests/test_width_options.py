@@ -61,15 +61,17 @@ def test_width_zero_with_markdown():
 
 
 def test_width_zero_with_markdown_semantic():
-    """Test that width=0 works correctly with markdown semantic mode."""
+    """Test that width=0 + semantic splits sentences without column-width wrapping."""
     text = "This is sentence one. This is sentence two. This is sentence three."
 
-    # Markdown semantic mode with width 0
+    # Markdown semantic mode with width 0: split on sentences, no column wrapping
     result = reformat_text(text, width=0, plaintext=False, semantic=True)
-    # Remove trailing newline that markdown mode adds
     content = result.rstrip("\n")
     lines = content.split("\n")
-    assert len(lines) == 1, "Width 0 with markdown semantic should keep text on one line"
+    assert len(lines) == 3, "Width 0 with semantic should split into 3 sentences"
+    assert lines[0] == "This is sentence one."
+    assert lines[1] == "This is sentence two."
+    assert lines[2] == "This is sentence three."
 
 
 def test_existing_behavior_unchanged():

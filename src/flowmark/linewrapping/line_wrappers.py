@@ -123,17 +123,24 @@ def line_wrap_by_sentence(
     def line_wrapper(text: str, initial_indent: str, subsequent_indent: str) -> str:
         text = text.replace("\n", " ")
 
-        # Handle width <= 0 as "no wrapping"
+        sentences = split_sentences(text)
+
+        # Handle width <= 0 as "semantic-only: split sentences, no column wrapping"
         if width <= 0:
-            return initial_indent + text.strip()
+            result = "\n".join(s.strip() for s in sentences if s.strip())
+            if initial_indent and result:
+                lines = result.split("\n")
+                lines[0] = initial_indent + lines[0]
+                if subsequent_indent and len(lines) > 1:
+                    lines[1:] = [subsequent_indent + line for line in lines[1:]]
+                result = "\n".join(lines)
+            return result
 
         lines: list[str] = []
         first_line = True
         length = len_fn
         initial_indent_len = len_fn(initial_indent)
         subsequent_indent_len = len_fn(subsequent_indent)
-
-        sentences = split_sentences(text)
 
         for sentence in sentences:
             current_column = initial_indent_len if first_line else subsequent_indent_len
