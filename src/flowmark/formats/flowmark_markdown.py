@@ -324,7 +324,14 @@ class CustomDisplayMath(block.BlockElement):
             if stripped.endswith(closer):
                 before = stripped[: -len(closer)].rstrip()
                 if before:
-                    lines.append(before + "\n")
+                    # Content before the closer on the same line:
+                    # append to the previous content line, not as a
+                    # separate line (avoids splitting `,\\]` into
+                    # `,\\n\\]`).
+                    if lines:
+                        lines[-1] = lines[-1].rstrip("\n") + before + "\n"
+                    else:
+                        lines.append(before + "\n")
                 break
 
             prefix_len = source.match_prefix(prefix, line)

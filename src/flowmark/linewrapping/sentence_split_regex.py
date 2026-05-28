@@ -19,12 +19,18 @@ from flowmark.linewrapping.atomic_patterns import (
 # https://github.com/jlevy/atom-flowmark/blob/master/lib/remark-smart-word-wrap.js#L17-L33
 SENTENCE_END_RE = regex.compile(r"(\b\p{L}+[\p{Ll}])([.?!]['\"’”)]?|['\"’”)][.?!]) *$")
 
+# Math-aware variant: matches sentence-ending punctuation directly after an
+# inline-math closing delimiter (e.g. ``\dR_{\wait/k}$.`` or ``$x$.``).
+# The base regex requires a letter before the punctuation; this handles the
+# common case where ``$`` intervenes.
+_MATH_SENTENCE_END_RE = regex.compile(r"\$[.?!]['\"’”)]?\s*$")
+
 # Second heuristic: Very short sentences often not so useful.
 SENTENCE_MIN_LENGTH = 15
 
 
 def heuristic_end_of_sentence(word: str) -> bool:
-    return bool(SENTENCE_END_RE.search(word))
+    return bool(SENTENCE_END_RE.search(word) or _MATH_SENTENCE_END_RE.search(word))
 
 
 def split_sentences_regex(
