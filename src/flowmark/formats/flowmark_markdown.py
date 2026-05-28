@@ -333,12 +333,84 @@ class CustomDisplayMath(block.BlockElement):
         return "display_math" if snake_case else "DisplayMath"
 
 
+class CustomFencedDiv(block.BlockElement):
+    """
+    Pandoc fenced div: ``::: {.attrs}`` ... ``:::``.
+
+    Matches opening ``:::`` optionally followed by a braced attribute block
+    (``{.class key=val}``, with or without a space before the brace) and any
+    trailing content on the same line.  Content up to the closing ``:::`` is
+    preserved verbatim.  Does **not** handle nested fenced divs.
+    """
+
+    priority = 7
+    parse_children = True
+    # Group 1: whitespace prefix, Group 2: optional {attrs}, Group 3: trailing text
+    # [^\n\S]* matches horizontal whitespace only (same pattern used by CustomFencedCode
+    # for its info line) so the opening fence never captures content from the next line.
+    pattern = re.compile(r"( {,3}):::[^\n\S]*(\{[^}]*\})?[^\n\S]*(.*)$", re.MULTILINE)
+
+    attrs: str  # the raw {...} attribute block (or ``""``)
+    prefix: str
+
+    def __init__(self, match: tuple[str, str, str]) -> None:
+        self.attrs = match[0]
+        self.prefix = match[1]
+        self.children = [inline.RawText(match[2], False)]
+
+    @override
+    @classmethod
+    def match(cls, source: Source) -> re.Match[str] | None:
+        m = source.expect_re(cls.pattern)
+        if not m:
+            return None
+        prefix, attrs, rest = m.groups()
+        source.context.div_info = (prefix, attrs or "", rest)
+        return m
+
+    @override
+    @classmethod
+    def parse(cls, source: Source) -> tuple[str, str, str]:
+        prefix, attrs, rest = source.context.div_info
+        source.next_line()
+        source.consume()
+
+        closer_pat = re.compile(r" {,3}:::\s*$")
+
+        if rest.strip():
+            lines = [rest + "\n"]
+        else:
+            lines = []
+
+        while not source.exhausted:
+            line = source.next_line()
+            if line is None:
+                break
+            source.consume()
+            if closer_pat.match(line):
+                break
+            prefix_len = source.match_prefix(prefix, line)
+            if prefix_len >= 0:
+                line = line[prefix_len:]
+            else:
+                line = line.lstrip()
+            lines.append(line)
+
+        return (attrs, prefix, "".join(lines))
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "fenced_div" if snake_case else "FencedDiv"
+
+
 class CustomParser(Parser):
     def __init__(self) -> None:
         super().__init__()
         self.block_elements["HTMLBlock"] = CustomHTMLBlock
         self.block_elements["FencedCode"] = CustomFencedCode
         self.block_elements["DisplayMath"] = CustomDisplayMath
+        self.block_elements["FencedDiv"] = CustomFencedDiv
 
 
 class MarkdownNormalizer(Renderer):
@@ -546,6 +618,27 @@ class MarkdownNormalizer(Renderer):
         self._skip_next_blank_line = False
         opener = element.opener
         closer = "\\]" if "[" in opener else "$$"
+        code_child = cast(inline.RawText, element.children[0])
+        content = code_child.children.rstrip("\n")
+
+        lines = [f"{self._prefix}{opener}"]
+        empty_line_prefix = self._second_prefix.rstrip()
+        for line in content.splitlines():
+            if line:
+                lines.append(f"{self._second_prefix}{line}")
+            else:
+                lines.append(empty_line_prefix)
+        lines.append(f"{self._second_prefix}{closer}")
+        self._prefix = self._second_prefix
+        self._suppress_item_break = False
+        return "\n".join(lines) + "\n"
+
+    def render_fenced_div(self, element: CustomFencedDiv) -> str:
+        self._skip_next_blank_line = False
+        opener = ":::"
+        if element.attrs:
+            opener += element.attrs
+        closer = ":::"
         code_child = cast(inline.RawText, element.children[0])
         content = code_child.children.rstrip("\n")
 
