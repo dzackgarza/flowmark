@@ -500,11 +500,20 @@ class CustomParagraph(block.Paragraph):
         if block.Paragraph.break_paragraph(source, lazy):
             return True
         parser = source.parser
-        # Also break when any of our custom block elements match.
-        for key in ("DisplayMath", "FencedDiv", "LatexEnvironment"):
-            if parser.block_elements[key].match(source):
-                return True
-        return False
+        # Also break when any of our custom block elements match. Calling
+        # `.match()` mutates `source.match` (via `expect_re`), and the paragraph
+        # parse loop derives `source.pos` from it on `consume()`. marko's own
+        # `break_paragraph` saves and restores `source.match` for exactly this
+        # reason; we must do the same here. Without the restore, a paragraph
+        # whose inline code span straddles a hard line break drives marko's
+        # parser into an infinite loop.
+        prev_match = source.match
+        matched = any(
+            parser.block_elements[key].match(source)
+            for key in ("DisplayMath", "FencedDiv", "LatexEnvironment")
+        )
+        source.match = prev_match
+        return matched
 
     @override
     @classmethod
