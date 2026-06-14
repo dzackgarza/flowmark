@@ -243,6 +243,7 @@ title: Comprehensive Test Document
 author: Test Suite
 date: 2024-01-15
 ---
+
 # Heading Level 1
 
 ## Heading Level 2
@@ -342,9 +343,12 @@ This has a footnote[^1] reference.
 
 Inline math $x^2 + y^2 = z^2$ and display math:
 
-$$ \sum_{i=1}^{n} i = \frac{n(n+1)}{2} $$
+$$
+\sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+$$
 
 Final paragraph of the comprehensive document.
+? 0
 ````
 
 ## F11: Width 2 (edge case — very small width does not crash)

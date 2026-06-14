@@ -28,8 +28,8 @@ $ printf '# Title\n\nFirst sentence here. Second sentence that is long enough to
 # Title
 
 First sentence here.
-Second sentence that is long enough to trigger wrapping when used with semantic mode
-enabled.
+Second sentence that is long enough to trigger wrapping when used with semantic mode enabled.
+? 0
 ```
 
 ## S3: Stdin with smartquotes

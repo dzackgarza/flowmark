@@ -34,10 +34,11 @@ clearly.
 $ cd fixtures/config-tests/flowmark-toml && flowmark test.md
 # Config Test
 
-This is a sentence. This is another sentence that follows.
+This is a sentence.
+This is another sentence that follows.
 
-A long paragraph that should wrap at width sixty because the
-config file sets that width value for testing.
+A long paragraph that should wrap at width sixty because the config file sets that width value for testing.
+? 0
 ```
 
 ## C3: pyproject.toml with [tool.flowmark] section
@@ -84,8 +85,8 @@ $ cd fixtures/config-tests/sections && flowmark test.md
 This is the first sentence of the paragraph.
 This is the second sentence that follows it closely.
 
-A paragraph long enough to show wrapping at the configured
-width of sixty characters for testing.
+A paragraph long enough to show wrapping at the configured width of sixty characters for testing.
+? 0
 ```
 
 ## C7: CLI flags override config (--width 80 beats config width=50)

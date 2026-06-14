@@ -165,8 +165,9 @@ fox jumps over the lazy dog and keeps on running for quite a while.
 $ printf '# Title\n\nFirst sentence. Second sentence that is long enough to trigger wrapping when used with semantic mode enabled.\n' | flowmark --semantic -
 # Title
 
-First sentence. Second sentence that is long enough to trigger wrapping when used with
-semantic mode enabled.
+First sentence.
+Second sentence that is long enough to trigger wrapping when used with semantic mode enabled.
+? 0
 ```
 
 ## Stdin: custom width

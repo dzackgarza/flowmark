@@ -7,6 +7,7 @@ tags:
   - formatting
   - test
 ---
+
 ## Test document
 
 This is a simple test document to verify Flowmark usage.
@@ -185,8 +186,7 @@ And $\$420K \div 0.44093$ is $952{,}532$ shares.
 
 ### Some wrapping
 
-William F. Buckley Jr.
-was coming to breakfast.
+William F. Buckley Jr. was coming to breakfast.
 Buckley was born November 24, 1925, in
 [New York City](https://en.wikipedia.org/wiki/New_York_City), the son of Aloise
 Josephine Antonia (Steiner) and William Frank Buckley Sr., a
