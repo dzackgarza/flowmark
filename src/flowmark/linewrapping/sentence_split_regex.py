@@ -28,9 +28,28 @@ _MATH_SENTENCE_END_RE = regex.compile(r"\$[.?!]['\"’”)]?\s*$")
 # Second heuristic: Very short sentences often not so useful.
 SENTENCE_MIN_LENGTH = 15
 
+# Common abbreviations that end in a lowercase letter followed by a period and so
+# match SENTENCE_END_RE, but are not real sentence boundaries (e.g. ``Mr. Jones``).
+# Compared case-insensitively against the word with trailing sentence punctuation
+# and closing quotes/parens stripped. Multi-period forms like ``e.g.`` and ``p.m.``
+# already fail SENTENCE_END_RE (single trailing letter), so only single-token
+# abbreviations need listing here.
+_ABBREVIATIONS = frozenset(
+    {
+        "dr", "mr", "mrs", "ms", "prof", "st", "sr", "jr", "rev", "hon",
+        "gen", "col", "sgt", "capt", "lt", "gov", "sen", "rep",
+        "vs", "etc", "al", "no", "vol", "fig", "eq", "ch", "pp",
+        "inc", "ltd", "co", "corp", "dept", "univ", "est",
+    }
+)
+
+_ABBREV_STRIP = ".?!'\"’”)"
+
 
 def heuristic_end_of_sentence(word: str) -> bool:
-    return bool(SENTENCE_END_RE.search(word) or _MATH_SENTENCE_END_RE.search(word))
+    if not (SENTENCE_END_RE.search(word) or _MATH_SENTENCE_END_RE.search(word)):
+        return False
+    return word.rstrip(_ABBREV_STRIP).lower() not in _ABBREVIATIONS
 
 
 def split_sentences_regex(

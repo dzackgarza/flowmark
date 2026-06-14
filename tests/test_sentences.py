@@ -28,3 +28,24 @@ def test_first_sentence():
     assert first_sentence(" ") == " "
     assert first_sentence("hello") == "hello"
     assert first_sentence(" hello\n") == "hello"
+
+
+def test_abbreviations_not_sentence_ends():
+    """Common title/abbreviation tokens (Dr., Mr., Mrs., ...) end in a lowercase
+    letter + period and so match the sentence-end regex, but they are not real
+    sentence boundaries. Regression: `He met with Mr. Jones` was split after
+    `Mr.` once the running sentence reached the minimum length."""
+    text = (
+        "Dr. Smith went to Washington. "
+        "He met with Mr. Jones at 3 p.m. to discuss the proposal."
+    )
+    assert split_sentences_regex(text) == [
+        "Dr. Smith went to Washington.",
+        "He met with Mr. Jones at 3 p.m. to discuss the proposal.",
+    ]
+
+    # A real sentence end immediately after an abbreviation must still split.
+    assert split_sentences_regex("I saw Dr. Jones yesterday. We spoke briefly.") == [
+        "I saw Dr. Jones yesterday.",
+        "We spoke briefly.",
+    ]
