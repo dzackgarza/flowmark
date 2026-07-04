@@ -9,6 +9,10 @@
 test:
     @make test
 
+# Run the push/CI test gate.
+test-ci:
+    @just test
+
 # Run only the Python unit tests (fast inner loop).
 test-unit:
     uv run pytest
