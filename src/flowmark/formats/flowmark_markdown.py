@@ -349,6 +349,30 @@ class CustomDisplayMath(block.BlockElement):
         return "display_math" if snake_case else "DisplayMath"
 
 
+class CustomInlineMath(inline.InlineElement):
+    """
+    Inline math span: ``$...$``.
+
+    Content between delimiters is preserved verbatim.  Parsed as a custom inline
+    element so underscores and asterisks inside LaTeX are not interpreted as
+    Markdown emphasis and then re-rendered as ``*`` markers.
+    """
+
+    priority = 6
+    parse_children = False
+    pattern = re.compile(r"(?<!\\)(?<!\$)\$(?!\$)((?:\\.|[^\n\\$])+?)(?<!\\)\$(?!\$)")
+
+    content: str
+
+    def __init__(self, match: re.Match[str]) -> None:
+        self.content = match.group(1)
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "inline_math" if snake_case else "InlineMath"
+
+
 class CustomFencedDiv(block.BlockElement):
     """
     Pandoc fenced div: ``::: {.attrs}`` ... ``:::``.
@@ -534,6 +558,13 @@ class CustomParser(Parser):
         self.block_elements["LatexEnvironment"] = CustomLatexEnvironment
         # Override Paragraph so continuation lines also check our custom blocks
         self.block_elements["Paragraph"] = CustomParagraph
+        reordered_inline_elements = {}
+        for name, element in self.inline_elements.items():
+            reordered_inline_elements[name] = element
+            if name == "CodeSpan":
+                reordered_inline_elements["InlineMath"] = CustomInlineMath
+        assert "InlineMath" in reordered_inline_elements
+        self.inline_elements = reordered_inline_elements
 
 
 class MarkdownNormalizer(Renderer):
@@ -755,6 +786,11 @@ class MarkdownNormalizer(Renderer):
         self._prefix = self._second_prefix
         self._suppress_item_break = False
         return "\n".join(lines) + "\n"
+
+    def render_inline_math(self, element: CustomInlineMath) -> str:
+        text = f"${element.content}$"
+        self._current_inline_text += text
+        return text
 
     def render_fenced_div(self, element: CustomFencedDiv) -> str:
         self._skip_next_blank_line = False
