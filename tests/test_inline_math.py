@@ -18,3 +18,14 @@ def test_inline_math_preserves_latex_subscripts_verbatim():
     result = md(source)
 
     assert result == source
+
+
+def test_same_line_double_dollar_math_preserves_latex_subscripts_verbatim():
+    """Same-line $$...$$ math must not parse LaTeX underscores as Markdown emphasis."""
+    md = flowmark_markdown()
+
+    source = "The characterization is $$ \\operatorname{GL}_n = G_\\beta $$.\n"
+
+    result = md(source)
+
+    assert result == source

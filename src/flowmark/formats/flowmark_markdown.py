@@ -351,21 +351,25 @@ class CustomDisplayMath(block.BlockElement):
 
 class CustomInlineMath(inline.InlineElement):
     """
-    Inline math span: ``$...$``.
+    Inline math span: ``$...$`` or same-line ``$$...$$``.
 
     Content between delimiters is preserved verbatim.  Parsed as a custom inline
     element so underscores and asterisks inside LaTeX are not interpreted as
     Markdown emphasis and then re-rendered as ``*`` markers.
     """
 
-    priority = 6
+    priority = 7
     parse_children = False
-    pattern = re.compile(r"(?<!\\)(?<!\$)\$(?!\$)((?:\\.|[^\n\\$])+?)(?<!\\)\$(?!\$)")
+    pattern = re.compile(
+        r"(?<!\\)(?<!\$)(\${1,2})(?!\$)((?:\\.|[^\n\\$])+?)(?<!\\)\1(?!\$)"
+    )
 
+    delimiter: str
     content: str
 
     def __init__(self, match: re.Match[str]) -> None:
-        self.content = match.group(1)
+        self.delimiter = match.group(1)
+        self.content = match.group(2)
 
     @override
     @classmethod
@@ -788,7 +792,7 @@ class MarkdownNormalizer(Renderer):
         return "\n".join(lines) + "\n"
 
     def render_inline_math(self, element: CustomInlineMath) -> str:
-        text = f"${element.content}$"
+        text = f"{element.delimiter}{element.content}{element.delimiter}"
         self._current_inline_text += text
         return text
 
