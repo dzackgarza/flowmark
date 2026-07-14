@@ -1290,20 +1290,25 @@ information.
 Non-standard alert types like `[!FOO]` are not recognized by GitHub but should be
 preserved as regular block quotes without losing any content.
 
-> [!FOO] This uses a non-standard alert type.
+> [!FOO]
+> This uses a non-standard alert type.
 > It should be preserved as a regular quote.
 
-> [!CUSTOM] Another non-standard type that should be preserved.
+> [!CUSTOM]
+> Another non-standard type that should be preserved.
 
-> [!INFO] Info is not a standard GitHub alert type.
+> [!INFO]
+> Info is not a standard GitHub alert type.
 
 ### Misspelled Alert Types (preserved as regular quotes)
 
 Misspelled standard types should also be preserved as regular quotes.
 
-> [!NOOT] This misspelled NOTE should be a regular quote.
+> [!NOOT]
+> This misspelled NOTE should be a regular quote.
 
-> [!WARNNG] This misspelled WARNING should be a regular quote.
+> [!WARNNG]
+> This misspelled WARNING should be a regular quote.
 
 ### Malformed Alert Syntax (preserved as regular quotes)
 

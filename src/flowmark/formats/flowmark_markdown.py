@@ -642,6 +642,22 @@ class MarkdownNormalizer(Renderer):
         if hasattr(element, "checked"):
             children = f"[{'x' if element.checked else ' '}] {children}"  # pyright: ignore
 
+        if self._second_prefix.rstrip().endswith(">") and "\n" in children:
+            first_line, rest = children.split("\n", 1)
+            if re.fullmatch(r"\[![^\]]+\](?:[ \t]+.*)?", first_line):
+                lines = [f"{self._prefix}{first_line}"]
+                if rest:
+                    wrapped_rest = self._line_wrapper(
+                        rest,
+                        self._second_prefix,
+                        self._second_prefix,
+                    ).rstrip("\n")
+                    if wrapped_rest:
+                        lines.append(wrapped_rest)
+                self._prefix = self._second_prefix
+                self._current_inline_text = ""
+                return "\n".join(lines) + "\n"
+
         # Wrap the text.
         wrapped_text = self._line_wrapper(
             children,

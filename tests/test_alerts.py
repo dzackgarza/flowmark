@@ -37,6 +37,30 @@ def test_basic_note_alert():
     assert normalized_doc == expected_doc
 
 
+def test_obsidian_callout_title_stays_on_header_line():
+    """Obsidian callout title text must not collapse together with the body."""
+    input_doc = dedent(
+        """
+        > [!definition] Genus of a Lattice
+        > Let $L$ be a lattice. The genus of $L$ is the set of lattices locally isomorphic to $L$.
+        """
+    ).strip()
+
+    expected_doc = (
+        dedent(
+            """
+            > [!definition] Genus of a Lattice
+            > Let $L$ be a lattice.
+            > The genus of $L$ is the set of lattices locally isomorphic to $L$.
+            """
+        ).strip()
+        + "\n"
+    )
+
+    normalized_doc = fill_markdown(input_doc, semantic=True)
+    assert normalized_doc == expected_doc
+
+
 def test_all_valid_alert_types():
     """Test all five valid GitHub alert types are preserved."""
     alert_types = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]
