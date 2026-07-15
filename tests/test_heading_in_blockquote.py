@@ -37,6 +37,21 @@ def test_heading_in_blockquote_before_paragraph():
     assert fill_markdown(once, semantic=True) == once, "formatting must be idempotent"
 
 
+def test_heading_in_callout_keeps_callout_intact():
+    input_doc = dedent(
+        """\
+        > [!example] Title
+        > Text.
+        >
+        > ## Heading
+        > - item one
+        """
+    )
+    once = fill_markdown(input_doc, semantic=True)
+    assert "\n\n" not in once.strip(), f"callout split by unprefixed blank line:\n{once}"
+    assert fill_markdown(once, semantic=True) == once, "formatting must be idempotent"
+
+
 def test_heading_at_top_level_still_gets_blank_line():
     input_doc = dedent(
         """\
