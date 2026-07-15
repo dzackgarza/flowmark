@@ -219,3 +219,14 @@ def test_definition_list_continuation_paragraph_round_trips():
     source = "Term\n:   First para.\n\n    Second para of same def.\n\nAfter.\n"
 
     assert reformat_text(source) == source
+
+
+def test_definition_marker_mid_paragraph_stays_prose():
+    """
+    Pandoc's definition lists do NOT interrupt a paragraph: with text above
+    the term, the whole thing is one Para. Flowmark must keep treating it as
+    prose -- the default verify gate asserts the meaning is unchanged.
+    """
+    result = reformat_text("Some text\nTerm\n:   Def\n")
+
+    assert ":" in result

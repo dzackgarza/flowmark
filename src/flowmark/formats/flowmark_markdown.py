@@ -600,6 +600,77 @@ class CustomLatexEnvironment(block.BlockElement):
         return "latex_environment" if snake_case else "LatexEnvironment"
 
 
+class CustomDefinitionList(block.BlockElement):
+    """
+    Pandoc definition list, preserved verbatim.
+
+    marko has no concept of pandoc's `definition_lists` extension (on by
+    default for `-f markdown`), so a term line and its `:`/`~` definition
+    lines parsed as one paragraph and rewrapping joined the marker
+    mid-line, destroying the list (#10).  Same rule as raw TeX (#8) and
+    subscript (#11): what can't be re-emitted faithfully must not be parsed
+    apart, so the whole block is captured raw and re-emitted byte-identically.
+
+    The shape mirrors pandoc's reader, probed empirically:
+
+    - a definition marker is `:` or `~` indented at most TWO spaces, followed
+      by whitespace (three spaces of indent makes it prose);
+    - the term is a single non-marker line at block start, with at most ONE
+      blank line before its first marker (two blanks make two paragraphs);
+    - after a blank line the block continues only for a marker line, a
+      four-space indented continuation, or another term/marker group.
+
+    Pandoc's definition lists do NOT interrupt a paragraph (`text\\nTerm\\n: x`
+    is one Para), so this element is deliberately absent from
+    `CustomParagraph.break_paragraph`, and priority 2 keeps every other block
+    construct (lists, headings, fences at priority >= 5) ahead of it: this is
+    a refinement of the paragraph fallback only.
+    """
+
+    priority = 2
+    parse_children = False
+
+    _MARKER = r" {0,2}[:~][ \t]"
+    _TERM = rf" {{0,3}}(?!{_MARKER})\S[^\n]*"
+    pattern = re.compile(rf"{_TERM}\n(?:[ \t]*\n)?(?={_MARKER})")
+    # Matches only the blank line; everything after lives in the lookahead so
+    # `consume()` advances past the blank alone.
+    _BLANK_THEN_CONTINUATION = re.compile(
+        rf"[ \t]*\n(?={_MARKER}| {{4}}|{_TERM}\n(?:[ \t]*\n)?{_MARKER})"
+    )
+
+    def __init__(self, match: str) -> None:
+        self.children = [inline.RawText(match, False)]
+
+    @override
+    @classmethod
+    def match(cls, source: Source) -> re.Match[str] | None:
+        return source.expect_re(cls.pattern)
+
+    @override
+    @classmethod
+    def parse(cls, source: Source) -> str:
+        lines: list[str] = []
+        while not source.exhausted:
+            line = source.next_line()
+            if line is None:
+                break
+            if line.strip():
+                source.consume()
+                lines.append(line)
+                continue
+            if not source.expect_re(cls._BLANK_THEN_CONTINUATION):
+                break
+            source.consume()
+            lines.append(line)
+        return "".join(lines)
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "definition_list" if snake_case else "DefinitionList"
+
+
 class CustomFootnoteDef(footnote.FootnoteDef):
     """
     Footnote definition that also accepts the label alone on its line.
@@ -678,6 +749,7 @@ class CustomParser(Parser):
         self.block_elements["DisplayMath"] = CustomDisplayMath
         self.block_elements["FencedDiv"] = CustomFencedDiv
         self.block_elements["LatexEnvironment"] = CustomLatexEnvironment
+        self.block_elements["DefinitionList"] = CustomDefinitionList
         # Override Paragraph so continuation lines also check our custom blocks
         self.block_elements["Paragraph"] = CustomParagraph
         reordered_inline_elements = {}
@@ -956,6 +1028,21 @@ class MarkdownNormalizer(Renderer):
             else:
                 lines.append(empty_line_prefix)
         lines.append(f"{self._second_prefix}{closer}")
+        self._prefix = self._second_prefix
+        self._suppress_item_break = False
+        return "\n".join(lines) + "\n"
+
+    def render_definition_list(self, element: CustomDefinitionList) -> str:
+        self._skip_next_blank_line = False
+        raw_child = cast(inline.RawText, element.children[0])
+        content = raw_child.children.rstrip("\n")
+
+        lines: list[str] = []
+        prefix = self._prefix
+        empty_line_prefix = self._second_prefix.rstrip()
+        for line in content.splitlines():
+            lines.append(f"{prefix}{line}" if line.strip() else empty_line_prefix)
+            prefix = self._second_prefix
         self._prefix = self._second_prefix
         self._suppress_item_break = False
         return "\n".join(lines) + "\n"
