@@ -390,8 +390,9 @@ class CustomRawInlineTex(inline.InlineElement):
     ``\\[``/``\\(`` math delimiters would break their own handling -- the leading
     ``[a-zA-Z]+`` excludes all of those.
 
-    Brace arguments may nest one level (``\\overline{ \\mathcal{M}_{1} }``), which
-    covers ordinary mathematical prose; `re` cannot match arbitrary nesting.
+    Brace arguments may nest three deep (``\\overline{ \\mathcal{M}_{1} }`` uses two),
+    which covers ordinary mathematical prose; `re` cannot match arbitrary nesting, so
+    the depth is fixed by the pattern below and a deeper command is left unmatched.
     """
 
     priority = 7
@@ -646,10 +647,11 @@ class CustomParagraph(block.Paragraph):
         # continuation of the previous definition's paragraph. Pandoc requires no
         # blank line between consecutive definitions.
         keys = ("DisplayMath", "FencedDiv", "LatexEnvironment", "FootnoteDef")
-        matched = any(
-            key in parser.block_elements and parser.block_elements[key].match(source)
-            for key in keys
-        )
+        # Indexed directly, not guarded with `key in`: every one of these is
+        # registered unconditionally in `_setup_extensions`, so a missing key means
+        # setup is broken and should raise here rather than silently stop
+        # interrupting paragraphs -- which is the very class of defect this fixes.
+        matched = any(parser.block_elements[key].match(source) for key in keys)
         source.match = prev_match
         return matched
 

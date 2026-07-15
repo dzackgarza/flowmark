@@ -18,9 +18,9 @@ from flowmark.pandoc_verify import (
     MeaningChangedError,
     PandocUnavailableError,
     check_meaning_preserved,
-    pandoc_ast,
 )
 from flowmark.reformat_api import reformat_text
+from flowmark.typography.ellipses import ellipses
 
 pandocless = pytest.mark.skipif(
     shutil.which("pandoc") is None, reason="requires the pandoc binary on PATH"
@@ -128,24 +128,48 @@ def test_reformatting_preserves_meaning(source: str):
 
 
 @pandocless
-def test_smartquotes_and_ellipses_pass_verification():
+def test_smartquotes_passes_verification():
     """
     `smartquotes` is invisible to pandoc for free -- its `smart` extension folds
-    straight and curly quotes alike into `Quoted`. `ellipses` is not: it inserts
-    a space (`then...` -> `then …`), which is why the oracle normalizes inline
-    whitespace rather than comparing tokens.
+    straight and curly quotes alike into `Quoted`.
     """
-    source = 'He said "hi" and then... left.\n'
-
-    reformat_text(source, verify=True, smartquotes=True, ellipses=True)
+    reformat_text('He said "hi" and there.\n', verify=True, smartquotes=True)
 
 
 @pandocless
-def test_verify_is_off_by_default():
-    """Verification costs a subprocess per document; it must be opt-in."""
-    assert pandoc_ast("Hi.\n") == pandoc_ast("Hi.\n")
-    # A meaning-preserving reformat with no `verify=` argument must not shell out
-    # to pandoc at all; the assertion here is simply that it succeeds unchanged.
+@pytest.mark.parametrize(
+    "source",
+    [
+        "He said... yes\n",  # space already after: the easy case
+        "word...word\n",  # ellipses inserts a space on BOTH sides
+        "a...b and c... d\n",
+        "Wait...\n",
+    ],
+)
+def test_ellipsis_spacing_is_not_a_meaning_change(source: str):
+    """
+    `ellipses` respells text (`word...word` -> `word … word`) without changing
+    what it means, so the oracle must stay quiet for it.
+
+    The expected output comes from `ellipses()` itself rather than a literal, so
+    this is pinned to the contract's owner: if `typography/ellipses.py` changes
+    its spacing rule, this test picks the new rule up and fails here if the
+    oracle cannot tolerate it -- instead of the two drifting apart in silence.
+    """
+    check_meaning_preserved(source, ellipses(source))
+    reformat_text(source, verify=True, ellipses=True)
+
+
+def test_verify_is_off_by_default(monkeypatch: pytest.MonkeyPatch):
+    """
+    Verification costs two pandoc subprocesses per document, so it must be opt-in.
+
+    Hiding pandoc is what makes this a real test: with `verify` defaulting on,
+    `reformat_text` would raise `PandocUnavailableError` here. Asserting the
+    output alone would pass either way and prove nothing.
+    """
+    monkeypatch.setattr("flowmark.pandoc_verify.shutil.which", lambda _: None)
+
     assert reformat_text("Hi.\n") == "Hi.\n"
 
 
