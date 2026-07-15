@@ -1762,11 +1762,11 @@ Your feedback is valuable to us.
 ## Strikethrough and Tildes
 
 Standard double-tilde ~~strikethrough~~ is the most common form and should always be
-preserved. Single-tilde ~~strikethrough~~ is also valid GFM and should be normalized to
+preserved. Single-tilde ~strikethrough~ is also valid GFM and should be normalized to
 double tildes.
 
 Here are some ~~deleted words~~ in a sentence.
-And ~~more deleted words~~ in another sentence.
+And ~more deleted words~ in another sentence.
 
 Multiple ~~first~~ and ~~second~~ strikethroughs on one line work fine.
 
@@ -1793,7 +1793,7 @@ Escaped tildes should be preserved: \~not strikethrough\~
 
 A lone tilde ~ in text is fine.
 
-Tildes at the end: the value is ~~100~~.
+Tildes at the end: the value is ~100~.
 
 A ~~long strikethrough that spans many words in a single paragraph and may get wrapped
 across lines during formatting~~ should be handled.
