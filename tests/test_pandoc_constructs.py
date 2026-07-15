@@ -175,3 +175,47 @@ def test_subscript_survives_and_is_not_strikeout():
     source = "H~2~O and x^2^.\n"
 
     assert reformat_text(source) == source
+
+
+# --- #10: definition lists --------------------------------------------------
+
+
+def test_definition_list_compact_round_trips():
+    """
+    Pandoc's `definition_lists` extension (on by default for `-f markdown`):
+    the marker only means anything at line start, so rewrapping must not join
+    it into the term's paragraph.
+    """
+    source = "Term\n:   Definition here.\n"
+
+    assert reformat_text(source) == source
+
+
+def test_definition_list_loose_round_trips():
+    source = "Term 1\n\n:   Definition 1\n\nTerm 2\n\n:   Definition 2\n"
+
+    assert reformat_text(source) == source
+
+
+def test_definition_list_multiple_definitions_round_trip():
+    source = "Term\n:   Def one\n:   Def two\n"
+
+    assert reformat_text(source) == source
+
+
+def test_definition_list_tilde_marker_round_trips():
+    source = "Term\n~   Definition here.\n"
+
+    assert reformat_text(source) == source
+
+
+def test_definition_list_between_paragraphs_round_trips():
+    source = "Before.\n\nTerm\n:   Definition.\n\nAfter paragraph.\n"
+
+    assert reformat_text(source) == source
+
+
+def test_definition_list_continuation_paragraph_round_trips():
+    source = "Term\n:   First para.\n\n    Second para of same def.\n\nAfter.\n"
+
+    assert reformat_text(source) == source
