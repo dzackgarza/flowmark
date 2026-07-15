@@ -35,6 +35,10 @@ def reformat_text(
         # Markdown mode
         result = fill_markdown(
             text,
+            # A document is not a docstring: its common indentation is content.
+            # Dedenting one whose every line is indented turns a code block into
+            # a paragraph.
+            dedent_input=False,
             width=width,
             semantic=semantic,
             cleanups=cleanups,

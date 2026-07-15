@@ -28,6 +28,23 @@ from flowmark.typography.ellipses import ellipses as apply_ellipses
 from flowmark.typography.smartquotes import smart_quotes
 
 
+def _strip_blank_edges(text: str) -> str:
+    """
+    Drop leading and trailing blank lines, leaving the first content line's own
+    indentation intact.
+
+    A plain `.strip()` here would take that indentation with it, and four spaces
+    are the only thing marking an indented code block, so stripping silently
+    demotes a leading code block to a paragraph.
+    """
+    lines = text.split("\n")
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(lines)
+
+
 def fill_markdown(
     markdown_text: str,
     dedent_input: bool = True,
@@ -75,9 +92,9 @@ def fill_markdown(
         markdown_text = content
 
     if dedent_input:
-        markdown_text = dedent(markdown_text).strip()
+        markdown_text = _strip_blank_edges(dedent(markdown_text))
 
-    markdown_text = markdown_text.strip() + "\n"
+    markdown_text = _strip_blank_edges(markdown_text) + "\n"
 
     # Preprocess: ensure proper blank lines around block content within tags.
     # This must happen before parsing to prevent CommonMark lazy continuation
@@ -94,6 +111,12 @@ def fill_markdown(
     if ellipses:
         rewrite_text_content(document, apply_ellipses, coalesce_lines=True)
     result = marko.render(document)
+
+    # End on exactly one newline. Some block renderers append a trailing blank
+    # line as a separator from whatever follows; when the block is the document's
+    # last, that separator has nothing to separate and shows up as trailing blank
+    # lines in the file.
+    result = result.rstrip("\n") + "\n"
 
     # Reattach frontmatter if it was present, with a blank line separator
     if frontmatter:
