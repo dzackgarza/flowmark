@@ -265,7 +265,7 @@ The main flags:
 | `-c, --cleanups` | Safe cleanups (unbold headings, etc.) |
 | `--smartquotes` | Convert straight quotes to typographic quotes |
 | `--ellipses` | Convert `...` to `…` |
-| `--list-spacing` | Control list spacing: `preserve`, `loose`, `tight` |
+| `--list-spacing` | Control list spacing: `loose` (default), `preserve`, `tight` |
 | `-i, --inplace` | Edit in place |
 | `--nobackup` | Skip `.orig` backup with `--inplace` |
 | `--auto` | All auto-formatting: `--inplace --nobackup --semantic --cleanups --smartquotes --ellipses`. Requires file/directory args (use `.` for current directory) |
@@ -371,7 +371,7 @@ width = 100
 semantic = true
 smartquotes = true
 ellipses = true
-list-spacing = "preserve"
+list-spacing = "preserve"  # opt out of the loose-spacing default
 
 [file-discovery]
 extend-include = ["*.mdx", "*.markdown"]

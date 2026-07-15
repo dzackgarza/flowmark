@@ -31,13 +31,13 @@ def test_loose_list_preserved():
     assert output == "- one\n\n- two\n\n- three\n"
 
 
-def test_preserve_is_default():
-    """Preserve is the default mode."""
+def test_loose_is_default():
+    """Loose is the default: list spacing is normalized, not left to the document."""
     input_tight = "- one\n- two\n- three\n"
     input_loose = "- one\n\n- two\n\n- three\n"
 
-    # Without explicit list_spacing, tight stays tight
-    assert fill_markdown(input_tight) == "- one\n- two\n- three\n"
+    # Without explicit list_spacing, tight is normalized to loose
+    assert fill_markdown(input_tight) == "- one\n\n- two\n\n- three\n"
     # Without explicit list_spacing, loose stays loose
     assert fill_markdown(input_loose) == "- one\n\n- two\n\n- three\n"
 

@@ -619,18 +619,13 @@ def test_fill_markdown_with_list_in_tags():
     # Second line should be blank
     assert lines[1] == "", f"Expected blank line after opening tag, got: {lines[1]}"
 
-    # List items should be together (no blank lines between them)
-    list_start = None
-    for i, line in enumerate(lines):
-        if line.startswith("- "):
-            list_start = i
-            break
-
-    assert list_start is not None
-    # Check consecutive list items
-    assert lines[list_start].startswith("- [ ] G")
-    assert lines[list_start + 1].startswith("- [ ] PG")
-    assert lines[list_start + 2].startswith("- ")
+    # All three items must survive as list items, in order (spacing between them
+    # is owned by list_spacing, not by this regression test)
+    items = [line for line in lines if line.startswith("- ")]
+    assert len(items) == 3
+    assert items[0].startswith("- [ ] G")
+    assert items[1].startswith("- [ ] PG")
+    assert items[2].startswith("- [x] R")
 
     # There should be a blank line before closing tag
     closing_idx = None

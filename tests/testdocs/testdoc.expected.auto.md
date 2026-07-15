@@ -43,9 +43,11 @@ high-stakes decisions for those who give and *receive it*. Blah blah blah and bl
 - Mark P. Cussen, Investopedia,
   [*Introduction To Incentive Stock Options*](http://www.investopedia.com/articles/stocks/12/introduction-incentive-stock-options.asp),
   updated 2017.
+
 - Alex MacCaw,
   [*An Engineer’s Guide to Stock Options*](http://blog.alexmaccaw.com/an-engineers-guide-to-stock-options),
   2013\.
+
 - Andy Rachleff, Wealthfront,
   [*The 14 Crucial Questions about Stock Options*](https://blog.wealthfront.com/stock-options-14-crucial-questions),
   2014\.
@@ -166,11 +168,15 @@ And $\$420K \div 0.44093$ is $952{,}532$ shares.
 #### Key points
 
 * **OpenAPI 3.1** is the most *expressive* and HTTP-oriented.
+
 * **OpenAI’s schema** is the *smallest*, locked to draft-07, input-only.
+
 * **Anthropic’s schema** lets you use *full* 2020-12, so the same Pydantic model works
   unchanged.
+
 * **MCP** generalises tooling across vendors, adds output validation, discovery, and
   progress streams.
+
 * **Pydantic v2** remains the Python “source-of-truth” generator: you can compile the
   **same** model into OpenAPI, plain JSON-Schema, OpenAI-tools, Anthropic-tools, or MCP
   definitions with one line of code.
@@ -228,33 +234,45 @@ advantages:
   understand **what they didn’t know they didn’t know**, and fill in the gaps in their
   knowledge. It encourages contribution from experts and people with practical
   experience.
+
 - Assuming 100% intelligence makes readers feel respected, and feel proud to be
   associated with the material.
   It will incline beginners to contribute their feedback.
+
 - Ensures that each reader feels capable of tackling a problem, specific or general.
+
 - Ensures that each reader can embody a new way of thinking about a topic.
+
 - **Encourages communication between beginners and experts**, which can be highly
   instructive for both sides.
+
 - Emphasize confusions, overlooked suggestions, pitfalls, and misunderstandings that are
   common.
 
 * ☁️ SaaS / paid services
+
 * 🚪 Alternatives to the option being discussed
+
 * 💸 Cost or expense issues, discussion, and gotchas
+
 * 🕍 A mild warning attached to “full solution” or opinionated frameworks (the cathedral
   is a nod to
   [Raymond’s metaphor](https://en.wikipedia.org/wiki/The_Cathedral_and_the_Bazaar))
+
 * 🍺 Open source / free software
 
 - For well-known people, places, things, and events, prefer linking to the **Wikipedia
   page**.
+
   - If there is a good quality Wikipedia page, prefer it to company or organization home
     pages, home pages of cities or states or agencies, and other things notable enough
     to be covered well.
+
   - Why? It usually gives a lot more context to the reader, and saves them having to
     Google to find it. It will also help with our search and web page snippet features,
     since the mouseovers on the links will be better quality than for those on marketing
     pages or poorly organized or out-of-date official websites.
+
     - Example: “The [Bay Area](https://en.wikipedia.org/wiki/San_Francisco_Bay_Area) in
       [California](https://en.wikipedia.org/wiki/California) is home to both
       [Apple](https://en.wikipedia.org/wiki/Apple_Inc.) and
@@ -293,6 +311,7 @@ to $24,000, which means the tax benefit of buying is
   I’m just inexperienced, I read/was told that it’s not wise to
   [term they want you to agree to].”*
   [[Paul Graham, Y Combinator](http://paulgraham.com/fr.html)]
+
 * When you want to test a VC’s interest to determine where to put your energy, you don’t
   want to sound desperate or pushy: *“I know that you’re not likely to give me a strong
   indication at this meeting, but I’d love to know if this is the* sort *of opportunity
@@ -371,6 +390,7 @@ realize abnormally large returns (200%+).
   [**liquidation preference**](http://www.investopedia.com/terms/l/liquidation-preference.asp),
   meaning the preferred stock owner will be paid before the common stock owners upon
   liquidation.
+
   - [**Liquidation overhang**](https://equityzen.com/blog/startup-valuations-and-liquidation-preference-overhang/)
     can occur when the value of a company just doesn’t reach the number of dollars
     investors put into it.
@@ -380,46 +400,67 @@ realize abnormally large returns (200%+).
     employee won’t be worth anything if the company is sold when it’s in liquidation
     overhang and the sale doesn’t
     [exceed that amount](https://avc.com/2010/10/employee-equity-the-liquidation-overhang/).
+
   - ☝️ Preferences are
     [notoriously](https://venturebeat.com/2010/08/16/beware-the-trappings-of-liquidation-preference/)
     [complex](https://medium.com/@CharlesYu/the-ultimate-guide-to-liquidation-preferences-478dda9f9332).
     Investors and entrepreneurs negotiate a lot of these details, including:
+
     - The **multiple**, a number designating how many times the investor must be paid
       back before common shareholders receive proceeds (often the multiple is 1X, but it
       can be 2X or higher).
+
     - Whether preferred stock is
       [**participating**](https://en.wikipedia.org/wiki/Participating_preferred_stock),
       meaning investors get their money back and also participate in proceeds from
       common stock.
+
     - Whether there is a **cap**, which limits the payout if it is participating.
 
 - **Secondary buyers**: Thinking on all this
   [has evolved](http://www.industryventures.com/2014/12/02/employee-liquidity-good-for-private-companies/)
   [in recent years](https://techcrunch.com/2015/10/14/selling-private-company-shares-2-0/).
   Some companies do see value in offering (mostly limited) opportunities for sale.
+
   - [SharesPost](http://sharespost.com/), [Equidate](https://www.equidateinc.com/), and
     [EquityZen](https://equityzen.com/) have sought to establish a market around
     secondary sales, particularly for well-known pre-IPO companies.
 
 - **NSOs**: You pay full taxes at exercise, and the sale is like any investment gain:
+
   - At grant and vesting:
+
     - No tax if granted at FMV
+
   - At exercise:
+
     - Ordinary tax on the bargain element
+
     - Income and employment tax withholding on paycheck
+
   - At sale:
+
     - Long-term capital gains tax on gain if held for *1 year past exercise*
+
     - Ordinary tax otherwise (including immediate sale)
 
 - **ISOs**: You might pay less tax at exercise, but it’s complicated:
+
   - At grant and vesting:
+
     - No tax if granted at FMV
+
   - At exercise:
+
     - AMT tax event on the bargain element; no ordinary or capital gains tax
+
     - No income or employment tax withholding on paycheck
+
   - At sale:
+
     - Long-term capital gains if held for *1 year past exercise and 2 years past grant
       date*
+
     - Ordinary tax otherwise (including immediate sale)
 
 ElastiCache Basics:
@@ -428,12 +469,15 @@ ElastiCache Basics:
   [User guide](http://docs.aws.amazon.com/AmazonElastiCache/latest/UserGuide) ∙
   [FAQ](https://aws.amazon.com/elasticache/faqs/) ∙
   [Pricing](https://aws.amazon.com/elasticache/pricing/)
+
 - **ElastiCache** is a managed in-memory cache service, that can be used to store
   temporary data in a fast in-memory cache, typically in order to avoid repeating the
   same computation multiple times when it could be reused.
+
 - It supports both the [Memcached](https://memcached.org) and [Redis](https://redis.io)
   open source in-memory cache software and exposes them both using their native access
   APIs.
+
 - The main benefit is that AWS takes care of running, patching and optimizing the cache
   nodes for you, so you just need to launch a cluster and configure its endpoint in your
   application, while AWS will take of most of the operational work of running the cache
@@ -445,6 +489,7 @@ DynamoDB Basics:
   [Developer guide](http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/) ∙
   [FAQ](https://aws.amazon.com/dynamodb/faqs/) ∙
   [Pricing](https://aws.amazon.com/dynamodb/pricing/)
+
 - **DynamoDB** is a [NoSQL](https://en.wikipedia.org/wiki/NoSQL) database with focuses
   on speed, flexibility, and scalability.
   DynamoDB is priced on a combination of throughput and storage.
@@ -462,6 +507,7 @@ ElastiCache Tips:
   Memcached is just a plain key/value store.
   The simplicity of Memcached allows it to be slightly faster and allows it to scale out
   if needed, but Redis has more features which you may use in your application.
+
 - For Memcached AWS provides enhanced SDKs for certain programming languages which
   implement
   [auto-discovery](http://docs.aws.amazon.com/AmazonElastiCache/latest/UserGuide/AutoDiscovery.html),
@@ -543,13 +589,16 @@ for managing temporary files and directories.
 Linux offers a rich set of POSIX\-compliant and Linux\-specific mechanisms.
 
 * **APIs:**
+
   + mkstemp(3\): Generates a unique filename based on a template (prefixXXXXXX), creates
     the file with 0600 permissions, opens it, and returns a file descriptor.
     It uses O\_EXCL for atomic creation, preventing race conditions.<sup>19</sup> The
     caller is responsible for unlinking the file.
+
   + mkdtemp(3\): Similar to mkstemp but creates a unique directory with 0700 permissions
     based on a template (prefixXXXXXX), returning the path.<sup>19</sup> The caller must
     remove the directory.
+
   + tmpfile(3\): Creates an unnamed temporary file opened in wb\+ mode (binary
     read/write), automatically deleted when closed or on process
     termination.<sup>19</sup> While convenient, POSIX notes potential permission issues
@@ -557,14 +606,19 @@ Linux offers a rich set of POSIX\-compliant and Linux\-specific mechanisms.
     file descriptors.<sup>59</sup>
 
 * **Recommended Python Approach for Atomic Writes:**
+
   1. **Use a Library:** Employing a dedicated library like atomicwriter or atomicfile is
      generally the most robust approach, as they handle temporary file creation in the
      correct location, atomic renaming (os.replace), and error cleanup across platforms.
+
   2. **Manual Implementation (if necessary):**
+
      + Determine the destination directory: dest\_dir = os.path.dirname(dest\_path)
+
      + Create the temporary file in the destination directory: temp\_file =
        tempfile.NamedTemporaryFile(mode='w', dir=dest\_dir, delete=False) (use
        appropriate mode, e.g., wb for binary).
+
      + Use a try … finally block to ensure cleanup:\
        Python\
        temp\_file = None\
@@ -879,49 +933,70 @@ The same is true for links.
 
 * 📈 adpushup
   ([2017, Seed](https://www.slideshare.net/AlexanderJarvis/adpushup-seed-pitch-deck))
+
 * 📈 AirBnB ([2009, Seed](http://www.slideshare.net/ryangum/airbnb-pitch-deck-from-2008))
+
 * 📈 AppNexus
   ([2007, Seed](http://www.slideshare.net/CamilleRicketts2/appnexus-first-pitch-deck))
+
 * 📈 Bliss ([2017, Seed](https://www.slideshare.net/AlexanderJarvis/blissai-pitch-deck))
+
 * 📈 Boomtrain ([2014, ?](https://boomtrain.docsend.com/view/3giicsi))
+
 * 📈 Buffer ([2011, Seed](http://www.slideshare.net/Bufferapp/buffer-seedrounddeck))
+
 * 📈 BuzzFeed
   ([2008, Series A](https://qz.com/389752/here-is-buzzfeeds-first-pitch-deck-to-investors-in-2008/))
+
 * 📈 Castle
   ([2017, Seed](https://www.slideshare.net/AlexanderJarvis/castle-pitch-deck-75070238))
+
 * 📈 Coinbase
   ([2012, Seed](https://www.slideshare.net/BrianArmstrong29/coinbase-seed-round-pitch-deck));
   [Commentary](https://medium.com/@barmstrong/the-coinbase-seed-round-pitch-deck-50c8ec91d40b)
   on the round by Brian Armstrong, CEO of Coinbase.
+
 * 📈 Contently
   ([2014, Series B](https://www.slideshare.net/GoCanvas/the-10-most-interesting-slides-that-helped-our-saas-company-raise-9-million-42566344))
+
 * 📈 Cubeit ([2017, Seed](https://www.slideshare.net/AlexanderJarvis/cubeit-pitch-deck))
+
 * 📈 Crew
   ([2015, Series A](https://www.slideshare.net/AlexanderJarvis/crew-pitch-deck-seriesa))
+
 * 📈 DocSend ([2013, Seed](https://docsend.com/view/n43v89r))
+
 * 📈 Dwolla
   ([2013, Series C](http://www.businessinsider.com/18-slide-pitch-deck-lands-payment-startup-dwolla-165-million-2013-4?op=1))
+
 * 📈 eShares
   ([2014, Series A](https://esharesinc.app.box.com/s/fjixdt78tl9henx2c75etkx1sootwo9p));
   [Commentary](https://medium.com/eshares-blog/eshares-series-a-c6bad9ad3721#.alf0y6i99)
   on the round by [Henry Ward](https://twitter.com/henrysward), CEO of eShares
+
 * 📈 Foursquare ([2009, Seed](http://www.slideshare.net/alkarmi/foursquare-1stpitch2009))
+
 * 📈 Front
   ([2016, Series A](http://www.slideshare.net/MathildeCollin/front-series-a-deck-64596550?ref=https://cdn.embedly.com/widgets/media.html?src=https%3A%2F%2Fwww.slideshare.net%2Fslideshow%2Fembed_code%2Fkey%2FFXlrFkbldHJoki&url=http%3A%2F%2Fwww.slideshare.net%2FMathildeCollin%2Ffront-series-a-deck-64596550&image=http%3A%2F%2Fcdn.slidesharecdn.com%2Fss_thumbnails%2Fdecktopublish-1-160801215931-thumbnail-4.jpg%3Fcb%3D1470090544&key=d04bfffea46d4aeda930ec88cc64b87c&type=text%2Fhtml&schema=slideshare));
   [Commentary](https://medium.com/@collinmathilde/front-series-a-deck-f2e2775a419b#.7xlz4lwxz)
   on the round by [Mathilde Collin](https://twitter.com/collinmathilde), CEO of Front
+
 * 📈 Gaia Design
   ([2015, ?](https://www.slideshare.net/valentinelanger/presentation-gaia-design-furniture))
+
 * 📈 Intercom
   ([2011, Seed](http://www.slideshare.net/eoghanmccabe/intercoms-first-pitch-deck))
 
 And some dashes:
 
 - 🔥[The Culture Cliché](https://m.signalvnoise.com/the-culture-cliche/) – Claire Lew
+
 - 🔥[Most Company Culture Posts are Fluffy Bullshit — Here is what you actually need to know](https://medium.com/evergreen-business-weekly/most-company-culture-posts-are-fluffy-bullshit-here-is-what-you-actually-need-to-know-1cf8597a5c2c)
   — Eric Jorgenson – summarizing the many dimensions of culture
+
 - 💳[The Culture Factor](https://hbr.org/2018/01/the-culture-factor) – Boris Groysberg,
   Jeremiah Lee, Jesse Price, J. Yo-Jud Cheng
+
 - [Programming Your Culture](https://a16z.com/2012/12/18/programming-your-culture/) —
   Ben Horowitz (note this line has nonbreaking spaces)
 
@@ -1030,6 +1105,7 @@ valuation, shares, fundraising, and dilution
   [Pricing](https://aws.amazon.com/cloudwatch/pricing/) - 🔹Blahxxx - ❗Blahxxx
 
 **Related Architecture**:
+
 - [arch-execution.md](../architecture/arch-execution.md) - Execution model context
 
 ## Corner Cases
@@ -1184,6 +1260,7 @@ A fenced block.
 ### List After Heading
 
 - List item one
+
 - List item two
 
 ## 14. Nested Fenced Code Blocks
@@ -1277,7 +1354,9 @@ information.
 > Remember these items:
 > 
 > - First item
+>
 > - Second item
+>
 > - Third item
 
 ### Lowercase Alert Type (normalized to uppercase)
@@ -1444,7 +1523,9 @@ Closing tags should NOT be merged onto list item lines:
 {% field kind="single_select" id="choice" label="Choice" %}
 
 - [ ] Option A {% #option_a %}
+
 - [ ] Option B {% #option_b %}
+
 - [ ] Option C {% #option_c %}
 
 {% /field %}
@@ -1452,7 +1533,9 @@ Closing tags should NOT be merged onto list item lines:
 <!-- f:field kind="select" id="choice" -->
 
 - Option 1 <!-- #opt1 -->
+
 - Option 2 <!-- #opt2 -->
+
 - Option 3 <!-- #opt3 -->
 
 <!-- /f:field -->
@@ -1663,8 +1746,11 @@ Your feedback is valuable to us.
 {% field kind="single_select" id="rating" label="Overall Rating" required=true %}
 
 - [ ] Excellent {% #excellent %}
+
 - [ ] Good {% #good %}
+
 - [ ] Fair {% #fair %}
+
 - [ ] Poor {% #poor %}
 
 {% /field %}

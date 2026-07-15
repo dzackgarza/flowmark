@@ -146,7 +146,7 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         "--list-spacing",
         type=str,
         choices=["preserve", "loose", "tight"],
-        default="preserve",
+        default="loose",
         help="Control list spacing: 'preserve' keeps original tight/loose formatting, "
         "'loose' adds blank lines between all items, 'tight' removes blank lines where possible "
         "(default: %(default)s)",

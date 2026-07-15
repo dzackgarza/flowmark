@@ -698,7 +698,7 @@ class MarkdownNormalizer(Renderer):
     """
 
     def __init__(
-        self, line_wrapper: LineWrapper, list_spacing: ListSpacing = ListSpacing.preserve
+        self, line_wrapper: LineWrapper, list_spacing: ListSpacing = ListSpacing.loose
     ) -> None:
         super().__init__()
         self._prefix: str = ""  # The prefix on the first line, with a bullet, such as `  - `.
@@ -1257,7 +1257,7 @@ Default line wrapper for fixed-width line wrapping.
 
 def flowmark_markdown(
     line_wrapper: LineWrapper = DEFAULT_SEMANTIC_LINE_WRAPPER,
-    list_spacing: ListSpacing = ListSpacing.preserve,
+    list_spacing: ListSpacing = ListSpacing.loose,
 ) -> Markdown:
     """
     Marko Markdown setup for GFM with a few customizations for Flowmark and a new

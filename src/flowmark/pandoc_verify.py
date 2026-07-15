@@ -1,17 +1,20 @@
 """
-Verify that reformatting did not change what pandoc reads.
+Verify that reformatting did not *unintentionally* change what pandoc reads.
 
-Flowmark is free to change a construct's *spelling* -- rewrapping prose, fencing
-an indented code block, curling a quote -- but never its *meaning*.  Pandoc owns
-the definition of meaning for the documents this fork targets, so it is the
-authority to ask, rather than re-deriving its grammar here and hoping.
-
-Full AST preservation is not the contract, though, and cannot be: flowmark is an
-opinionated formatter, and two of its normalizations deliberately change the
+Flowmark normalizes documents to an opinionated style, so full AST preservation
+is not the contract and cannot be: some normalizations deliberately change the
 parsed AST.  A bold heading is stripped because the `<h1>`/`\\section` element
 should carry that weight rather than hand-applied bolding, and list spacing is
-standardized.  Those are the formatter doing its job, so they are *reported* and
-allowed; see `_NORMALIZATIONS`.  Every other AST change is a bug and fails.
+standardized rather than letting each document control presentation.  Deliberate
+style changes like these are the formatter doing its job, so they never gate a
+run; they are at most *reported* (a stderr note when one applies without having
+been asked for); see `_NORMALIZATIONS`.
+
+Every *other* AST change is data being destroyed by accident -- a construct the
+formatter mishandles rather than an opinion it holds -- and that is what this
+check exists to catch.  Pandoc owns the definition of what these documents say,
+so it is the authority to ask, rather than re-deriving its grammar here and
+hoping.
 
 Most of flowmark's deliberate spelling changes are already invisible to pandoc's
 reader, so they need no special handling here: indented and fenced code blocks

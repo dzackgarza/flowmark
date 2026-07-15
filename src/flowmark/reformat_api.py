@@ -23,7 +23,7 @@ def reformat_text(
     cleanups: bool = True,
     smartquotes: bool = False,
     ellipses: bool = False,
-    list_spacing: ListSpacing = ListSpacing.preserve,
+    list_spacing: ListSpacing = ListSpacing.loose,
     verify: bool = True,
     verify_label: str = "input",
 ) -> str:
@@ -94,7 +94,7 @@ def reformat_file(
     smartquotes: bool = False,
     ellipses: bool = False,
     make_parents: bool = True,
-    list_spacing: ListSpacing = ListSpacing.preserve,
+    list_spacing: ListSpacing = ListSpacing.loose,
     verify: bool = True,
 ) -> None:
     """
@@ -117,7 +117,7 @@ def reformat_file(
         ellipses: Convert three dots (...) to ellipsis character (…) with normalized spacing
             (only applies to Markdown mode).
         make_parents: Whether to make parent directories if they don't exist.
-        list_spacing: Control list spacing: "preserve" (default), "loose", or "tight".
+        list_spacing: Control list spacing: "loose" (default), "preserve", or "tight".
         verify: Check with pandoc that reformatting did not change the document's
             parsed AST, and write nothing if it did. On by default (only applies
             to Markdown mode).
@@ -172,7 +172,7 @@ def reformat_files(
     smartquotes: bool = False,
     ellipses: bool = False,
     make_parents: bool = True,
-    list_spacing: ListSpacing = ListSpacing.preserve,
+    list_spacing: ListSpacing = ListSpacing.loose,
     verify: bool = True,
 ) -> None:
     """
@@ -190,7 +190,7 @@ def reformat_files(
         smartquotes: Convert straight quotes to typographic quotes.
         ellipses: Convert three dots to ellipsis character.
         make_parents: Whether to make parent directories if they don't exist.
-        list_spacing: Control list spacing: "preserve" (default), "loose", or "tight".
+        list_spacing: Control list spacing: "loose" (default), "preserve", or "tight".
         verify: Check with pandoc that reformatting did not change any document's
             parsed AST, and write nothing if it did. On by default (only applies
             to Markdown mode).

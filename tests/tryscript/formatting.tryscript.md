@@ -238,7 +238,6 @@ Asserts full output with no truncation. This test validates:
 
 ````console
 $ flowmark fixtures/content/comprehensive.md
-Warning: fixtures/content/comprehensive.md: changed list spacing (tight/loose) without being asked to
 ---
 title: Comprehensive Test Document
 author: Test Suite
@@ -280,14 +279,19 @@ one. Third sentence that wraps up the paragraph.
 - Loose item three
 
 - First level
+
   - Second level
+
     - Third level deep
+
   - Back to second level
 
 - Back to first level
 
 1. Ordered item one
+
 2. Ordered item two
+
 3. Ordered item three
 
 > This is a blockquote with a paragraph of text inside it.
@@ -376,7 +380,6 @@ here.
 
 ```console
 $ flowmark fixtures/content/comprehensive.md > /tmp/first.md && flowmark /tmp/first.md > /tmp/second.md && diff /tmp/first.md /tmp/second.md && echo "idempotent"
-Warning: fixtures/content/comprehensive.md: changed list spacing (tight/loose) without being asked to
 idempotent
 ```
 

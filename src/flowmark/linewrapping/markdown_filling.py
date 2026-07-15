@@ -54,7 +54,7 @@ def fill_markdown(
     smartquotes: bool = False,
     ellipses: bool = False,
     line_wrapper: LineWrapper | None = None,
-    list_spacing: ListSpacing = ListSpacing.preserve,
+    list_spacing: ListSpacing = ListSpacing.loose,
 ) -> str:
     """
     Normalize and wrap Markdown text filling paragraphs to the full width.
@@ -62,8 +62,8 @@ def fill_markdown(
     Wraps lines and adds line breaks within paragraphs and on
     best-guess estimations of sentences, to make diffs more readable.
 
-    With `list_spacing="preserve"` (default), list spacing is preserved as authored.
-    With `list_spacing="loose"`, all lists have blank lines between items.
+    With `list_spacing="loose"` (default), all lists have blank lines between items.
+    With `list_spacing="preserve"`, list spacing is kept as authored.
     With `list_spacing="tight"`, lists are made tight where possible.
 
     Optionally also dedents and strips the input, so it can be used
