@@ -336,3 +336,41 @@ def test_smart_quotes_blockquote_multiline_with_code_span():
     assert "I\u2019ll" in result
     # Code span must be preserved
     assert "`markform`" in result
+
+
+def test_stray_quote_blocks_later_single_span():
+    """A stray straight quote before a span makes pairing ambiguous: a markdown
+    reader pairs the stray with one of the span's quotes, so converting the span
+    would move which text the document quotes. Contractions still convert."""
+    assert (
+        smart_quotes("Apostrophes: the cat's meow, the '90s, rock 'n' roll.")
+        == "Apostrophes: the cat’s meow, the '90s, rock 'n' roll."
+    )
+    assert smart_quotes("'til you 'see' it") == "'til you 'see' it"
+
+
+def test_stray_quote_after_span_does_not_block():
+    """A stray quote AFTER a span cannot capture it, so the span still converts."""
+    assert (
+        smart_quotes("rock 'n' roll and the '90s forever") == "rock ‘n’ roll and the '90s forever"
+    )
+
+
+def test_stray_double_quote_blocks_later_double_span():
+    """Same pairing rule for double quotes."""
+    assert smart_quotes('the "90s, rock "n" roll') == 'the "90s, rock "n" roll'
+
+
+def test_stray_single_inside_converted_double_span_blocks_later_single():
+    """A stray single quote inside a converted double span still counts: it stays
+    straight in the output and pairs across the double quotes."""
+    assert (
+        smart_quotes("He said \"the '90s were fun\" and 'foo' bar")
+        == "He said “the '90s were fun” and 'foo' bar"
+    )
+
+
+def test_attribute_style_pair_does_not_block():
+    """x='foo' is not in prose position, and its quotes pair with each other, so
+    it does not block later spans."""
+    assert smart_quotes("x='foo' and I said 'hi' ok") == "x='foo' and I said ‘hi’ ok"

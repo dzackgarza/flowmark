@@ -37,7 +37,7 @@ This has “bold *emphasis* inside quotes” for testing.
 
 ### “Quoted Heading”
 
-Apostrophes: the cat’s meow, the '90s, rock ‘n’ roll.
+Apostrophes: the cat’s meow, the '90s, rock 'n' roll.
 ```
 
 ## T2: Ellipses only
@@ -91,7 +91,7 @@ This has “bold *emphasis* inside quotes” for testing.
 
 ### “Quoted Heading”
 
-Apostrophes: the cat’s meow, the '90s, rock ‘n’ roll.
+Apostrophes: the cat’s meow, the '90s, rock 'n' roll.
 ```
 
 ## T4: Smart quotes NOT converted in code blocks

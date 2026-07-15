@@ -1,5 +1,5 @@
 import re
-from re import Match, Pattern
+from re import Pattern
 
 from flowmark.linewrapping.tag_handling import TEMPLATE_TAG_PATTERN
 
@@ -16,6 +16,14 @@ QUOTE_PATTERN: Pattern[str] = re.compile(
 )
 
 
+# A straight quote in prose position (start/whitespace/em-dash before, non-space
+# after) is where a markdown reader may open a quotation.  One of these left
+# unconverted before a convertible span (an elision like '90s or 'til) means the
+# reader pairs *it* with one of the span's quotes, so converting the span would
+# move which text the document quotes.  Mirrors QUOTE_PATTERN's prefix class.
+OPENER_SHAPED_PATTERN: Pattern[str] = re.compile(r"(?:^|[\s—])(['\"])(?=\S)", re.MULTILINE)
+
+
 def is_multi_paragraph(text: str) -> bool:
     """Check if text contains paragraph breaks (two newlines with optional whitespace)."""
     return PARAGRAPH_BREAK_PATTERN.search(text) is not None
@@ -29,27 +37,51 @@ def _apply_smart_quotes_to_text(text: str) -> str:
     template tags.
     """
 
-    # Handle quoted text - both single and double quotes
-    def replace_quotes(match: Match[str]) -> str:
+    # Handle quoted text - both single and double quotes.
+    #
+    # A span is converted only if no opener-shaped straight quote of the same
+    # type sits unconverted before it.  Such a quote (an elision like '90s or
+    # 'til, or a span this pass skipped) changes how a reader pairs quotes:
+    # it would pair with one of this span's quotes, so curling the span would
+    # move which text the document quotes.  Quotes this pass converts are no
+    # longer straight, so they stop counting as strays.
+    openers = [(m.start(1), m.group(1)) for m in OPENER_SHAPED_PATTERN.finditer(text)]
+    converted: set[int] = set()
+    parts: list[str] = []
+    last_end = 0
+
+    for match in QUOTE_PATTERN.finditer(text):
         prefix = match.group(1)
         double_content = match.group(2)  # Content of double quotes
         single_content = match.group(3)  # Content of single quotes
         suffix = match.group(4)
 
-        # Check for paragraph breaks in the content
         content = double_content if double_content is not None else single_content
-        if is_multi_paragraph(content):
-            # Don't convert quotes that contain paragraph breaks
-            return match.group(0)
+        quote_char = '"' if double_content is not None else "'"
+        open_idx = match.start() + len(prefix)
+        close_idx = match.end() - len(suffix) - 1
 
+        stray_before = any(
+            idx < open_idx and char == quote_char and idx not in converted for idx, char in openers
+        )
+        # Don't convert quotes that contain paragraph breaks, or whose pairing
+        # is ambiguous because of an earlier stray quote.
+        if stray_before or is_multi_paragraph(content):
+            continue
+
+        converted.update((open_idx, close_idx))
         if double_content is not None:
             # Replace double quotes with typographic quotes
-            return prefix + "\u201c" + double_content + "\u201d" + suffix
+            replacement = prefix + "\u201c" + double_content + "\u201d" + suffix
         else:
             # Replace single quotes with typographic quotes
-            return prefix + "\u2018" + single_content + "\u2019" + suffix
+            replacement = prefix + "\u2018" + single_content + "\u2019" + suffix
+        parts.append(text[last_end : match.start()])
+        parts.append(replacement)
+        last_end = match.end()
 
-    result = QUOTE_PATTERN.sub(replace_quotes, text)
+    parts.append(text[last_end:])
+    result = "".join(parts)
 
     # Handle apostrophes/contractions
     # Only convert single quotes that are:
@@ -125,6 +157,13 @@ def smart_quotes(text: str) -> str:
     'apos -> 'apos
     'apos'trophes -> 'apos'trophes
     $James' -> $James'
+
+    A straight quote left in place before a quoted span (such as an elision
+    apostrophe) makes the pairing ambiguous -- a reader may pair it with one of
+    the span's quotes -- so spans after it are also left unchanged:
+
+    the '90s, rock 'n' roll -> the '90s, rock 'n' roll
+    'til you 'see' it -> 'til you 'see' it
 
     Template tag content is never modified:
 
