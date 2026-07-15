@@ -160,3 +160,18 @@ def test_inline_math_with_underscores_round_trips():
     source = "A $\\overline{ \\mathcal{M}_{1} }$ b $y_{2}$ c.\n"
 
     assert reformat_text(source) == source
+
+
+# --- #11: subscript --------------------------------------------------------
+
+
+def test_subscript_survives_and_is_not_strikeout():
+    """
+    Pandoc's `subscript` extension (on by default for `-f markdown`) reads
+    `H~2~O` as H, subscript 2, O. Parsing single tildes as GFM strikethrough
+    and re-emitting them doubled turns the subscript into a strikeout -- a
+    different construct entirely.
+    """
+    source = "H~2~O and x^2^.\n"
+
+    assert reformat_text(source) == source
