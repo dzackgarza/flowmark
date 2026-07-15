@@ -423,7 +423,7 @@ class CustomFencedDiv(block.BlockElement):
     outright, so the attribute spec is captured verbatim and never re-emitted
     as body content.  The closing fence may be shorter than the opening one and
     is preserved as written.  Content up to the closing fence is preserved
-    verbatim.  Does **not** handle nested fenced divs.
+    verbatim, including nested divs and any colon runs inside code blocks.
 
     https://pandoc.org/MANUAL.html#divs-and-spans
     """
@@ -444,7 +444,7 @@ class CustomFencedDiv(block.BlockElement):
     closer: str  # the closing colon run as written (may be shorter than ``fence``)
     prefix: str
 
-    def __init__(self, match: tuple[str, str, str, str]) -> None:
+    def __init__(self, match: tuple[str, str, str, str, str]) -> None:
         self.fence = match[0]
         self.attrs = match[1]
         self.closer = match[2]
@@ -474,24 +474,46 @@ class CustomFencedDiv(block.BlockElement):
         # renderer emits a closer the source never had.
         closer_pat = re.compile(r" {,3}(:{3,})[^\n\S]*$")
         opener_pat = re.compile(r" {,3}:{3,}[^\n\S]*\S")
+        # A colon run inside a fenced code block is literal text, not a fence, so
+        # the div scan has to track code fences to know which lines to ignore.
+        # Indented code blocks need no such handling: their four spaces already
+        # fall outside the ` {,3}` prefix both fence patterns require.
+        code_fence_pat = re.compile(r" {,3}(`{3,}|~{3,})(.*)$")
 
         lines: list[str] = []
         closer = fence
         depth = 0
+        code_fence: str | None = None
 
         while not source.exhausted:
             line = source.next_line()
             if line is None:
                 break
             source.consume()
-            closer_match = closer_pat.match(line)
-            if closer_match:
-                if depth == 0:
-                    closer = closer_match.group(1)
-                    break
-                depth -= 1
-            elif opener_pat.match(line):
-                depth += 1
+            code_match = code_fence_pat.match(line)
+            if code_fence is not None:
+                # Only a fence of the same character and at least the same length,
+                # with nothing after it, closes the block (CommonMark 4.5).
+                if (
+                    code_match
+                    and code_match.group(1)[0] == code_fence[0]
+                    and len(code_match.group(1)) >= len(code_fence)
+                    and not code_match.group(2).strip()
+                ):
+                    code_fence = None
+            elif code_match and not (code_match.group(1)[0] == "`" and "`" in code_match.group(2)):
+                # A backtick fence's info string may not contain a backtick, which
+                # is what keeps an inline code span from opening a block here.
+                code_fence = code_match.group(1)
+            else:
+                closer_match = closer_pat.match(line)
+                if closer_match:
+                    if depth == 0:
+                        closer = closer_match.group(1)
+                        break
+                    depth -= 1
+                elif opener_pat.match(line):
+                    depth += 1
             prefix_len = source.match_prefix(prefix, line)
             if prefix_len >= 0:
                 line = line[prefix_len:]
