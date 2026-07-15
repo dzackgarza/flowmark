@@ -9,6 +9,14 @@
 test:
     @make test
 
+# Run the commit-tier test gate (invoked by the global pre-commit hook).
+test-commit:
+    @just test
+
+# Run the push-tier test gate (invoked by the global pre-push hook).
+test-push:
+    @just test
+
 # Run the push/CI test gate.
 test-ci:
     @just test

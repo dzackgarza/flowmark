@@ -997,7 +997,14 @@ class MarkdownNormalizer(Renderer):
             # Don't skip next blank line or suppress item break for hard breaks
             return result
         else:
-            result = f"{self._prefix}{'#' * element.level} {children_content}\n\n"
+            # The blank line after the heading must carry the continuation
+            # prefix (e.g. "> " inside a blockquote); a bare blank line would
+            # end the enclosing block and split it (#12).
+            if self._second_prefix.strip():
+                blank_line = f"{self._second_prefix}\n"
+            else:
+                blank_line = "\n"
+            result = f"{self._prefix}{'#' * element.level} {children_content}\n{blank_line}"
             self._prefix = self._second_prefix
             # Skip the next blank line since we already added one
             self._skip_next_blank_line = True
