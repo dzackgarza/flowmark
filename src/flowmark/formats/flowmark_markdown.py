@@ -381,26 +381,41 @@ class CustomFencedDiv(block.BlockElement):
     """
     Pandoc fenced div: ``::: {.attrs}`` ... ``:::``.
 
-    Matches opening ``:::`` optionally followed by a braced attribute block
-    (``{.class key=val}``, with or without a space before the brace) and any
-    trailing content on the same line.  Content up to the closing ``:::`` is
-    preserved verbatim.  Does **not** handle nested fenced divs.
+    The opening fence is three or more colons, and pandoc treats the entire
+    remainder of that line as the div's attribute specification -- either a
+    braced block (``{#id .class key="val"}``) or a bare class word
+    (``::: proof``, shorthand for ``::: {.proof}``).  There is no "trailing
+    content on the same line": pandoc rejects ``::: {.foo} text`` as a div
+    outright, so the attribute spec is captured verbatim and never re-emitted
+    as body content.  The closing fence may be shorter than the opening one and
+    is preserved as written.  Content up to the closing fence is preserved
+    verbatim.  Does **not** handle nested fenced divs.
+
+    https://pandoc.org/MANUAL.html#divs-and-spans
     """
 
     priority = 7
     parse_children = True
-    # Group 1: whitespace prefix, Group 2: optional {attrs}, Group 3: trailing text
-    # [^\n\S]* matches horizontal whitespace only (same pattern used by CustomFencedCode
-    # for its info line) so the opening fence never captures content from the next line.
-    pattern = re.compile(r"( {,3}):::[^\n\S]*(\{[^}]*\})?[^\n\S]*(.*)$", re.MULTILINE)
+    # Group 1: whitespace prefix, Group 2: the colon fence, Group 3: attribute spec.
+    # The attribute spec is taken verbatim rather than parsed: a braced block may
+    # contain a `}` inside a quoted value (`title="{[@Cite, Thm. 1]}"`), which no
+    # non-recursive brace pattern can delimit correctly, and pandoc gives the rest
+    # of the line no other meaning anyway. [^\n\S]* matches horizontal whitespace
+    # only (same pattern used by CustomFencedCode for its info line) so the opening
+    # fence never captures content from the next line.
+    pattern = re.compile(r"( {,3})(:{3,})[^\n\S]*(.*?)[^\n\S]*$", re.MULTILINE)
 
-    attrs: str  # the raw {...} attribute block (or ``""``)
+    fence: str  # the opening colon run, e.g. ``":::"``
+    attrs: str  # the raw attribute spec: ``{...}``, a bare class, or ``""``
+    closer: str  # the closing colon run as written (may be shorter than ``fence``)
     prefix: str
 
-    def __init__(self, match: tuple[str, str, str]) -> None:
-        self.attrs = match[0]
-        self.prefix = match[1]
-        self.children = [inline.RawText(match[2], False)]
+    def __init__(self, match: tuple[str, str, str, str]) -> None:
+        self.fence = match[0]
+        self.attrs = match[1]
+        self.closer = match[2]
+        self.prefix = match[3]
+        self.children = [inline.RawText(match[4], False)]
 
     @override
     @classmethod
@@ -408,30 +423,30 @@ class CustomFencedDiv(block.BlockElement):
         m = source.expect_re(cls.pattern)
         if not m:
             return None
-        prefix, attrs, rest = m.groups()
-        source.context.div_info = (prefix, attrs or "", rest)
+        prefix, fence, attrs = m.groups()
+        source.context.div_info = (prefix, fence, attrs or "")
         return m
 
     @override
     @classmethod
-    def parse(cls, source: Source) -> tuple[str, str, str]:
-        prefix, attrs, rest = source.context.div_info
+    def parse(cls, source: Source) -> tuple[str, str, str, str, str]:
+        prefix, fence, attrs = source.context.div_info
         source.next_line()
         source.consume()
 
-        closer_pat = re.compile(r" {,3}:::\s*$")
+        closer_pat = re.compile(r" {,3}(:{3,})\s*$")
 
-        if rest.strip():
-            lines = [rest + "\n"]
-        else:
-            lines = []
+        lines: list[str] = []
+        closer = fence
 
         while not source.exhausted:
             line = source.next_line()
             if line is None:
                 break
             source.consume()
-            if closer_pat.match(line):
+            closer_match = closer_pat.match(line)
+            if closer_match:
+                closer = closer_match.group(1)
                 break
             prefix_len = source.match_prefix(prefix, line)
             if prefix_len >= 0:
@@ -440,7 +455,7 @@ class CustomFencedDiv(block.BlockElement):
                 line = line.lstrip()
             lines.append(line)
 
-        return (attrs, prefix, "".join(lines))
+        return (fence, attrs, closer, prefix, "".join(lines))
 
     @override
     @classmethod
@@ -814,10 +829,12 @@ class MarkdownNormalizer(Renderer):
 
     def render_fenced_div(self, element: CustomFencedDiv) -> str:
         self._skip_next_blank_line = False
-        opener = ":::"
+        # Pandoc's canonical spacing is `::: {.foo}`; both spellings carry the
+        # same attributes, so normalizing here does not change the parsed AST.
+        opener = element.fence
         if element.attrs:
-            opener += element.attrs
-        closer = ":::"
+            opener += f" {element.attrs}"
+        closer = element.closer
         code_child = cast(inline.RawText, element.children[0])
         content = code_child.children.rstrip("\n")
 
