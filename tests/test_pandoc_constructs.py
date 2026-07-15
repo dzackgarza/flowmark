@@ -75,6 +75,36 @@ def test_deeply_nested_divs_round_trip():
     assert reformat_text(source) == source
 
 
+def test_colon_run_inside_code_block_does_not_close_the_div():
+    """
+    A colon run inside a fenced code block is literal text, not a fence. Counting
+    it closed the div early, leaving the code block's own closing fence to escape
+    to top level: pandoc read ``["Div"]`` before and ``["Div", "Para"]`` after.
+    """
+    source = "::: {.foo}\n```\n:::\n```\nAfter.\n:::\n"
+
+    assert reformat_text(source) == source
+
+
+def test_div_opener_inside_code_block_does_not_inflate_depth():
+    """The same defect in the other direction: the div's real closer got eaten."""
+    source = "::: {.foo}\n```\n::: {.bar}\n```\nAfter.\n:::\n"
+
+    assert reformat_text(source) == source
+
+
+def test_colon_run_inside_tilde_code_block_does_not_close_the_div():
+    source = "::: {.foo}\n~~~\n:::\n~~~\nAfter.\n:::\n"
+
+    assert reformat_text(source) == source
+
+
+def test_code_block_inside_nested_div_does_not_disturb_depth():
+    source = "::: {.a}\n::: {.b}\n```\n:::\n```\n:::\nAfter.\n:::\n"
+
+    assert reformat_text(source) == source
+
+
 # --- #7: indented code blocks ---------------------------------------------
 #
 # Flowmark deliberately rewrites indented code blocks to fenced ones, which is a
