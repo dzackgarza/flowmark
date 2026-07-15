@@ -1,7 +1,8 @@
 """Test strikethrough and tilde handling.
 
 Tests that flowmark correctly distinguishes between:
-- Actual GFM strikethrough: ~~text~~ or ~text~
+- Strikethrough: ~~text~~ (double tildes only)
+- Pandoc subscript: H~2~O (single tildes, must pass through untouched, #11)
 - Literal tildes used as "approximately": ~60 seconds, ~130 words
 """
 
@@ -32,19 +33,24 @@ def test_double_tilde_strikethrough():
     assert result == "This is ~~strikethrough~~ text\n"
 
 
-def test_single_tilde_strikethrough():
-    """Single-tilde ~strikethrough~ is valid GFM; flowmark normalizes to ~~double~~."""
+def test_single_tilde_is_subscript_not_strikethrough():
+    """Single tildes are pandoc subscript (`H~2~O`), never strikethrough (#11).
+
+    GFM would allow `~text~`, but this fork targets pandoc markdown, so
+    single-tilde spans must pass through byte-identically.
+    """
     md = flowmark_markdown()
 
     result = md("This is ~strikethrough~ text\n")
-    assert result == "This is ~~strikethrough~~ text\n"
+    assert result == "This is ~strikethrough~ text\n"
+    assert md("H~2~O and x^2^.\n") == "H~2~O and x^2^.\n"
 
 
 def test_multiple_strikethroughs():
     """Multiple strikethrough spans in a single line."""
     md = flowmark_markdown()
 
-    result = md("~one~ and ~two~ items\n")
+    result = md("~~one~~ and ~~two~~ items\n")
     assert result == "~~one~~ and ~~two~~ items\n"
 
 

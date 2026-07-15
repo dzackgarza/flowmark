@@ -128,9 +128,15 @@ class CustomStrikethrough(gfm_elements.Strikethrough):
     punctuation is only right-flanking if followed by whitespace, punctuation,
     or end of string. Without this, `~100 (~200)` gets incorrectly parsed as
     strikethrough because `(~` matches as a closing delimiter.
+
+    Single tildes are never strikethrough here, although GFM allows them: this
+    fork targets pandoc markdown, where `~x~` is a *subscript* (`H~2~O`).
+    Parsing it as strikethrough re-emits doubled tildes, turning the subscript
+    into a strikeout (#11).  Only `~~` opens a span; single-tilde text passes
+    through untouched, which preserves subscripts byte-for-byte.
     """
 
-    pattern: re.Pattern[str] = re.compile(r"(?<!~)(~{1,2})(?!\s)([^~]+?)(?<!\s)\1(?!~)")
+    pattern: re.Pattern[str] = re.compile(r"(?<!~)(~~)(?!\s)([^~]+?)(?<!\s)\1(?!~)")
     priority: int = 5
     parse_children: bool = True
     parse_group: int = 2
