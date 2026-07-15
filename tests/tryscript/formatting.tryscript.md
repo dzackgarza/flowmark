@@ -238,6 +238,7 @@ Asserts full output with no truncation. This test validates:
 
 ````console
 $ flowmark fixtures/content/comprehensive.md
+Warning: fixtures/content/comprehensive.md: changed list spacing (tight/loose) without being asked to
 ---
 title: Comprehensive Test Document
 author: Test Suite
@@ -375,6 +376,7 @@ here.
 
 ```console
 $ flowmark fixtures/content/comprehensive.md > /tmp/first.md && flowmark /tmp/first.md > /tmp/second.md && diff /tmp/first.md /tmp/second.md && echo "idempotent"
+Warning: fixtures/content/comprehensive.md: changed list spacing (tight/loose) without being asked to
 idempotent
 ```
 

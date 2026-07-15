@@ -11,15 +11,18 @@ blocked. CI has pandoc and runs them.
 """
 
 import shutil
+from pathlib import Path
 
 import pytest
 
 from flowmark.pandoc_verify import (
+    LIST_SPACING,
+    UNBOLD_HEADING,
     MeaningChangedError,
     PandocUnavailableError,
     check_meaning_preserved,
 )
-from flowmark.reformat_api import reformat_text
+from flowmark.reformat_api import reformat_file, reformat_text
 from flowmark.typography.ellipses import ellipses
 
 pandocless = pytest.mark.skipif(
@@ -76,6 +79,46 @@ def test_oracle_catches_every_real_meaning_change(source: str, corrupted: str):
     """
     with pytest.raises(MeaningChangedError):
         check_meaning_preserved(source, corrupted)
+
+
+@pandocless
+@pytest.mark.parametrize(
+    ("source", "result", "expected_normalization"),
+    [
+        pytest.param("# **X**\n", "# X\n", UNBOLD_HEADING, id="unbold-heading"),
+        pytest.param("- a\n- b\n", "- a\n\n- b\n", LIST_SPACING, id="tight-to-loose-list"),
+    ],
+)
+def test_intentional_normalizations_warn_rather_than_fail(
+    source: str, result: str, expected_normalization: str
+):
+    """
+    Flowmark's opinionated normalizations do change pandoc's AST, so full AST
+    equality is not the contract. A heading's weight belongs to the `<h1>` or
+    `\\section`, not to hand-applied bold, and list spacing is standardized.
+    These must pass -- and be reported, since they are real AST changes.
+    """
+    assert check_meaning_preserved(source, result) == [expected_normalization]
+
+
+@pandocless
+@pytest.mark.parametrize(
+    ("source", "result"),
+    [
+        # Near-misses of the unbold carve-out: the gate must not have widened into
+        # "any lost Strong is fine".
+        pytest.param("**b** x\n", "b x\n", id="bold-lost-in-a-paragraph"),
+        pytest.param("# **X Y**\n", "# X\n", id="heading-loses-bold-and-a-word"),
+        pytest.param("# *X*\n", "# X\n", id="emph-not-bold-lost-in-heading"),
+        pytest.param("# X\n", "## X\n", id="heading-level-changed"),
+        # A real live defect (#11) must still be caught.
+        pytest.param("H~2~O\n", "H~~2~~O\n", id="subscript-becomes-strikeout"),
+    ],
+)
+def test_changes_beyond_the_normalizations_still_fail(source: str, result: str):
+    """The normalizations are carve-outs, not a general amnesty for lost markup."""
+    with pytest.raises(MeaningChangedError):
+        check_meaning_preserved(source, result)
 
 
 @pandocless
@@ -160,17 +203,27 @@ def test_ellipsis_spacing_is_not_a_meaning_change(source: str):
     reformat_text(source, verify=True, ellipses=True)
 
 
-def test_verify_is_off_by_default(monkeypatch: pytest.MonkeyPatch):
+def test_verify_is_on_by_default(monkeypatch: pytest.MonkeyPatch):
     """
-    Verification costs two pandoc subprocesses per document, so it must be opt-in.
+    The gate is a safety default: formatting must not proceed unverified unless
+    asked.
 
-    Hiding pandoc is what makes this a real test: with `verify` defaulting on,
-    `reformat_text` would raise `PandocUnavailableError` here. Asserting the
-    output alone would pass either way and prove nothing.
+    Hiding pandoc is what makes this a real test -- the check runs, so it demands
+    pandoc and raises. Asserting the output instead would pass either way and
+    prove nothing, which is exactly how the earlier version of this test managed
+    to be green while the default was wrong.
     """
     monkeypatch.setattr("flowmark.pandoc_verify.shutil.which", lambda _: None)
 
-    assert reformat_text("Hi.\n") == "Hi.\n"
+    with pytest.raises(PandocUnavailableError, match="pandoc"):
+        reformat_text("Hi.\n")
+
+
+def test_no_verify_skips_the_gate(monkeypatch: pytest.MonkeyPatch):
+    """`--no-verify` must actually bypass the check, not merely be accepted."""
+    monkeypatch.setattr("flowmark.pandoc_verify.shutil.which", lambda _: None)
+
+    assert reformat_text("Hi.\n", verify=False) == "Hi.\n"
 
 
 def test_missing_pandoc_fails_loudly(monkeypatch: pytest.MonkeyPatch):
@@ -182,3 +235,40 @@ def test_missing_pandoc_fails_loudly(monkeypatch: pytest.MonkeyPatch):
 
     with pytest.raises(PandocUnavailableError, match="pandoc"):
         reformat_text("Hi.\n", verify=True)
+
+
+def test_a_destructive_change_leaves_the_file_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """
+    The whole point of the gate: a document flowmark would damage keeps its
+    original bytes.
+
+    The gate is forced to fire rather than fed a document that currently trips it
+    (#10, #11): those are live bugs due to be fixed, and a test pinned to one
+    would start failing the day it is. What is under test here is the plumbing --
+    that a firing gate prevents the write -- not the detection, which
+    `test_oracle_catches_every_real_meaning_change` covers against real defects.
+    """
+    doc = tmp_path / "doc.md"
+    original = "# Title\n\nsome   text   here\n"
+    doc.write_text(original)
+
+    def refuse(source: str, result: str, label: str = "input") -> None:
+        raise MeaningChangedError(f"simulated meaning change in {label}")
+
+    monkeypatch.setattr("flowmark.reformat_api.check_meaning_preserved", refuse)
+
+    with pytest.raises(MeaningChangedError):
+        reformat_file(doc, output=None, inplace=True, nobackup=True)
+
+    assert doc.read_text() == original
+
+
+def test_preserved_construct_is_not_reported_as_applied() -> None:
+    """A document can *contain* a bold heading that formatting preserves while a
+    different normalization genuinely applies. Attribution must name only the
+    normalization that reconciled the difference, not every construct present."""
+    source = "# **Kept Bold**\n\n- a\n- b\n"
+    result = "# **Kept Bold**\n\n- a\n\n- b\n"
+    assert check_meaning_preserved(source, result) == [LIST_SPACING]

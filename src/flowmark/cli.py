@@ -134,12 +134,13 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
     )
     parser.add_argument(
         "--verify",
-        action="store_true",
-        default=False,
-        help="After reformatting, check with pandoc that the output parses to the same AST "
-        "as the input, and fail without writing if it does not. Catches any bug where "
-        "flowmark changes a document's meaning rather than just its spelling. "
-        "Requires the `pandoc` binary on PATH (only applies to Markdown mode)",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Check with pandoc that the output parses to the same AST as the input, and "
+        "fail without writing if it does not (default: enabled). This is a safety gate: it "
+        "catches any bug where flowmark would change a document's meaning rather than just "
+        "its spelling. Requires the `pandoc` binary on PATH. Pass --no-verify to skip the "
+        "check and write anyway (only applies to Markdown mode)",
     )
     parser.add_argument(
         "--list-spacing",
@@ -273,7 +274,9 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
     sentinel_parser.add_argument("-c", "--cleanups", action="store_true", default=_SENTINEL)
     sentinel_parser.add_argument("--smartquotes", action="store_true", default=_SENTINEL)
     sentinel_parser.add_argument("--ellipses", action="store_true", default=_SENTINEL)
-    sentinel_parser.add_argument("--verify", action="store_true", default=_SENTINEL)
+    sentinel_parser.add_argument(
+        "--verify", action=argparse.BooleanOptionalAction, default=_SENTINEL
+    )
     sentinel_parser.add_argument("--list-spacing", dest="list_spacing", default=_SENTINEL)
     sentinel_parser.add_argument("--extend-include", action="append", default=None)
     sentinel_parser.add_argument("--exclude", action="append", default=None)

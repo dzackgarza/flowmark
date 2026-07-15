@@ -6,6 +6,13 @@ an indented code block, curling a quote -- but never its *meaning*.  Pandoc owns
 the definition of meaning for the documents this fork targets, so it is the
 authority to ask, rather than re-deriving its grammar here and hoping.
 
+Full AST preservation is not the contract, though, and cannot be: flowmark is an
+opinionated formatter, and two of its normalizations deliberately change the
+parsed AST.  A bold heading is stripped because the `<h1>`/`\\section` element
+should carry that weight rather than hand-applied bolding, and list spacing is
+standardized.  Those are the formatter doing its job, so they are *reported* and
+allowed; see `_NORMALIZATIONS`.  Every other AST change is a bug and fails.
+
 Most of flowmark's deliberate spelling changes are already invisible to pandoc's
 reader, so they need no special handling here: indented and fenced code blocks
 both read as `CodeBlock`, footnote definitions read the same with or without a
@@ -41,6 +48,7 @@ import json
 import re
 import shutil
 import subprocess
+from itertools import combinations
 from typing import Any
 
 PANDOC_FORMAT = "markdown"
@@ -159,27 +167,117 @@ def _canonical(node: Any) -> Any:
     return out
 
 
-def check_meaning_preserved(source: str, result: str, label: str = "input") -> None:
+def _unbold_headings(node: Any) -> Any:
     """
-    Raise `MeaningChangedError` if `result` does not parse to the same pandoc AST
-    as `source`.
+    Unwrap a heading whose entire content is bold, on both sides of a comparison.
 
-    Args:
-        source: the original markdown.
-        result: the reformatted markdown.
-        label: how to name the document in the error message.
+    Flowmark's `cleanups` deliberately strips this: a heading's weight is the
+    `<h1>`/`\\section` element's job, and bolding it by hand adds nothing but
+    non-uniformity.  So `Header[Strong[x]]` -> `Header[x]` is a normalization,
+    not a loss -- but it *is* an AST change, so it is reported as one.
+    """
+    if isinstance(node, dict):
+        mapping: dict[str, Any] = node
+        out = {key: _unbold_headings(value) for key, value in mapping.items()}
+        if out.get("t") == "Header":
+            content: Any = out.get("c")
+            if isinstance(content, list) and len(content) == 3:  # pyright: ignore[reportUnknownArgumentType]
+                parts: list[Any] = content
+                inlines = parts[2]
+                if isinstance(inlines, list) and len(inlines) == 1:  # pyright: ignore[reportUnknownArgumentType]
+                    only: Any = inlines[0]
+                    if isinstance(only, dict) and only.get("t") == "Strong":  # pyright: ignore[reportUnknownMemberType]
+                        out["c"] = [parts[0], parts[1], only.get("c")]  # pyright: ignore[reportUnknownMemberType]
+        return out
+    if isinstance(node, list):
+        items: list[Any] = node
+        return [_unbold_headings(item) for item in items]
+    return node
+
+
+def _plain_to_para(node: Any) -> Any:
+    """
+    Treat `Plain` and `Para` as one, on both sides of a comparison.
+
+    This is the only thing that distinguishes a tight list from a loose one, and
+    standardizing list spacing is what `list_spacing` is for.  Same story as
+    headings: a deliberate normalization that shows up as an AST change.
+    """
+    if isinstance(node, dict):
+        mapping: dict[str, Any] = node
+        out = {key: _plain_to_para(value) for key, value in mapping.items()}
+        if out.get("t") == "Plain":
+            out["t"] = "Para"
+        return out
+    if isinstance(node, list):
+        items: list[Any] = node
+        return [_plain_to_para(item) for item in items]
+    return node
+
+
+UNBOLD_HEADING = "unbold_heading"
+"""Identifier for the heading-unbolding normalization; requested by `cleanups`."""
+
+LIST_SPACING = "list_spacing"
+"""Identifier for the tight/loose list normalization; requested by `list_spacing`."""
+
+_NORMALIZATIONS: list[tuple[str, str, Any]] = [
+    (UNBOLD_HEADING, "removed bold from a heading", _unbold_headings),
+    (LIST_SPACING, "changed list spacing (tight/loose)", _plain_to_para),
+]
+"""Flowmark's intentional, opinionated style normalizations.
+
+These genuinely change the parsed AST, so full AST preservation is not the
+contract.  They are not meaning being lost -- they are the formatter doing its
+job -- so they are allowed.  Every *other* AST change is a bug and raises.
+
+Callers are told which ones applied so they can report the ones the caller did
+not ask for: unbolding a heading is unremarkable under `cleanups` and worth
+saying out loud without it.
+"""
+
+
+def describe(normalization: str) -> str:
+    """Human-readable text for a normalization identifier."""
+    return next(text for key, text, _ in _NORMALIZATIONS if key == normalization)
+
+
+def check_meaning_preserved(source: str, result: str, label: str = "input") -> list[str]:
+    """
+    Check that `result` means what `source` did, allowing flowmark's intentional
+    style normalizations.
+
+    Returns the normalizations that were needed to reconcile the two, so the
+    caller can report them; an empty list means the ASTs matched outright.
+
+    Raises:
+        MeaningChangedError: if the two differ by anything else.
     """
     source_ast = pandoc_ast(source)
     result_ast = pandoc_ast(result)
-    if _canonical(source_ast) == _canonical(result_ast):
-        return
+    before_canon, after_canon = _canonical(source_ast), _canonical(result_ast)
+    if before_canon == after_canon:
+        return []
+
+    # Attribute the difference to the smallest set of normalizations that
+    # reconciles it.  Merely containing a construct a normalization rewrites
+    # (a bold heading or tight list that formatting *preserved*) must not
+    # count as that normalization having been applied.
+    for size in range(1, len(_NORMALIZATIONS) + 1):
+        for combo in combinations(_NORMALIZATIONS, size):
+            normalized_before, normalized_after = before_canon, after_canon
+            for _key, _text, normalize in combo:
+                normalized_before = normalize(normalized_before)
+                normalized_after = normalize(normalized_after)
+            if normalized_before == normalized_after:
+                return [key for key, _text, _normalize in combo]
 
     before, after = _block_types(source_ast), _block_types(result_ast)
     detail = (
         f"blocks {before} -> {after}" if before != after else "same block types, altered content"
     )
     raise MeaningChangedError(
-        f"Reformatting changed what pandoc reads from {label} ({detail}). "
-        f"This is a flowmark bug: the output was not written. "
-        f"Please report it with the input document."
+        f"Refusing to write {label}: reformatting would change what pandoc reads "
+        f"({detail}). The file is unchanged. This is a flowmark bug -- please report it "
+        f"with the input document. To skip this check and format anyway, pass --no-verify."
     )

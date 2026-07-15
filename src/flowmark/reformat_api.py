@@ -7,7 +7,12 @@ from flowmark.formats.flowmark_markdown import ListSpacing
 from flowmark.linewrapping.markdown_filling import fill_markdown
 from flowmark.linewrapping.text_filling import Wrap, fill_text
 from flowmark.linewrapping.text_wrapping import get_html_md_word_splitter
-from flowmark.pandoc_verify import check_meaning_preserved
+from flowmark.pandoc_verify import (
+    LIST_SPACING,
+    UNBOLD_HEADING,
+    check_meaning_preserved,
+    describe,
+)
 
 
 def reformat_text(
@@ -19,7 +24,7 @@ def reformat_text(
     smartquotes: bool = False,
     ellipses: bool = False,
     list_spacing: ListSpacing = ListSpacing.preserve,
-    verify: bool = False,
+    verify: bool = True,
     verify_label: str = "input",
 ) -> str:
     """
@@ -28,8 +33,9 @@ def reformat_text(
 
     Args:
         verify: Check with pandoc that the result parses to the same AST as the
-            input, and raise `MeaningChangedError` if not. Markdown mode only;
-            requires the pandoc binary on PATH.
+            input, and raise `MeaningChangedError` if not, rather than return a
+            document whose meaning changed. On by default; requires the pandoc
+            binary on PATH. Markdown mode only.
         verify_label: How to name the document in a verification error.
     """
     if plaintext:
@@ -56,7 +62,22 @@ def reformat_text(
             list_spacing=list_spacing,
         )
         if verify:
-            check_meaning_preserved(text, result, verify_label)
+            # Anything but flowmark's intentional normalizations raises here, so the
+            # caller never gets a document whose meaning changed.
+            applied = check_meaning_preserved(text, result, verify_label)
+            # Asking for a normalization and getting it is not news; getting one
+            # without asking is, so only the latter is reported.
+            requested = {
+                UNBOLD_HEADING: cleanups,
+                LIST_SPACING: list_spacing is not ListSpacing.preserve,
+            }
+            for normalization in applied:
+                if not requested.get(normalization, False):
+                    print(
+                        f"Warning: {verify_label}: {describe(normalization)} "
+                        f"without being asked to",
+                        file=sys.stderr,
+                    )
 
     return result
 
@@ -74,7 +95,7 @@ def reformat_file(
     ellipses: bool = False,
     make_parents: bool = True,
     list_spacing: ListSpacing = ListSpacing.preserve,
-    verify: bool = False,
+    verify: bool = True,
 ) -> None:
     """
     Reformat text or markdown and wrap lines on the given files.
@@ -98,7 +119,8 @@ def reformat_file(
         make_parents: Whether to make parent directories if they don't exist.
         list_spacing: Control list spacing: "preserve" (default), "loose", or "tight".
         verify: Check with pandoc that reformatting did not change the document's
-            parsed AST, and write nothing if it did (only applies to Markdown mode).
+            parsed AST, and write nothing if it did. On by default (only applies
+            to Markdown mode).
     """
     read_stdin = path == "-"
     write_stdout = output == "-" or not output
@@ -151,7 +173,7 @@ def reformat_files(
     ellipses: bool = False,
     make_parents: bool = True,
     list_spacing: ListSpacing = ListSpacing.preserve,
-    verify: bool = False,
+    verify: bool = True,
 ) -> None:
     """
     Reformat multiple files with the same options.
@@ -170,7 +192,8 @@ def reformat_files(
         make_parents: Whether to make parent directories if they don't exist.
         list_spacing: Control list spacing: "preserve" (default), "loose", or "tight".
         verify: Check with pandoc that reformatting did not change any document's
-            parsed AST, and write nothing if it did (only applies to Markdown mode).
+            parsed AST, and write nothing if it did. On by default (only applies
+            to Markdown mode).
     """
     if len(files) == 1 and files[0] == "-":
         # Single stdin case - use original function
