@@ -360,9 +360,7 @@ class CustomInlineMath(inline.InlineElement):
 
     priority = 7
     parse_children = False
-    pattern = re.compile(
-        r"(?<!\\)(?<!\$)(\${1,2})(?!\$)((?:\\.|[^\n\\$])+?)(?<!\\)\1(?!\$)"
-    )
+    pattern = re.compile(r"(?<!\\)(?<!\$)(\${1,2})(?!\$)((?:\\.|[^\n\\$])+?)(?<!\\)\1(?!\$)")
 
     delimiter: str
     content: str
@@ -375,6 +373,42 @@ class CustomInlineMath(inline.InlineElement):
     @classmethod
     def get_type(cls, snake_case: bool = False) -> str:
         return "inline_math" if snake_case else "InlineMath"
+
+
+class CustomRawInlineTex(inline.InlineElement):
+    """
+    A raw LaTeX command with brace arguments, e.g. ``\\overline{ \\mathcal{M}_{1} }``.
+
+    Pandoc reads such a run as a raw TeX inline and passes it through verbatim, so
+    its underscores are LaTeX subscripts, not Markdown emphasis. Parsed here as a
+    custom inline element (``parse_children = False``) for the same reason as
+    `CustomInlineMath`: otherwise two underscores in separate commands pair up as
+    an emphasis span and get re-rendered with ``*``, producing invalid LaTeX.
+
+    Only commands carrying at least one brace group are matched. A bare ``\\alpha``
+    has no braces to hide an underscore in, and matching escapes like ``\\_`` or the
+    ``\\[``/``\\(`` math delimiters would break their own handling -- the leading
+    ``[a-zA-Z]+`` excludes all of those.
+
+    Brace arguments may nest one level (``\\overline{ \\mathcal{M}_{1} }``), which
+    covers ordinary mathematical prose; `re` cannot match arbitrary nesting.
+    """
+
+    priority = 7
+    parse_children = False
+    # The whole match is the construct; there is no inner group to descend into.
+    parse_group = 0
+    pattern = re.compile(r"\\[a-zA-Z]+(?:\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})+")
+
+    content: str
+
+    def __init__(self, match: re.Match[str]) -> None:
+        self.content = match.group(0)
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "raw_inline_tex" if snake_case else "RawInlineTex"
 
 
 class CustomFencedDiv(block.BlockElement):
@@ -434,10 +468,16 @@ class CustomFencedDiv(block.BlockElement):
         source.next_line()
         source.consume()
 
-        closer_pat = re.compile(r" {,3}(:{3,})\s*$")
+        # A fence line carrying an attribute spec opens a div; a bare colon run
+        # closes one. Track depth so a nested div's closer does not terminate this
+        # one -- otherwise the remainder of this div is parsed at top level and the
+        # renderer emits a closer the source never had.
+        closer_pat = re.compile(r" {,3}(:{3,})[^\n\S]*$")
+        opener_pat = re.compile(r" {,3}:{3,}[^\n\S]*\S")
 
         lines: list[str] = []
         closer = fence
+        depth = 0
 
         while not source.exhausted:
             line = source.next_line()
@@ -446,8 +486,12 @@ class CustomFencedDiv(block.BlockElement):
             source.consume()
             closer_match = closer_pat.match(line)
             if closer_match:
-                closer = closer_match.group(1)
-                break
+                if depth == 0:
+                    closer = closer_match.group(1)
+                    break
+                depth -= 1
+            elif opener_pat.match(line):
+                depth += 1
             prefix_len = source.match_prefix(prefix, line)
             if prefix_len >= 0:
                 line = line[prefix_len:]
@@ -527,6 +571,30 @@ class CustomLatexEnvironment(block.BlockElement):
         return "latex_environment" if snake_case else "LatexEnvironment"
 
 
+class CustomFootnoteDef(footnote.FootnoteDef):
+    """
+    Footnote definition that also accepts the label alone on its line.
+
+    marko's pattern ends ``(?=\\S| {4})``, so it only matches when content or a
+    four-space indent follows the colon on the same line. Pandoc also allows::
+
+        [^1]:
+            First para.
+
+    Without this, the label line is not a definition at all and its indented body
+    is parsed as an unrelated code block.
+    """
+
+    pattern = re.compile(r" {,3}\[\^([^\]]+)\]:[^\n\S]*(?=\S| {4}|\n|$)")
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        # Must stay "FootnoteDef" so the renderer dispatches to
+        # render_footnote_def and marko's footnote bookkeeping still finds it.
+        return "footnote_def" if snake_case else "FootnoteDef"
+
+
 class CustomParagraph(block.Paragraph):
     """
     Paragraph that also checks our custom block elements on continuation
@@ -551,9 +619,14 @@ class CustomParagraph(block.Paragraph):
         # whose inline code span straddles a hard line break drives marko's
         # parser into an infinite loop.
         prev_match = source.match
+        # FootnoteDef is included so a definition on the line after another one
+        # starts its own footnote instead of being swallowed as a lazy
+        # continuation of the previous definition's paragraph. Pandoc requires no
+        # blank line between consecutive definitions.
+        keys = ("DisplayMath", "FencedDiv", "LatexEnvironment", "FootnoteDef")
         matched = any(
-            parser.block_elements[key].match(source)
-            for key in ("DisplayMath", "FencedDiv", "LatexEnvironment")
+            key in parser.block_elements and parser.block_elements[key].match(source)
+            for key in keys
         )
         source.match = prev_match
         return matched
@@ -582,7 +655,9 @@ class CustomParser(Parser):
             reordered_inline_elements[name] = element
             if name == "CodeSpan":
                 reordered_inline_elements["InlineMath"] = CustomInlineMath
+                reordered_inline_elements["RawInlineTex"] = CustomRawInlineTex
         assert "InlineMath" in reordered_inline_elements
+        assert "RawInlineTex" in reordered_inline_elements
         self.inline_elements = reordered_inline_elements
 
 
@@ -827,6 +902,11 @@ class MarkdownNormalizer(Renderer):
         self._current_inline_text += text
         return text
 
+    def render_raw_inline_tex(self, element: CustomRawInlineTex) -> str:
+        text = element.content
+        self._current_inline_text += text
+        return text
+
     def render_fenced_div(self, element: CustomFencedDiv) -> str:
         self._skip_next_blank_line = False
         # Pandoc's canonical spacing is `::: {.foo}`; both spellings carry the
@@ -1051,6 +1131,11 @@ class MarkdownNormalizer(Renderer):
         with self.container(label_part, "    "):
             content = self.render_children(element)
 
+        # When the body starts on the line below the label (pandoc allows the
+        # label alone on its line), the label's trailing space would be left
+        # dangling at end of line.
+        content = re.sub(r"^(\[\^[^\]]+\]:)[^\n\S]+$", r"\1", content, count=1, flags=re.MULTILINE)
+
         # Set up state for the *next* block element using the restored outer secondary prefix.
         self._prefix = self._second_prefix
         self._suppress_item_break = True  # This definition acts as a block separator.
@@ -1187,6 +1272,8 @@ def flowmark_markdown(
                     e not in custom_parser.block_elements and e not in custom_parser.inline_elements
                 )
                 custom_parser.add_element(e)
+            # Accept pandoc's label-alone-on-its-line definition form.
+            custom_parser.block_elements["FootnoteDef"] = CustomFootnoteDef
             # GFM's Paragraph overwrites our CustomParagraph (same "Paragraph" key).
             # Re-register so that break_paragraph checks our custom block elements.
             custom_parser.block_elements["Paragraph"] = CustomParagraph
