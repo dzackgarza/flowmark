@@ -7,6 +7,7 @@ from flowmark.formats.flowmark_markdown import ListSpacing
 from flowmark.linewrapping.markdown_filling import fill_markdown
 from flowmark.linewrapping.text_filling import Wrap, fill_text
 from flowmark.linewrapping.text_wrapping import get_html_md_word_splitter
+from flowmark.pandoc_verify import check_meaning_preserved
 
 
 def reformat_text(
@@ -18,10 +19,18 @@ def reformat_text(
     smartquotes: bool = False,
     ellipses: bool = False,
     list_spacing: ListSpacing = ListSpacing.preserve,
+    verify: bool = False,
+    verify_label: str = "input",
 ) -> str:
     """
     Reformat text or markdown and wrap lines. Simply a convenient wrapper
     around `fill_text()` and `fill_markdown()` with reasonable defaults.
+
+    Args:
+        verify: Check with pandoc that the result parses to the same AST as the
+            input, and raise `MeaningChangedError` if not. Markdown mode only;
+            requires the pandoc binary on PATH.
+        verify_label: How to name the document in a verification error.
     """
     if plaintext:
         # Plaintext mode
@@ -46,6 +55,8 @@ def reformat_text(
             ellipses=ellipses,
             list_spacing=list_spacing,
         )
+        if verify:
+            check_meaning_preserved(text, result, verify_label)
 
     return result
 
@@ -63,6 +74,7 @@ def reformat_file(
     ellipses: bool = False,
     make_parents: bool = True,
     list_spacing: ListSpacing = ListSpacing.preserve,
+    verify: bool = False,
 ) -> None:
     """
     Reformat text or markdown and wrap lines on the given files.
@@ -85,6 +97,8 @@ def reformat_file(
             (only applies to Markdown mode).
         make_parents: Whether to make parent directories if they don't exist.
         list_spacing: Control list spacing: "preserve" (default), "loose", or "tight".
+        verify: Check with pandoc that reformatting did not change the document's
+            parsed AST, and write nothing if it did (only applies to Markdown mode).
     """
     read_stdin = path == "-"
     write_stdout = output == "-" or not output
@@ -98,7 +112,16 @@ def reformat_file(
         text = Path(path).read_text()
 
     result = reformat_text(
-        text, width, plaintext, semantic, cleanups, smartquotes, ellipses, list_spacing
+        text,
+        width,
+        plaintext,
+        semantic,
+        cleanups,
+        smartquotes,
+        ellipses,
+        list_spacing,
+        verify=verify,
+        verify_label=str(path),
     )
 
     if inplace:
@@ -128,6 +151,7 @@ def reformat_files(
     ellipses: bool = False,
     make_parents: bool = True,
     list_spacing: ListSpacing = ListSpacing.preserve,
+    verify: bool = False,
 ) -> None:
     """
     Reformat multiple files with the same options.
@@ -145,6 +169,8 @@ def reformat_files(
         ellipses: Convert three dots to ellipsis character.
         make_parents: Whether to make parent directories if they don't exist.
         list_spacing: Control list spacing: "preserve" (default), "loose", or "tight".
+        verify: Check with pandoc that reformatting did not change any document's
+            parsed AST, and write nothing if it did (only applies to Markdown mode).
     """
     if len(files) == 1 and files[0] == "-":
         # Single stdin case - use original function
@@ -161,6 +187,7 @@ def reformat_files(
             ellipses=ellipses,
             make_parents=make_parents,
             list_spacing=list_spacing,
+            verify=verify,
         )
         return
 
@@ -190,4 +217,5 @@ def reformat_files(
             ellipses=ellipses,
             make_parents=make_parents,
             list_spacing=list_spacing,
+            verify=verify,
         )

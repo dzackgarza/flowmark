@@ -40,6 +40,7 @@ class Options:
     cleanups: bool
     smartquotes: bool
     ellipses: bool
+    verify: bool
     inplace: bool
     nobackup: bool
     version: bool
@@ -130,6 +131,15 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         default=False,
         help="Convert three dots (...) to ellipsis character (…) with normalized spacing "
         "(only applies to Markdown mode)",
+    )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        default=False,
+        help="After reformatting, check with pandoc that the output parses to the same AST "
+        "as the input, and fail without writing if it does not. Catches any bug where "
+        "flowmark changes a document's meaning rather than just its spelling. "
+        "Requires the `pandoc` binary on PATH (only applies to Markdown mode)",
     )
     parser.add_argument(
         "--list-spacing",
@@ -246,6 +256,7 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         "cleanups": "cleanups",
         "smartquotes": "smartquotes",
         "ellipses": "ellipses",
+        "verify": "verify",
         "list_spacing": "list_spacing",
         "extend_include": "extend_include",
         "exclude": "exclude",
@@ -262,6 +273,7 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
     sentinel_parser.add_argument("-c", "--cleanups", action="store_true", default=_SENTINEL)
     sentinel_parser.add_argument("--smartquotes", action="store_true", default=_SENTINEL)
     sentinel_parser.add_argument("--ellipses", action="store_true", default=_SENTINEL)
+    sentinel_parser.add_argument("--verify", action="store_true", default=_SENTINEL)
     sentinel_parser.add_argument("--list-spacing", dest="list_spacing", default=_SENTINEL)
     sentinel_parser.add_argument("--extend-include", action="append", default=None)
     sentinel_parser.add_argument("--exclude", action="append", default=None)
@@ -310,6 +322,7 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
             cleanups=opts.cleanups,
             smartquotes=opts.smartquotes,
             ellipses=opts.ellipses,
+            verify=opts.verify,
             inplace=opts.inplace,
             nobackup=opts.nobackup,
             version=opts.version,
@@ -470,6 +483,7 @@ def main(args: list[str] | None = None) -> int:
             cleanups=options.cleanups,
             smartquotes=options.smartquotes,
             ellipses=options.ellipses,
+            verify=options.verify,
             make_parents=True,
             list_spacing=options.list_spacing,
         )
