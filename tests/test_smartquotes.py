@@ -38,7 +38,6 @@ def test_possessives_at_end_of_words():
 
 def test_patterns_left_unchanged():
     """Test patterns that should remain unchanged."""
-    assert smart_quotes("In the '60s") == "In the '60s"  # not worth special casing
     assert smart_quotes('x="foo"') == 'x="foo"'
     assert smart_quotes("x='foo'") == "x='foo'"
     assert smart_quotes("Blah'blah'blah") == "Blah'blah'blah"
@@ -350,9 +349,10 @@ def test_stray_quote_blocks_later_single_span():
 
 
 def test_stray_quote_after_span_does_not_block():
-    """A stray quote AFTER a span cannot capture it, so the span still converts."""
+    """A stray quote AFTER a span cannot capture it, so the span still converts;
+    the trailing digit elision then curls too (nothing left to pair with it)."""
     assert (
-        smart_quotes("rock 'n' roll and the '90s forever") == "rock ‘n’ roll and the '90s forever"
+        smart_quotes("rock 'n' roll and the '90s forever") == "rock ‘n’ roll and the ’90s forever"
     )
 
 
@@ -374,3 +374,26 @@ def test_attribute_style_pair_does_not_block():
     """x='foo' is not in prose position, and its quotes pair with each other, so
     it does not block later spans."""
     assert smart_quotes("x='foo' and I said 'hi' ok") == "x='foo' and I said ‘hi’ ok"
+
+
+def test_digit_elision_apostrophe_curls_when_unambiguous():
+    """A lone '90s is an apostrophe to a markdown reader either way (#13)."""
+    assert smart_quotes("Back in the '90s.") == "Back in the ’90s."
+    assert smart_quotes("the '80s and '90s were rad") == "the ’80s and ’90s were rad"
+    # Inside a converted double span it is equally unambiguous.
+    assert smart_quotes('He said "the \'90s were fun" then.') == "He said “the ’90s were fun” then."
+
+
+def test_digit_elision_stays_straight_when_a_closer_follows():
+    """A later closing-capable quote would pair with the elision as a quotation,
+    so it must stay straight -- this is the rock-'n'-roll line's shape."""
+    assert (
+        smart_quotes("Apostrophes: the cat's meow, the '90s, rock 'n' roll.")
+        == "Apostrophes: the cat’s meow, the '90s, rock 'n' roll."
+    )
+
+
+def test_letter_elisions_never_curl():
+    """'til/'em read as open quotes to a markdown reader; only digits are safe."""
+    assert smart_quotes("'til we meet") == "'til we meet"
+    assert smart_quotes("don't stop 'til you drop") == "don’t stop 'til you drop"

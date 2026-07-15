@@ -23,6 +23,16 @@ QUOTE_PATTERN: Pattern[str] = re.compile(
 # move which text the document quotes.  Mirrors QUOTE_PATTERN's prefix class.
 OPENER_SHAPED_PATTERN: Pattern[str] = re.compile(r"(?:^|[\s—])(['\"])(?=\S)", re.MULTILINE)
 
+# An elision apostrophe before a digit: '90s, '20s.  A markdown reader treats a
+# lone one as an apostrophe rather than an open quote -- two of them don't even
+# pair with each other -- so curling it is meaning-neutral.  The exception is a
+# closing-capable straight quote later in the segment (one preceded by
+# non-whitespace, like the trailing quote of 'n'): the reader then pairs the
+# elision with *it* as a quotation, so the elision must stay straight.
+# Letter elisions ('til, 'em) are NOT safe: a reader takes them as open quotes.
+DIGIT_ELISION_PATTERN: Pattern[str] = re.compile(r"(^|\s)'(?=\d)", re.MULTILINE)
+CLOSER_CAPABLE_PATTERN: Pattern[str] = re.compile(r"\S'")
+
 
 def is_multi_paragraph(text: str) -> bool:
     """Check if text contains paragraph breaks (two newlines with optional whitespace)."""
@@ -111,7 +121,15 @@ def _apply_smart_quotes_to_text(text: str) -> str:
                 # Replace the single quote with apostrophe
                 words[i] = re.sub(r"\'", "\u2019", word)
 
-    return "".join(words)
+    result = "".join(words)
+
+    # Curl digit elisions ('90s) where no later quote could pair with them.
+    def replace_elision(match: re.Match[str]) -> str:
+        if CLOSER_CAPABLE_PATTERN.search(result, match.end()):
+            return match.group(0)
+        return match.group(1) + "\u2019"
+
+    return DIGIT_ELISION_PATTERN.sub(replace_elision, result)
 
 
 def smart_quotes(text: str) -> str:
@@ -146,6 +164,13 @@ def smart_quotes(text: str) -> str:
 
     Jill's -> Jill’s
     James' -> James’
+    the '80s and '90s -> the ’80s and ’90s
+
+    Digit elisions curl only when no later straight quote could pair with
+    them, and letter elisions ('til, 'em) never do -- a reader takes those
+    as open quotes:
+
+    'til we meet -> 'til we meet
 
     Other patterns are unchanged:
 
