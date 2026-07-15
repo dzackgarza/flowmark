@@ -10,6 +10,7 @@ from flowmark.linewrapping.text_wrapping import get_html_md_word_splitter
 from flowmark.pandoc_verify import (
     LIST_SPACING,
     UNBOLD_HEADING,
+    MeaningChangedError,
     check_meaning_preserved,
     describe,
 )
@@ -220,6 +221,7 @@ def reformat_files(
             "Cannot specify output file when processing multiple files (use --inplace instead)"
         )
 
+    refused = 0
     for file_path in files:
         if inplace:
             # Process each file in-place
@@ -227,18 +229,32 @@ def reformat_files(
         else:
             # Process each file to stdout
             output = "-"
-        reformat_file(
-            path=file_path,
-            output=output,
-            width=width,
-            inplace=inplace,
-            nobackup=nobackup,
-            plaintext=plaintext,
-            semantic=semantic,
-            cleanups=cleanups,
-            smartquotes=smartquotes,
-            ellipses=ellipses,
-            make_parents=make_parents,
-            list_spacing=list_spacing,
-            verify=verify,
+        try:
+            reformat_file(
+                path=file_path,
+                output=output,
+                width=width,
+                inplace=inplace,
+                nobackup=nobackup,
+                plaintext=plaintext,
+                semantic=semantic,
+                cleanups=cleanups,
+                smartquotes=smartquotes,
+                ellipses=ellipses,
+                make_parents=make_parents,
+                list_spacing=list_spacing,
+                verify=verify,
+            )
+        except MeaningChangedError as e:
+            # The guard already protected this document (it was left
+            # byte-identical); a per-file refusal must not abort the batch.
+            print(f"Warning: {e}", file=sys.stderr)
+            refused += 1
+    if refused:
+        print(
+            f"Warning: {refused} file{'s' if refused != 1 else ''} left unformatted "
+            "because reformatting would have changed the pandoc-parsed meaning "
+            "(see warnings above; each is a flowmark bug or ambiguous markdown "
+            "worth reporting).",
+            file=sys.stderr,
         )
