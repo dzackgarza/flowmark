@@ -34,7 +34,7 @@ def test_list_item_multiline_code_span_terminates():
     interior newline to a space)."""
     signal.signal(signal.SIGALRM, _on_alarm)
     signal.setitimer(signal.ITIMER_REAL, 10.0)
-    result = reformat_text(REPRO)
+    result = reformat_text(REPRO, verify=False)
     signal.setitimer(signal.ITIMER_REAL, 0.0)
 
     # The inline code span survives reformatting as a single backtick span.

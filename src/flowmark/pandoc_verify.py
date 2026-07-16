@@ -80,6 +80,34 @@ class MeaningChangedError(ValueError):
     """Raised when reformatting changed the document's parsed AST."""
 
 
+def _pandoc_exe() -> str:
+    pandoc_exe = shutil.which("pandoc")
+    if pandoc_exe is None:
+        raise PandocUnavailableError(
+            "Verification requires the `pandoc` binary on PATH. "
+            "Install pandoc (https://pandoc.org/installing.html) or drop --verify."
+        )
+    return pandoc_exe
+
+
+def _spawn_pandoc(pandoc_exe: str) -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        [pandoc_exe, "-f", PANDOC_FORMAT, "-t", "json"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _collect_blocks(proc: subprocess.Popen[str], markdown_text: str) -> list[Any]:
+    stdout, stderr = proc.communicate(markdown_text)
+    if proc.returncode != 0:
+        raise PandocParseError(f"pandoc could not parse the document: {stderr.strip()}")
+    blocks: list[Any] = json.loads(stdout)["blocks"]
+    return blocks
+
+
 def pandoc_ast(markdown_text: str) -> list[Any]:
     """
     Return pandoc's parsed block list for `markdown_text`.
@@ -88,25 +116,26 @@ def pandoc_ast(markdown_text: str) -> list[Any]:
         PandocUnavailableError: if the pandoc binary is not on PATH.
         PandocParseError: if pandoc ran but could not parse the document.
     """
-    pandoc_exe = shutil.which("pandoc")
-    if pandoc_exe is None:
-        raise PandocUnavailableError(
-            "Verification requires the `pandoc` binary on PATH. "
-            "Install pandoc (https://pandoc.org/installing.html) or drop --verify."
-        )
+    return _collect_blocks(_spawn_pandoc(_pandoc_exe()), markdown_text)
 
-    proc = subprocess.run(
-        [pandoc_exe, "-f", PANDOC_FORMAT, "-t", "json"],
-        input=markdown_text,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise PandocParseError(f"pandoc could not parse the document: {proc.stderr.strip()}")
 
-    blocks: list[Any] = json.loads(proc.stdout)["blocks"]
-    return blocks
+def _pandoc_ast_pair(source: str, result: str) -> tuple[list[Any], list[Any]]:
+    """
+    Parse both documents with two concurrent pandoc processes.
+
+    A comparison always needs both trees, and pandoc's startup dominates the
+    cost, so overlapping the two runs roughly halves verification latency.
+    """
+    pandoc_exe = _pandoc_exe()
+    source_proc = _spawn_pandoc(pandoc_exe)
+    result_proc = _spawn_pandoc(pandoc_exe)
+    try:
+        source_blocks = _collect_blocks(source_proc, source)
+    except Exception:
+        result_proc.kill()
+        result_proc.communicate()
+        raise
+    return source_blocks, _collect_blocks(result_proc, result)
 
 
 def _block_types(blocks: list[Any]) -> list[str]:
@@ -256,8 +285,7 @@ def check_meaning_preserved(source: str, result: str, label: str = "input") -> l
     Raises:
         MeaningChangedError: if the two differ by anything else.
     """
-    source_ast = pandoc_ast(source)
-    result_ast = pandoc_ast(result)
+    source_ast, result_ast = _pandoc_ast_pair(source, result)
     before_canon, after_canon = _canonical(source_ast), _canonical(result_ast)
     if before_canon == after_canon:
         return []

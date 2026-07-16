@@ -62,7 +62,11 @@ def reformat_text(
             ellipses=ellipses,
             list_spacing=list_spacing,
         )
-        if verify:
+        if verify and result != text:
+            # An unchanged document trivially preserves meaning, so only a real
+            # change pays for the pandoc comparison (reformatting an
+            # already-formatted document is the common case).
+            #
             # Anything but flowmark's intentional normalizations raises here, so the
             # caller never gets a document whose meaning changed.
             applied = check_meaning_preserved(text, result, verify_label)

@@ -212,11 +212,18 @@ def test_verify_is_on_by_default(monkeypatch: pytest.MonkeyPatch):
     pandoc and raises. Asserting the output instead would pass either way and
     prove nothing, which is exactly how the earlier version of this test managed
     to be green while the default was wrong.
+
+    The document must be one reformatting actually changes: an unchanged result
+    is itself proof that meaning is preserved, so verification is skipped for it
+    (and rightly needs no pandoc).
     """
     monkeypatch.setattr("flowmark.pandoc_verify.shutil.which", lambda _: None)
 
     with pytest.raises(PandocUnavailableError, match="pandoc"):
-        reformat_text("Hi.\n")
+        reformat_text(
+            "Sentence one is here. Sentence two follows it. Sentence three ends the\n"
+            "paragraph now, quite long indeed, wrapping past width.\n"
+        )
 
 
 def test_no_verify_skips_the_gate(monkeypatch: pytest.MonkeyPatch):
@@ -229,12 +236,18 @@ def test_no_verify_skips_the_gate(monkeypatch: pytest.MonkeyPatch):
 def test_missing_pandoc_fails_loudly(monkeypatch: pytest.MonkeyPatch):
     """
     A missing binary must raise, not silently skip the check. A verification that
-    quietly passes when it cannot run is worse than none.
+    quietly passes when it cannot run is worse than none. (An unchanged result is
+    the one exception: equality is itself the proof, so no pandoc is needed --
+    hence a document reformatting actually changes.)
     """
     monkeypatch.setattr("flowmark.pandoc_verify.shutil.which", lambda _: None)
 
     with pytest.raises(PandocUnavailableError, match="pandoc"):
-        reformat_text("Hi.\n", verify=True)
+        reformat_text(
+            "Sentence one is here. Sentence two follows it. Sentence three ends the\n"
+            "paragraph now, quite long indeed, wrapping past width.\n",
+            verify=True,
+        )
 
 
 def test_a_destructive_change_leaves_the_file_untouched(
@@ -272,3 +285,11 @@ def test_preserved_construct_is_not_reported_as_applied() -> None:
     source = "# **Kept Bold**\n\n- a\n- b\n"
     result = "# **Kept Bold**\n\n- a\n\n- b\n"
     assert check_meaning_preserved(source, result) == [LIST_SPACING]
+
+
+def test_unchanged_output_needs_no_pandoc(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unchanged result is itself proof that meaning is preserved, so the
+    common already-formatted case pays for no pandoc runs at all."""
+    monkeypatch.setattr("flowmark.pandoc_verify.shutil.which", lambda _: None)
+
+    assert reformat_text("Hi.\n") == "Hi.\n"
