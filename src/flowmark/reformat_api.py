@@ -8,6 +8,7 @@ from flowmark.linewrapping.markdown_filling import fill_markdown
 from flowmark.linewrapping.text_filling import Wrap, fill_text
 from flowmark.linewrapping.text_wrapping import get_html_md_word_splitter
 from flowmark.pandoc_verify import (
+    LAZY_LIST,
     LIST_SPACING,
     SMART_QUOTES,
     UNBOLD_HEADING,
@@ -77,6 +78,9 @@ def reformat_text(
                 UNBOLD_HEADING: cleanups,
                 LIST_SPACING: list_spacing is not ListSpacing.preserve,
                 SMART_QUOTES: smartquotes,
+                # No flag asks for this one, so it is always worth saying: the
+                # author's bullets under a paragraph line became a real list.
+                LAZY_LIST: False,
             }
             for normalization in applied:
                 if not requested.get(normalization, False):

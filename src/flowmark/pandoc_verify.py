@@ -302,6 +302,144 @@ def _as_quoted(item: Any) -> tuple[tuple[str, str], Any] | None:
     return None if marks is None else (marks, parts[1])
 
 
+_BULLET_MARKERS = ("-", "*", "+")
+"""The three CommonMark bullet characters.
+
+Pandoc's `BulletList` does not record which one the source used, so reconstructing
+the paragraph a list came from means trying each.  The rest of the text has to
+match exactly either way, so a wrong guess simply fails to reconcile.
+"""
+
+_PARAGRAPH_BLOCKS = frozenset({"Para", "Plain"})
+
+
+def _list_items_and_markers(list_block: dict[str, Any]) -> tuple[list[Any], list[list[str]]]:
+    """
+    The items of `list_block`, and the candidate marker spellings for them.
+
+    Ordered lists are exact -- pandoc records the start number and the delimiter --
+    so they yield a single candidate.  Bullet lists yield one per bullet character.
+    A block that is not a list yields no items and no candidates.
+    """
+    kind = list_block.get("t")
+    content: Any = list_block.get("c")
+
+    if kind == "BulletList" and isinstance(content, list):
+        items: list[Any] = content
+        return items, [[marker] * len(items) for marker in _BULLET_MARKERS]
+
+    if kind == "OrderedList" and isinstance(content, list) and len(content) == 2:  # pyright: ignore[reportUnknownArgumentType]
+        parts: list[Any] = content
+        attrs: Any = parts[0]
+        ordered_items: Any = parts[1]
+        if not isinstance(attrs, list) or len(attrs) != 3 or not isinstance(ordered_items, list):  # pyright: ignore[reportUnknownArgumentType]
+            return [], []
+        triple: list[Any] = attrs
+        start: Any = triple[0]
+        delim: Any = triple[2]
+        first = start if isinstance(start, int) else 1
+        suffix = ")" if isinstance(delim, dict) and delim.get("t") == "OneParen" else "."  # pyright: ignore[reportUnknownMemberType]
+        listed: list[Any] = ordered_items
+        return listed, [[f"{first + offset}{suffix}" for offset in range(len(listed))]]
+
+    return [], []
+
+
+def _flatten_list_into_paragraph(para: dict[str, Any], list_block: dict[str, Any]) -> list[Any]:
+    """
+    Spell `para` followed by `list_block` back out as one paragraph's inlines, once
+    per candidate marker set.
+
+    Each marker is emitted surrounded by `Space`, which is what a line join between
+    the paragraph and the marker actually produces.  Items containing anything but
+    a single `Para`/`Plain` are refused: a lazy continuation cannot produce nested
+    blocks, so a list that has them was not made this way.
+    """
+    para_inlines: Any = para.get("c")
+    if not isinstance(para_inlines, list):
+        return []
+
+    items, marker_candidates = _list_items_and_markers(list_block)
+    candidates: list[Any] = []
+    for markers in marker_candidates:
+        flat: list[Any] = list(para_inlines)  # pyright: ignore[reportUnknownArgumentType]
+        usable = True
+        for marker, item in zip(markers, items, strict=False):
+            if not isinstance(item, list):
+                usable = False
+                break
+            blocks: list[Any] = item
+            flat.append({"t": "Space"})
+            flat.append({"t": "Str", "c": marker})
+            for inner in blocks:
+                if not isinstance(inner, dict) or inner.get("t") not in _PARAGRAPH_BLOCKS:  # pyright: ignore[reportUnknownMemberType]
+                    usable = False
+                    break
+                inner_inlines: Any = inner.get("c")  # pyright: ignore[reportUnknownMemberType]
+                if not isinstance(inner_inlines, list):
+                    usable = False
+                    break
+                flat.append({"t": "Space"})
+                flat.extend(inner_inlines)  # pyright: ignore[reportUnknownArgumentType]
+            if not usable:
+                break
+        if usable:
+            candidates.append(flat)
+    return candidates
+
+
+def _collapse_lazy_lists_at_level(before: list[Any], after: list[Any]) -> list[Any]:
+    """
+    Rewrite `after` so a paragraph that grew a list beside it becomes the single
+    paragraph `before` has there -- but only when flattening reproduces `before`
+    exactly.
+    """
+    out: list[Any] = []
+    before_index = 0
+    after_index = 0
+    while after_index < len(after):
+        para: Any = after[after_index]
+        follows: Any = after[after_index + 1] if after_index + 1 < len(after) else None
+        original: Any = before[before_index] if before_index < len(before) else None
+        if (
+            isinstance(original, dict)
+            and isinstance(para, dict)
+            and isinstance(follows, dict)
+            and original.get("t") in _PARAGRAPH_BLOCKS  # pyright: ignore[reportUnknownMemberType]
+            and para.get("t") in _PARAGRAPH_BLOCKS  # pyright: ignore[reportUnknownMemberType]
+            and any(
+                _canonical(flat) == _canonical(original.get("c"))  # pyright: ignore[reportUnknownMemberType]
+                for flat in _flatten_list_into_paragraph(para, follows)
+            )
+        ):
+            out.append(original)
+            after_index += 2
+            before_index += 1
+            continue
+        out.append(para)
+        after_index += 1
+        before_index += 1
+    return out
+
+
+def _collapse_lazy_lists(before: Any, after: Any) -> Any:
+    """Walk both trees in parallel, collapsing materialized lists wherever they align."""
+    if isinstance(before, dict) and isinstance(after, dict):
+        original: dict[str, Any] = before
+        current: dict[str, Any] = after
+        return {
+            key: _collapse_lazy_lists(original.get(key), value) for key, value in current.items()
+        }
+    if isinstance(before, list) and isinstance(after, list):
+        originals: list[Any] = before
+        collapsed = _collapse_lazy_lists_at_level(originals, after)
+        return [
+            _collapse_lazy_lists(originals[index] if index < len(originals) else None, item)
+            for index, item in enumerate(collapsed)
+        ]
+    return after
+
+
 UNBOLD_HEADING = "unbold_heading"
 """Identifier for the heading-unbolding normalization; requested by `cleanups`."""
 
@@ -310,6 +448,14 @@ LIST_SPACING = "list_spacing"
 
 SMART_QUOTES = "smart_quotes"
 """Identifier for the quote-curling normalization; requested by `smartquotes`."""
+
+LAZY_LIST = "lazy_list"
+"""Identifier for materializing a list out of a lazy paragraph continuation.
+
+Never requested: no flag asks for it, so it is always reported.  The author wrote
+bullets under a paragraph line and pandoc's dialect read them as prose; flowmark
+gives them the list they drew, and says so.
+"""
 
 Normalization = Callable[[Any, Any], tuple[Any, Any]]
 """A declared normalization: rewrites the two canonicalized trees so the change it
@@ -345,10 +491,24 @@ def _normalize_quotes(before: Any, after: Any) -> tuple[Any, Any]:
     return _canonical(_flatten_quoted(before)), _canonical(_flatten_quoted(after))
 
 
+def _normalize_lazy_list(before: Any, after: Any) -> tuple[Any, Any]:
+    """
+    Collapse lists `after` materialized out of `before`'s lazy continuations.
+
+    Directional on purpose, and this is the entry the `Normalization` pair shape
+    exists for.  Only `after` is rewritten, and only where flattening the list back
+    into the paragraph reproduces `before` exactly.  The reverse -- a real list the
+    formatter destroyed into prose -- has the extra structure on the `before` side,
+    where nothing rewrites it, so it still mismatches and still raises.
+    """
+    return before, _collapse_lazy_lists(before, after)
+
+
 _NORMALIZATIONS: list[tuple[str, str, Normalization]] = [
     (UNBOLD_HEADING, "removed bold from a heading", _both(_unbold_headings)),
     (LIST_SPACING, "changed list spacing (tight/loose)", _both(_plain_to_para)),
     (SMART_QUOTES, "curled straight quotes", _normalize_quotes),
+    (LAZY_LIST, "made a list out of a lazy paragraph continuation", _normalize_lazy_list),
 ]
 """Flowmark's intentional, opinionated style normalizations.
 

@@ -18,6 +18,7 @@ import pytest
 
 from flowmark.pandoc_verify import (
     _NORMALIZATIONS,  # pyright: ignore[reportPrivateUsage]
+    LAZY_LIST,
     LIST_SPACING,
     SMART_QUOTES,
     UNBOLD_HEADING,
@@ -126,6 +127,23 @@ NORMALIZATION_CONTRACT: tuple[NormalizationContract, ...] = (
         negative_reason=(
             "the quotation marks were dropped rather than curled; the entry writes "
             "the marks into the text precisely so a lost or moved quote still shows"
+        ),
+    ),
+    NormalizationContract(
+        key=LAZY_LIST,
+        positive=(
+            "Shared infrastructure:\n- a\n- b\n",
+            "Shared infrastructure:\n\n- a\n\n- b\n",
+        ),
+        negative=(
+            "Shared infrastructure:\n\n- a\n\n- b\n",
+            "Shared infrastructure: - a - b\n",
+        ),
+        negative_reason=(
+            "the exact reverse: a real list flattened into prose. The entry rewrites "
+            "only the side that gained the list, so the side that lost one is never "
+            "rewritten and never reconciles -- which is the whole reason a "
+            "normalization sees both trees instead of one node"
         ),
     ),
 )
