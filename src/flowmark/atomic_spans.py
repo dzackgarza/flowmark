@@ -10,8 +10,8 @@ Terminology used throughout this module:
   always equals `source[start:end]`. (Contrast a bare *range*, which is offsets with no
   text — not used in this module's return types.)
 - **atomic construct** — a Markdown or templating inline construct that must be kept whole
-  and never broken in the middle: a code span, link, autolink, bare URL, or HTML/Jinja
-  tag or comment. `ATOMIC_PATTERNS` is the full set used for line wrapping;
+  and never broken in the middle: a code span, inline math span, link, autolink, bare URL,
+  or HTML/Jinja tag or comment. `ATOMIC_PATTERNS` is the full set used for line wrapping;
   `MARKDOWN_INLINE_PATTERNS` is the Markdown-only prose subset.
 - **word** — a whitespace-delimited token, except that an atomic construct is kept whole
   (its internal spaces never split it, and it glues to adjacent non-space characters).
@@ -42,6 +42,7 @@ from flowmark.linewrapping.atomic_patterns import (
     HTML_CLOSE_TAG,
     HTML_OPEN_TAG,
     INLINE_CODE_SPAN,
+    INLINE_MATH,
     MARKDOWN_INLINE_PATTERNS,
     MARKDOWN_LINK,
     PAIRED_HTML_COMMENT,
@@ -70,6 +71,7 @@ __all__ = (
     "ATOMIC_CONSTRUCT_PATTERN",
     "MARKDOWN_INLINE_PATTERNS",
     "INLINE_CODE_SPAN",
+    "INLINE_MATH",
     "MARKDOWN_LINK",
     "AUTOLINK",
     "BARE_URL",

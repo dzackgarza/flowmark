@@ -8,6 +8,7 @@ from flowmark.atomic_spans import (
     AUTOLINK,
     BARE_URL,
     INLINE_CODE_SPAN,
+    INLINE_MATH,
     MARKDOWN_INLINE_PATTERNS,
     MARKDOWN_LINK,
     AtomicPattern,
@@ -29,9 +30,38 @@ def test_atomic_pattern_constructs_with_name_and_pattern_only():
 
 
 def test_markdown_inline_patterns_includes_links_and_urls():
-    assert MARKDOWN_INLINE_PATTERNS == (INLINE_CODE_SPAN, MARKDOWN_LINK, AUTOLINK, BARE_URL)
+    assert MARKDOWN_INLINE_PATTERNS == (
+        INLINE_CODE_SPAN,
+        INLINE_MATH,
+        MARKDOWN_LINK,
+        AUTOLINK,
+        BARE_URL,
+    )
     # Purpose-built, deliberately NOT a subset of the wrapping set.
     assert not set(MARKDOWN_INLINE_PATTERNS).issubset(set(ATOMIC_PATTERNS))
+
+
+def test_inline_math_is_atomic_in_both_pattern_sets():
+    """
+    Math must be unbreakable for wrapping (#17 part 2) and whole for sentence
+    splitting, so it belongs to both sets rather than only the wrapping one.
+    """
+    assert INLINE_MATH in ATOMIC_PATTERNS
+    assert INLINE_MATH in MARKDOWN_INLINE_PATTERNS
+
+
+def test_inline_math_spans_are_kept_whole_but_prose_currency_is_not():
+    """
+    The wrapping pattern is deliberately stricter than the parser's: a single-`$`
+    span needs non-whitespace just inside both delimiters. Without that,
+    `their $420K ... paying $` matches as one 48-character atomic token and wraps
+    ordinary prose far worse than not knowing about math at all.
+    """
+    math = [s.text for s in iter_atomic_spans(r"and $H^1(X,\mathcal O_X)=0$ plus") if s.is_atomic]
+    assert math == [r"$H^1(X,\mathcal O_X)=0$"]
+
+    currency = [s.text for s in iter_atomic_spans("it costs $5 and $10 more") if s.is_atomic]
+    assert currency == []
 
 
 def test_autolink_pattern_matches_angle_url_and_email():
