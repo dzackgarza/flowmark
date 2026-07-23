@@ -144,10 +144,6 @@ def _pandoc_ast_pair(source: str, result: str) -> tuple[list[Any], list[Any]]:
     return source_blocks, _collect_blocks(result_proc, result)
 
 
-def _block_types(blocks: list[Any]) -> list[str]:
-    return [block.get("t", "?") for block in blocks]
-
-
 _SPACE_INLINES = frozenset({"Space", "SoftBreak"})
 
 
@@ -403,6 +399,37 @@ def describe(normalization: str) -> str:
     return next(text for key, text, _ in _NORMALIZATIONS if key == normalization)
 
 
+def _first_difference(before: list[Any], after: list[Any]) -> str:
+    """
+    Locate the first block the two documents disagree about.
+
+    The whole block list used to be printed on both sides.  That is unbounded in
+    the document's size, and flowmark runs inside a `pre-commit` gate where the
+    output lands once per failing file -- one mid-size document produced a
+    2053-character warning, which buries every other finding in the run.  A reader
+    needs to know *which* block and *what changed about it*; the surrounding blocks
+    that matched are noise.
+    """
+    # `strict=False` is the point rather than an oversight: a document that gained
+    # or lost a block is exactly the case this has to describe, and the length
+    # difference is reported below once the common prefix is known to match.
+    for index, (before_block, after_block) in enumerate(zip(before, after, strict=False)):
+        if before_block == after_block:
+            continue
+        before_type, after_type = before_block.get("t", "?"), after_block.get("t", "?")
+        if before_type == after_type:
+            return f"block {index}: {before_type} content differs"
+        return f"block {index}: {before_type} -> {after_type}"
+
+    # Every block they have in common matched, so the documents differ in length:
+    # one gained or lost trailing blocks.
+    index = min(len(before), len(after))
+    counts = f"{len(after)} blocks vs {len(before)}"
+    if len(after) > len(before):
+        return f"block {index}: (absent) -> {after[index].get('t', '?')}, {counts}"
+    return f"block {index}: {before[index].get('t', '?')} -> (absent), {counts}"
+
+
 def check_meaning_preserved(source: str, result: str, label: str = "input") -> list[str]:
     """
     Check that `result` means what `source` did, allowing flowmark's intentional
@@ -431,12 +458,9 @@ def check_meaning_preserved(source: str, result: str, label: str = "input") -> l
             if normalized_before == normalized_after:
                 return [key for key, _text, _normalize in combo]
 
-    before, after = _block_types(source_ast), _block_types(result_ast)
-    detail = (
-        f"blocks {before} -> {after}" if before != after else "same block types, altered content"
-    )
     raise MeaningChangedError(
         f"Refusing to write {label}: reformatting would change what pandoc reads "
-        f"({detail}). The file is unchanged. This is a flowmark bug -- please report it "
-        f"with the input document. To skip this check and format anyway, pass --no-verify."
+        f"({_first_difference(before_canon, after_canon)}). The file is unchanged. This is a "
+        f"flowmark bug -- please report it with the input document. To skip this check and "
+        f"format anyway, pass --no-verify."
     )
