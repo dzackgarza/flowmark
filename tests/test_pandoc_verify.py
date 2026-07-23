@@ -12,11 +12,14 @@ blocked. CI has pandoc and runs them.
 
 import shutil
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
 from flowmark.pandoc_verify import (
+    _NORMALIZATIONS,  # pyright: ignore[reportPrivateUsage]
     LIST_SPACING,
+    SMART_QUOTES,
     UNBOLD_HEADING,
     MeaningChangedError,
     PandocUnavailableError,
@@ -81,24 +84,94 @@ def test_oracle_catches_every_real_meaning_change(source: str, corrupted: str):
         check_meaning_preserved(source, corrupted)
 
 
-@pandocless
-@pytest.mark.parametrize(
-    ("source", "result", "expected_normalization"),
-    [
-        pytest.param("# **X**\n", "# X\n", UNBOLD_HEADING, id="unbold-heading"),
-        pytest.param("- a\n- b\n", "- a\n\n- b\n", LIST_SPACING, id="tight-to-loose-list"),
-    ],
+class NormalizationContract(NamedTuple):
+    """
+    The proof one `_NORMALIZATIONS` entry owes, per the contract documented on
+    `_NORMALIZATIONS` itself.
+
+    `positive` is a source/result pair the entry must accept and be credited for.
+    `negative` is a *nearby* pair -- the same construct, the same shape -- that must
+    still raise. The negative case is the load-bearing half: it is what proves the
+    entry carved out one opinion rather than widening the gate around a whole
+    construct. A positive case alone would be satisfied by an entry that accepts
+    everything.
+    """
+
+    key: str
+    positive: tuple[str, str]
+    negative: tuple[str, str]
+    negative_reason: str
+
+
+NORMALIZATION_CONTRACT: tuple[NormalizationContract, ...] = (
+    NormalizationContract(
+        key=UNBOLD_HEADING,
+        positive=("# **X**\n", "# X\n"),
+        negative=("# **X**\n", "# *X*\n"),
+        negative_reason=(
+            "the heading's bold became emphasis rather than being dropped, so the "
+            "document gained markup flowmark never claims to add"
+        ),
+    ),
+    NormalizationContract(
+        key=LIST_SPACING,
+        positive=("- a\n- b\n", "- a\n\n- b\n"),
+        negative=("- a\n- b\n", "- a\n\n- b\n\n- c\n"),
+        negative_reason="an item appeared; spacing is spelling, an extra item is not",
+    ),
+    NormalizationContract(
+        key=SMART_QUOTES,
+        positive=('He said "hi" and there.\n', "He said “hi” and there.\n"),
+        negative=('He said "hi" and there.\n', "He said hi and there.\n"),
+        negative_reason=(
+            "the quotation marks were dropped rather than curled; the entry writes "
+            "the marks into the text precisely so a lost or moved quote still shows"
+        ),
+    ),
 )
-def test_intentional_normalizations_warn_rather_than_fail(
-    source: str, result: str, expected_normalization: str
-):
+
+
+def test_every_normalization_declares_its_contract():
+    """
+    The table above must cover `_NORMALIZATIONS` exactly.
+
+    This is what makes the contract enforceable rather than aspirational: a new
+    entry cannot be added without a positive case and a nearby negative one, and
+    an entry cannot be quietly removed while its proof lingers.
+    """
+    declared = [key for key, _text, _normalize in _NORMALIZATIONS]
+    proven = [contract.key for contract in NORMALIZATION_CONTRACT]
+    assert sorted(proven) == sorted(declared)
+    assert len(proven) == len(set(proven)), "an entry is listed twice"
+
+
+@pandocless
+@pytest.mark.parametrize("contract", NORMALIZATION_CONTRACT, ids=lambda c: f"{c.key}-accepts")
+def test_normalization_accepts_its_positive_case(contract: NormalizationContract):
     """
     Flowmark's opinionated normalizations do change pandoc's AST, so full AST
     equality is not the contract. A heading's weight belongs to the `<h1>` or
     `\\section`, not to hand-applied bold, and list spacing is standardized.
     These must pass -- and be reported, since they are real AST changes.
+
+    Attribution is asserted exactly: the entry must be credited for its own case
+    and no other entry may be, which is what keeps one carve-out from being
+    reported as another.
     """
-    assert check_meaning_preserved(source, result) == [expected_normalization]
+    source, result = contract.positive
+    assert check_meaning_preserved(source, result) == [contract.key]
+
+
+@pandocless
+@pytest.mark.parametrize("contract", NORMALIZATION_CONTRACT, ids=lambda c: f"{c.key}-still-refuses")
+def test_normalization_still_refuses_its_negative_case(contract: NormalizationContract):
+    """
+    The gate did not widen: a corruption of the same shape as the declared
+    opinion is still refused.
+    """
+    source, result = contract.negative
+    with pytest.raises(MeaningChangedError):
+        check_meaning_preserved(source, result)
 
 
 @pandocless

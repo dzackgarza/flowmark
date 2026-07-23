@@ -9,6 +9,7 @@ from flowmark.linewrapping.text_filling import Wrap, fill_text
 from flowmark.linewrapping.text_wrapping import get_html_md_word_splitter
 from flowmark.pandoc_verify import (
     LIST_SPACING,
+    SMART_QUOTES,
     UNBOLD_HEADING,
     MeaningChangedError,
     check_meaning_preserved,
@@ -75,6 +76,7 @@ def reformat_text(
             requested = {
                 UNBOLD_HEADING: cleanups,
                 LIST_SPACING: list_spacing is not ListSpacing.preserve,
+                SMART_QUOTES: smartquotes,
             }
             for normalization in applied:
                 if not requested.get(normalization, False):

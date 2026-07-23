@@ -16,12 +16,17 @@ check exists to catch.  Pandoc owns the definition of what these documents say,
 so it is the authority to ask, rather than re-deriving its grammar here and
 hoping.
 
-Most of flowmark's deliberate spelling changes are already invisible to pandoc's
+Some of flowmark's deliberate spelling changes are already invisible to pandoc's
 reader, so they need no special handling here: indented and fenced code blocks
-both read as `CodeBlock`, footnote definitions read the same with or without a
-blank line between them, and pandoc's `smart` extension (on by default for
-`markdown`) folds straight and curly quotes alike into `Quoted`, which covers
-`smartquotes`.
+both read as `CodeBlock`, and footnote definitions read the same with or without a
+blank line between them.
+
+`smartquotes` is *not* one of them, contrary to what this module assumed until
+issue #27.  Pandoc's `smart` extension does not fold straight and curly quotes
+into the same reading: `"hi"` is `Quoted DoubleQuote [Str "hi"]` and `“hi”` is a
+literal `Str` (checked against pandoc 3.9.0.2).  Curling a quote is therefore a
+real AST change and needs a declared normalization like any other opinion; see
+`SMART_QUOTES`.
 
 Two do need canonicalizing before comparison, both concerning inline whitespace:
 
@@ -51,6 +56,7 @@ import json
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from itertools import combinations
 from typing import Any
 
@@ -247,15 +253,106 @@ def _plain_to_para(node: Any) -> Any:
     return node
 
 
+_QUOTE_MARKS = {"DoubleQuote": ("“", "”"), "SingleQuote": ("‘", "’")}
+
+
+def _flatten_quoted(node: Any) -> Any:
+    """
+    Replace a `Quoted` span with its curled spelling, on both sides of a comparison.
+
+    Pandoc's `smart` extension does *not* fold straight and curly quotes into the
+    same reading, contrary to what this module long assumed: a straight `"hi"` is
+    `Quoted DoubleQuote [Str "hi"]`, while the curled `“hi”` is a literal
+    `Str`.  So curling a quote -- which is all `smartquotes` does -- genuinely
+    changes the AST, and without this entry the released `--smartquotes` flag is
+    refused by the gate on any document containing a straight quote.
+
+    Writing the marks *into* the stream, rather than dropping the `Quoted` wrapper,
+    is what keeps this narrow: a quote that was deleted or whose pairing moved
+    lands its marks somewhere else in the text and still mismatches.
+    """
+    if isinstance(node, dict):
+        mapping: dict[str, Any] = node
+        return {key: _flatten_quoted(value) for key, value in mapping.items()}
+    if not isinstance(node, list):
+        return node
+
+    items: list[Any] = node
+    out: list[Any] = []
+    for item in items:
+        quoted = _as_quoted(item)
+        if quoted is None:
+            out.append(_flatten_quoted(item))
+            continue
+        (open_mark, close_mark), inner = quoted
+        out.append({"t": "Str", "c": open_mark})
+        out.extend(_flatten_quoted(inner))
+        out.append({"t": "Str", "c": close_mark})
+    return out
+
+
+def _as_quoted(item: Any) -> tuple[tuple[str, str], Any] | None:
+    """Return `((open, close), inlines)` if `item` is a `Quoted` span, else None."""
+    if not isinstance(item, dict) or item.get("t") != "Quoted":  # pyright: ignore[reportUnknownMemberType]
+        return None
+    content: Any = item.get("c")  # pyright: ignore[reportUnknownMemberType]
+    if not isinstance(content, list) or len(content) != 2:  # pyright: ignore[reportUnknownArgumentType]
+        return None
+    parts: list[Any] = content
+    kind: Any = parts[0]
+    if not isinstance(kind, dict):
+        return None
+    marks = _QUOTE_MARKS.get(str(kind.get("t")))  # pyright: ignore[reportUnknownMemberType]
+    return None if marks is None else (marks, parts[1])
+
+
 UNBOLD_HEADING = "unbold_heading"
 """Identifier for the heading-unbolding normalization; requested by `cleanups`."""
 
 LIST_SPACING = "list_spacing"
 """Identifier for the tight/loose list normalization; requested by `list_spacing`."""
 
-_NORMALIZATIONS: list[tuple[str, str, Any]] = [
-    (UNBOLD_HEADING, "removed bold from a heading", _unbold_headings),
-    (LIST_SPACING, "changed list spacing (tight/loose)", _plain_to_para),
+SMART_QUOTES = "smart_quotes"
+"""Identifier for the quote-curling normalization; requested by `smartquotes`."""
+
+Normalization = Callable[[Any, Any], tuple[Any, Any]]
+"""A declared normalization: rewrites the two canonicalized trees so the change it
+declares compares equal, and returns them.
+
+Taking *both* trees rather than one node is what lets an entry be **directional**.
+Most opinions are symmetric -- unbolding a heading means the same thing whichever
+side it is seen on -- and `_both` lifts a plain node transform into this shape.
+But an entry may need to accept a change in one direction while still refusing its
+reverse, and a single-node transform cannot express that: rewriting both sides the
+same way necessarily accepts the corruption that undoes the opinion.
+"""
+
+
+def _both(node_transform: Callable[[Any], Any]) -> Normalization:
+    """Lift a symmetric node transform into a `Normalization` over both trees."""
+
+    def normalize(before: Any, after: Any) -> tuple[Any, Any]:
+        return node_transform(before), node_transform(after)
+
+    return normalize
+
+
+def _normalize_quotes(before: Any, after: Any) -> tuple[Any, Any]:
+    """
+    Flatten `Quoted` spans on both sides, then re-canonicalize.
+
+    The re-canonicalization is not optional: `_flatten_quoted` emits each quote
+    mark as its own `Str`, and the side that was *already* curled carries the mark
+    inside a neighbouring `Str` (`Str "“a"`).  Only after the `Str` run is merged
+    again do the two spell the same thing.
+    """
+    return _canonical(_flatten_quoted(before)), _canonical(_flatten_quoted(after))
+
+
+_NORMALIZATIONS: list[tuple[str, str, Normalization]] = [
+    (UNBOLD_HEADING, "removed bold from a heading", _both(_unbold_headings)),
+    (LIST_SPACING, "changed list spacing (tight/loose)", _both(_plain_to_para)),
+    (SMART_QUOTES, "curled straight quotes", _normalize_quotes),
 ]
 """Flowmark's intentional, opinionated style normalizations.
 
@@ -266,6 +363,38 @@ job -- so they are allowed.  Every *other* AST change is a bug and raises.
 Callers are told which ones applied so they can report the ones the caller did
 not ask for: unbolding a heading is unremarkable under `cleanups` and worth
 saying out loud without it.
+
+## What an entry may claim
+
+An entry declares *one* opinion the formatter holds about spelling, named by its
+identifier and described in the second field for the user-facing report.  It may
+not stand in for a family of changes, and it may not be widened to make an
+unrelated failure pass: the question an entry answers is "did flowmark do the
+specific thing this opinion describes?", never "is this difference tolerable?".
+
+## How narrowly it must be scoped
+
+An entry is admissible only if the gate is no weaker for its presence.  Concretely,
+the rewrite must not make a *corruption* of the same shape compare equal.  That is
+the whole reason `Normalization` sees both trees: an opinion that *materializes*
+structure must rewrite only the side that gained it, and only when the rewrite
+reproduces the other side exactly, so the reverse -- structure the formatter
+destroyed -- still mismatches and still raises.  A symmetric rewrite of both sides
+cannot make that distinction, and `_both` is therefore only for opinions where the
+reverse is not a corruption worth catching.
+
+## What proof it owes
+
+Every entry carries, in `tests/test_pandoc_verify.py`'s `NORMALIZATION_CONTRACT`
+table, both:
+
+- a **positive case**: a source/result pair this entry must accept, attributed to
+  this entry and no other; and
+- a **negative case**: a *nearby* source/result pair -- the same construct, the
+  same shape -- that must still raise `MeaningChangedError`.
+
+`test_every_normalization_declares_its_contract` asserts the table covers
+`_NORMALIZATIONS` exactly, so an entry cannot be added without both cases.
 """
 
 
@@ -298,8 +427,7 @@ def check_meaning_preserved(source: str, result: str, label: str = "input") -> l
         for combo in combinations(_NORMALIZATIONS, size):
             normalized_before, normalized_after = before_canon, after_canon
             for _key, _text, normalize in combo:
-                normalized_before = normalize(normalized_before)
-                normalized_after = normalize(normalized_after)
+                normalized_before, normalized_after = normalize(normalized_before, normalized_after)
             if normalized_before == normalized_after:
                 return [key for key, _text, _normalize in combo]
 
