@@ -174,6 +174,44 @@ def test_normalization_still_refuses_its_negative_case(contract: NormalizationCo
         check_meaning_preserved(source, result)
 
 
+# The #16 reproducer, verbatim: three lines, no blank line before the bullets.
+# CommonMark starts a list at the `-`; pandoc's `markdown` dialect swallows it as
+# lazy continuation of the open paragraph. Ordinary "intro sentence, then bullets"
+# markdown, and unformattable today.
+LAZY_LIST_SOURCE = (
+    "Shared infrastructure:\n- Polynomial reduction backends\n- Modular reconstruction\n"
+)
+
+
+@pandocless
+def test_paragraph_then_tight_list_is_formattable():
+    """
+    The list flowmark materializes is what the author plainly meant, so the gate
+    must accept it rather than refusing the document outright.
+
+    Following pandoc instead -- reflowing the bullets back into prose -- was
+    rejected: it destroys a list the author drew and that every CommonMark reader,
+    GitHub included, renders as a list.
+    """
+    reformat_text(LAZY_LIST_SOURCE, semantic=True, verify=True)
+
+
+@pandocless
+def test_paragraph_then_tight_list_writes_the_file(tmp_path: Path):
+    """
+    The acceptance criterion as the reporter stated it: the file is written, not
+    merely accepted in-process.
+    """
+    doc = tmp_path / "min.md"
+    doc.write_text(LAZY_LIST_SOURCE)
+
+    reformat_file(doc, output=None, inplace=True, nobackup=True, semantic=True)
+
+    written = doc.read_text()
+    assert written != LAZY_LIST_SOURCE
+    assert "\n\n- Polynomial reduction backends" in written
+
+
 def _many_block_document(count: int = 40) -> list[str]:
     return [f"Paragraph number {i} with enough words in it to be realistic." for i in range(count)]
 
