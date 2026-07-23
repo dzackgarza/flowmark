@@ -12,6 +12,7 @@ https://pandoc.org/MANUAL.html#divs-and-spans
 """
 
 from flowmark.formats.flowmark_markdown import flowmark_markdown
+from flowmark.linewrapping.markdown_filling import fill_markdown
 
 
 def test_fenced_div_braced_attrs_round_trip():
@@ -110,13 +111,86 @@ def test_fenced_div_attr_block_without_space_is_normalized():
     assert md(":::{.foo}\nBody.\n:::\n") == "::: {.foo}\nBody.\n:::\n"
 
 
-def test_fenced_div_body_is_preserved_verbatim():
+def test_fenced_div_opening_fence_never_leaks_into_the_body():
     """
-    Div bodies are preserved verbatim (the documented contract), so nothing on
-    the opening fence line may leak into them and nothing in them is reflowed.
+    Nothing on the opening fence line may appear as body content.
+
+    This was previously spelled as "the body is preserved verbatim", which
+    conflated two separate guarantees: that the *fence* is not re-read as content
+    (still true, and what this asserts) and that the *body* is opaque (false --
+    see #20 and `test_fenced_div_body_reflows_like_any_other_markdown`).
     """
     md = flowmark_markdown()
 
-    source = "::: {.foo}\nFirst sentence. Second sentence.\n:::\n"
+    source = "::: {.foo}\nBody.\n:::\n"
+
+    assert md(source) == source
+
+
+# --- #20: div bodies are ordinary markdown -----------------------------------
+#
+# A pandoc div's body is parsed as ordinary blocks -- `pandoc -f markdown -t
+# native` on `::: {.problem}\ntext\n:::` gives `Div [Para [...]]`, with normal
+# inlines. The fence is a semantic wrapper, not a content mode. That makes it
+# unlike its verbatim-capture neighbours (display math, raw TeX, `\begin{env}`),
+# whose bodies are genuinely not markdown.
+#
+# On the document behind #17/#19/#20 this was 108 div blocks and 693 lines -- ~24%
+# of the file -- silently passed through with their original column-88 wrapping,
+# while the run reported success and `--verify` passed (correctly: no meaning
+# changed). These are `{.problem}`/`{.theorem}` environments, the mathematically
+# dense sections where sentence-granular diffs matter most.
+
+DIV_PARAGRAPH = (
+    "The first sentence states a fact. The second sentence states another fact entirely.\n"
+)
+
+
+def test_fenced_div_body_reflows_like_any_other_markdown():
+    """
+    The #20 reproducer pair: the same paragraph must reflow the same way whether
+    or not it is wrapped in a div.
+    """
+    bare = fill_markdown(DIV_PARAGRAPH, semantic=True, dedent_input=False)
+    wrapped = fill_markdown(
+        f"::: {{.problem}}\n{DIV_PARAGRAPH}:::\n", semantic=True, dedent_input=False
+    )
+
+    assert (
+        bare
+        == "The first sentence states a fact.\nThe second sentence states another fact entirely.\n"
+    )
+    assert wrapped == f"::: {{.problem}}\n{bare}:::\n"
+
+
+def test_fenced_div_body_keeps_block_structure():
+    """
+    A div body may hold any block a document may hold. Each must survive as
+    itself -- a list stays a list, a fenced code block keeps its fence and its
+    contents untouched, display math stays verbatim, and a nested div nests.
+    """
+    md = flowmark_markdown()
+
+    source = (
+        "::: {.theorem}\n"
+        "Intro paragraph.\n"
+        "\n"
+        "- first item\n"
+        "\n"
+        "- second item\n"
+        "\n"
+        "```python\n"
+        "x  =  1\n"
+        "```\n"
+        "\n"
+        "$$\n"
+        "a  +  b\n"
+        "$$\n"
+        "\n"
+        "::: {.proof}\n"
+        "Inner body.\n"
+        ":::\n"
+        ":::\n"
+    )
 
     assert md(source) == source
