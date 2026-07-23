@@ -1,4 +1,7 @@
+import pytest
+
 from flowmark.linewrapping.markdown_filling import fill_markdown
+from flowmark.pandoc_verify import pandoc_ast
 from flowmark.typography.smartquotes import smart_quotes
 
 
@@ -397,3 +400,67 @@ def test_letter_elisions_never_curl():
     """'til/'em read as open quotes to a markdown reader; only digits are safe."""
     assert smart_quotes("'til we meet") == "'til we meet"
     assert smart_quotes("don't stop 'til you drop") == "don’t stop 'til you drop"
+
+
+# --- #13: letter elisions ----------------------------------------------------
+#
+# A leading straight quote standing for omitted characters ('90s, 'til, 'em) is an
+# apostrophe, and correct typography for it is U+2019. Digit elisions were curled
+# in 8b777ae; letter elisions were left straight, and the module asserted they were
+# unsafe because "a reader takes them as open quotes".
+#
+# Probed against pandoc 3.9.0.2, that assertion is wrong for the unpaired cases and
+# right for the paired one. Each pair below is the recorded probe.
+
+ELISION_PROBES = [
+    # (source, curled, pandoc reads them the same)
+    ("don't stop 'til you drop", "don’t stop ’til you drop", True),
+    ("give 'em hell now", "give ’em hell now", True),
+    ("'tis the season", "’tis the season", True),
+    # `rock 'n' roll` is different in kind: pandoc pairs the two straight quotes
+    # into `Quoted SingleQuote [Str "n"]`, so curling them *as elisions* (U+2019 in
+    # both positions) erases the span.
+    ("rock 'n' roll", "rock ’n’ roll", False),
+    ("the '90s, rock 'n' roll", "the ’90s, rock ’n’ roll", False),
+    # Curling the same span as a *quotation* (U+2018 then U+2019) is a different
+    # change and is AST-neutral under the `smart_quotes` normalization, which is
+    # why the standalone case is not the one #13 refuses.
+    ("rock 'n' roll", "rock ‘n’ roll", False),
+]
+
+
+@pytest.mark.parametrize(("source", "curled", "ast_neutral"), ELISION_PROBES)
+def test_recorded_pandoc_probe_for_each_elision(source: str, curled: str, ast_neutral: bool):
+    """
+    The probe itself, checked in rather than described.
+
+    #13 asks that each conversion be "justified by a recorded pandoc probe". This
+    is that record: if pandoc's reading ever changes, this fails here rather than
+    the conversions silently becoming unsound.
+    """
+    same = pandoc_ast(source + "\n") == pandoc_ast(curled + "\n")
+    assert same is ast_neutral
+
+
+def test_unpaired_letter_elisions_are_curled():
+    """`don't stop 'til you drop` gets U+2019 in both positions, per #13."""
+    assert smart_quotes("don't stop 'til you drop\n") == "don’t stop ’til you drop\n"
+    assert smart_quotes("give 'em hell now\n") == "give ’em hell now\n"
+
+
+def test_paired_elision_is_permanently_left_straight():
+    """
+    The recorded decision for #13's paired case: a refusal, not a deferral.
+
+    In `the '90s, rock 'n' roll`, pandoc pairs the quote before `90s` with the one
+    after `n` into a single `Quoted SingleQuote` span. Curling the elisions erases
+    that span, which is a meaning change rather than a spelling one, so flowmark
+    leaves them straight.
+
+    No normalization is added for it. An entry narrow enough to accept this while
+    still refusing genuinely moved quote pairing would have to reproduce pandoc's
+    left-to-right pairing algorithm, at which point the gate stops being an
+    independent check on the formatter and becomes a copy of it. That is the
+    trade #13 asked to have decided, and this is the decision.
+    """
+    assert smart_quotes("the '90s, rock 'n' roll\n") == "the '90s, rock 'n' roll\n"
