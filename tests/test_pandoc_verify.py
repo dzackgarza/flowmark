@@ -174,6 +174,51 @@ def test_normalization_still_refuses_its_negative_case(contract: NormalizationCo
         check_meaning_preserved(source, result)
 
 
+def _many_block_document(count: int = 40) -> list[str]:
+    return [f"Paragraph number {i} with enough words in it to be realistic." for i in range(count)]
+
+
+@pandocless
+def test_mismatch_names_the_differing_block_rather_than_dumping_the_ast():
+    """
+    A mismatch in a mid-size document must not emit its entire block list.
+
+    flowmark is wired into a `pre-commit`/`pre-push` gate, where a kilobyte of AST
+    per failing file buries every other finding in the run. One real file produced
+    a 2053-character warning. The block index and the two types are what a reader
+    needs; the rest was noise.
+    """
+    blocks = _many_block_document()
+    corrupted = list(blocks)
+    corrupted[7] = "# " + blocks[7]
+
+    with pytest.raises(MeaningChangedError) as excinfo:
+        check_meaning_preserved("\n\n".join(blocks) + "\n", "\n\n".join(corrupted) + "\n")
+
+    message = str(excinfo.value)
+    assert "block 7" in message
+    assert "Para" in message
+    assert "Header" in message
+    assert len(message) < 400, f"message is {len(message)} characters:\n{message}"
+
+
+@pandocless
+def test_mismatch_names_the_block_when_only_content_differs():
+    """
+    Equal block types are the harder case: the old message could say nothing but
+    "same block types, altered content", leaving the reader to diff two documents
+    by hand. The index alone turns that into a lookup.
+    """
+    blocks = _many_block_document()
+    corrupted = list(blocks)
+    corrupted[12] = blocks[12].replace("realistic", "realistic and different")
+
+    with pytest.raises(MeaningChangedError) as excinfo:
+        check_meaning_preserved("\n\n".join(blocks) + "\n", "\n\n".join(corrupted) + "\n")
+
+    assert "block 12" in str(excinfo.value)
+
+
 @pandocless
 @pytest.mark.parametrize(
     ("source", "result"),
