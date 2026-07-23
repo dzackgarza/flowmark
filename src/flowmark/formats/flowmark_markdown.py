@@ -429,8 +429,19 @@ class CustomFencedDiv(block.BlockElement):
     content on the same line": pandoc rejects ``::: {.foo} text`` as a div
     outright, so the attribute spec is captured verbatim and never re-emitted
     as body content.  The closing fence may be shorter than the opening one and
-    is preserved as written.  Content up to the closing fence is preserved
-    verbatim, including nested divs and any colon runs inside code blocks.
+    is preserved as written.
+
+    The **body is ordinary markdown** and is parsed as blocks, so it reflows like
+    any other content (#20).  The fence is a semantic wrapper, not a content mode:
+    pandoc reads ``::: {.problem}\\ntext\\n:::`` as ``Div [Para [...]]`` with
+    normal inlines, so there is nothing in there to protect.  This is what
+    separates a div from its verbatim-capture neighbours -- ``DisplayMath``,
+    ``RawInlineTex``, ``LatexEnvironment`` -- whose bodies are genuinely not
+    markdown.
+
+    Finding the body still needs the scan below rather than marko's own block
+    loop: a nested div's closer must not terminate this one, and a colon run
+    inside a fenced code block is literal text rather than a fence.
 
     https://pandoc.org/MANUAL.html#divs-and-spans
     """
@@ -451,12 +462,12 @@ class CustomFencedDiv(block.BlockElement):
     closer: str  # the closing colon run as written (may be shorter than ``fence``)
     prefix: str
 
-    def __init__(self, match: tuple[str, str, str, str, str]) -> None:
-        self.fence = match[0]
-        self.attrs = match[1]
-        self.closer = match[2]
-        self.prefix = match[3]
-        self.children = [inline.RawText(match[4], False)]
+    def __init__(self) -> None:  # pyright: ignore[reportMissingSuperCall]
+        self.fence = ":::"
+        self.attrs = ""
+        self.closer = ":::"
+        self.prefix = ""
+        self.children = []
 
     @override
     @classmethod
@@ -470,7 +481,7 @@ class CustomFencedDiv(block.BlockElement):
 
     @override
     @classmethod
-    def parse(cls, source: Source) -> tuple[str, str, str, str, str]:
+    def parse(cls, source: Source) -> CustomFencedDiv:
         prefix, fence, attrs = source.context.div_info
         source.next_line()
         source.consume()
@@ -528,7 +539,25 @@ class CustomFencedDiv(block.BlockElement):
                 line = line.lstrip()
             lines.append(line)
 
-        return (fence, attrs, closer, prefix, "".join(lines))
+        div = cls()
+        div.fence, div.attrs, div.closer, div.prefix = fence, attrs, closer, prefix
+
+        # The body is markdown, so parse it as blocks rather than keeping it as
+        # opaque text (#20). It runs through a fresh `Source` rather than the
+        # outer one because the scan above has already consumed the body's lines
+        # in order to find the closing fence -- which is the part marko's own
+        # block loop cannot do, since it does not know about div nesting or that
+        # a colon run inside a code fence is not a fence.
+        #
+        # Inline parsing is not done here: `Parser.parse_inline` walks down from
+        # the document root into any child that is a `BlockElement`, and these
+        # are, so the div's contents are reached for free once the document is
+        # built. Doing it here as well would parse them twice.
+        body = Source("".join(lines))
+        body.parser = source.parser
+        with body.under_state(div):
+            div.children = source.parser.parse_source(body)  # pyright: ignore[reportAttributeAccessIssue]
+        return div
 
     @override
     @classmethod
@@ -1010,24 +1039,29 @@ class MarkdownNormalizer(Renderer):
         return text
 
     def render_fenced_div(self, element: CustomFencedDiv) -> str:
+        """
+        Render the fence lines around a body rendered as ordinary blocks.
+
+        Structurally this is `render_quote` without an indent: the fence is a
+        wrapper, so its body gets the enclosing prefixes unchanged rather than a
+        `> ` of its own.  Before #20 the body was one `RawText` re-emitted line by
+        line, which is why nothing inside a div ever reflowed.
+        """
         self._skip_next_blank_line = False
         # Pandoc's canonical spacing is `::: {.foo}`; both spellings carry the
         # same attributes, so normalizing here does not change the parsed AST.
         opener = element.fence
         if element.attrs:
             opener += f" {element.attrs}"
-        closer = element.closer
-        code_child = cast(inline.RawText, element.children[0])
-        content = code_child.children.rstrip("\n")
 
-        lines = [f"{self._prefix}{opener}"]
-        empty_line_prefix = self._second_prefix.rstrip()
-        for line in content.splitlines():
-            if line:
-                lines.append(f"{self._second_prefix}{line}")
-            else:
-                lines.append(empty_line_prefix)
-        lines.append(f"{self._second_prefix}{closer}")
+        prefix = self._prefix
+        self._prefix = self._second_prefix
+        body = self.render_children(element).rstrip("\n")
+
+        lines = [f"{prefix}{opener}"]
+        if body:
+            lines.append(body)
+        lines.append(f"{self._second_prefix}{element.closer}")
         self._prefix = self._second_prefix
         self._suppress_item_break = False
         return "\n".join(lines) + "\n"
