@@ -3,7 +3,14 @@ import pytest
 from flowmark.formats.flowmark_markdown import flowmark_markdown
 from flowmark.linewrapping.line_wrappers import line_wrap_by_sentence
 from flowmark.linewrapping.markdown_filling import fill_markdown
+from flowmark.pandoc_verify import (
+    _SUSPENSION_WORDS as _VERIFY_SUSPENSION,  # pyright: ignore[reportPrivateUsage]
+)
+from flowmark.pandoc_verify import MeaningChangedError, check_meaning_preserved
 from flowmark.reformat_api import reformat_text
+from flowmark.transforms.doc_cleanups import (
+    _SUSPENSION_WORDS as _CLEANUP_SUSPENSION,  # pyright: ignore[reportPrivateUsage]
+)
 from flowmark.transforms.doc_cleanups import unbold_headings
 
 input_md = """
@@ -144,3 +151,41 @@ def test_hyphen_join_passes_verification():
     being loosened.
     """
     reformat_text("the degree-\n2 Coble locus and more words\n", cleanups=True, verify=True)
+
+
+def test_hyphen_join_scope_matches_the_cleanup():
+    """
+    The gate and the formatter must agree on the suspension scope.
+
+    A word the cleanup joins but the gate refuses is a document that cannot be
+    written; a word the gate would accept but the cleanup never produces is dead
+    permission. The two lists are separate because they live in separate modules,
+    so this is what keeps them one rule.
+    """
+    assert _CLEANUP_SUSPENSION == _VERIFY_SUSPENSION
+    assert set(SUSPENSION_WORDS) == _CLEANUP_SUSPENSION
+
+
+@pytest.mark.parametrize("word", SUSPENSION_WORDS)
+def test_gate_refuses_a_joined_suspension(word: str):
+    """
+    The other half of the suspension rule. The cleanup never joins `pre- and`, and
+    if something else did, the gate must still catch it: joining a suspended
+    hyphen corrupts the sentence.
+    """
+    with pytest.raises(MeaningChangedError):
+        check_meaning_preserved(
+            f"the pre-\n{word} post-stable models\n", f"the pre-{word} post-stable models\n"
+        )
+
+
+def test_hyphen_join_reports_how_many(capsys: pytest.CaptureFixture[str]):
+    """
+    #18 asks for a count rather than silence, because the scope is heuristic and
+    will not be right every time. Saying how many is what lets a reader check them.
+    """
+    fill_markdown(
+        "the degree-\n2 locus and the white-\nroot wall\n", cleanups=True, dedent_input=False
+    )
+
+    assert "closed up 2 line breaks" in capsys.readouterr().err

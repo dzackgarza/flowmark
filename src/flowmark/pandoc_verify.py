@@ -449,6 +449,9 @@ LIST_SPACING = "list_spacing"
 SMART_QUOTES = "smart_quotes"
 """Identifier for the quote-curling normalization; requested by `smartquotes`."""
 
+HYPHEN_JOIN = "hyphen_join"
+"""Identifier for closing up a line break that fell after a hyphen; `cleanups`."""
+
 LAZY_LIST = "lazy_list"
 """Identifier for materializing a list out of a lazy paragraph continuation.
 
@@ -491,6 +494,77 @@ def _normalize_quotes(before: Any, after: Any) -> tuple[Any, Any]:
     return _canonical(_flatten_quoted(before)), _canonical(_flatten_quoted(after))
 
 
+_SUSPENSION_WORDS = frozenset({"and", "or", "to", "nor", "but", "through", "versus"})
+"""Mirrors `transforms.doc_cleanups._SUSPENSION_WORDS`.
+
+The two must agree: this decides what the gate will accept, that decides what the
+formatter does, and a rule the formatter applies but the gate refuses is a document
+that cannot be written.  `test_hyphen_join_scope_matches_the_cleanup` pins them.
+"""
+
+_HYPHEN_SPACE = re.compile(r"-\s+(\S)")
+
+
+def _join_hyphen_text(text: str) -> str:
+    """Close up `- x` to `-x` in one canonicalized `Str`, per #18's scope."""
+
+    def join(match: re.Match[str]) -> str:
+        following = match.group(1)
+        rest = text[match.end(1) :]
+        word = (following + rest).split()[0] if (following + rest).split() else following
+        if word.strip(".,;:!?").lower() in _SUSPENSION_WORDS:
+            return match.group(0)
+        if not (following.isdigit() or following.islower()):
+            return match.group(0)
+        return f"-{following}"
+
+    return _HYPHEN_SPACE.sub(join, text)
+
+
+def _join_hyphens(node: Any) -> Any:
+    """
+    Apply #18's join to a canonicalized tree.
+
+    Two shapes, because `_canonical` has already merged `Str`/`Space` runs:
+    the join is inside a single `Str` (`degree- 2`), or the `Str` ends with the
+    hyphen and a space and the next inline is structure (`degree- ` followed by a
+    `Math`, from `degree-` / `$4$`).
+    """
+    if isinstance(node, dict):
+        mapping: dict[str, Any] = node
+        return {key: _join_hyphens(value) for key, value in mapping.items()}
+    if not isinstance(node, list):
+        return node
+
+    items: list[Any] = node
+    out: list[Any] = []
+    for index, item in enumerate(items):
+        if isinstance(item, dict) and item.get("t") == "Str":  # pyright: ignore[reportUnknownMemberType]
+            text = str(item.get("c", ""))  # pyright: ignore[reportUnknownMemberType]
+            joined = _join_hyphen_text(text)
+            # A trailing `- ` closes up only against a following inline: on its own
+            # it is a hyphen at the end of a paragraph, which nothing joins to.
+            if joined.endswith("- ") and index + 1 < len(items):
+                joined = joined[:-1]
+            out.append({"t": "Str", "c": joined})
+            continue
+        out.append(_join_hyphens(item))
+    return out
+
+
+def _normalize_hyphen_join(before: Any, after: Any) -> tuple[Any, Any]:
+    """
+    Close up `before`'s hyphen-and-space so it matches a result that joined it.
+
+    Directional, like `LAZY_LIST` and for the same reason. Only the *unjoined* side
+    is rewritten, so the reverse -- a `degree-2` that came apart into `degree- 2` --
+    is never reconciled and still raises. That reverse is not hypothetical: it is
+    the exact damage #18 says wrapping tools inflict, and the whole reason this
+    cleanup exists.
+    """
+    return _canonical(_join_hyphens(before)), after
+
+
 def _normalize_lazy_list(before: Any, after: Any) -> tuple[Any, Any]:
     """
     Collapse lists `after` materialized out of `before`'s lazy continuations.
@@ -509,6 +583,7 @@ _NORMALIZATIONS: list[tuple[str, str, Normalization]] = [
     (LIST_SPACING, "changed list spacing (tight/loose)", _both(_plain_to_para)),
     (SMART_QUOTES, "curled straight quotes", _normalize_quotes),
     (LAZY_LIST, "made a list out of a lazy paragraph continuation", _normalize_lazy_list),
+    (HYPHEN_JOIN, "closed up a line break that fell after a hyphen", _normalize_hyphen_join),
 ]
 """Flowmark's intentional, opinionated style normalizations.
 

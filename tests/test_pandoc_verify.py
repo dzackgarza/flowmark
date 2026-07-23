@@ -18,6 +18,7 @@ import pytest
 
 from flowmark.pandoc_verify import (
     _NORMALIZATIONS,  # pyright: ignore[reportPrivateUsage]
+    HYPHEN_JOIN,
     LAZY_LIST,
     LIST_SPACING,
     SMART_QUOTES,
@@ -144,6 +145,17 @@ NORMALIZATION_CONTRACT: tuple[NormalizationContract, ...] = (
             "only the side that gained the list, so the side that lost one is never "
             "rewritten and never reconciles -- which is the whole reason a "
             "normalization sees both trees instead of one node"
+        ),
+    ),
+    NormalizationContract(
+        key=HYPHEN_JOIN,
+        positive=("the degree-\n2 Coble locus\n", "the degree-2 Coble locus\n"),
+        negative=("the degree-2 Coble locus\n", "the degree- 2 Coble locus\n"),
+        negative_reason=(
+            "the exact reverse: a hyphenated word came apart. That is not a "
+            "hypothetical corruption -- it is the damage #18 says wrapping tools "
+            "inflict, and the reason the cleanup exists, so the gate must keep "
+            "catching it"
         ),
     ),
 )
