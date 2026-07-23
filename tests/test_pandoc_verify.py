@@ -259,6 +259,29 @@ def test_mismatch_names_the_differing_block_rather_than_dumping_the_ast():
 
 
 @pandocless
+def test_mismatch_names_the_block_that_actually_blocks_acceptance():
+    """
+    A block reconcilable by a declared normalization must not be reported as the
+    problem.
+
+    Found while formatting `tests/tryscript/fixtures/content/typography.md`: the
+    message pointed at `He said "hello" to her.`, which `smart_quotes` accepts
+    outright, while the block that genuinely defeated reconciliation was further
+    down the document. Sending a reader to a block that is fine costs exactly the
+    bisection this diagnostic exists to prevent.
+    """
+    source = '# **X**\n\nUntouched paragraph.\n\nHe said "hi" and there.\n'
+    result = "# X\n\nUntouched paragraph.\n\nHe said hi and there.\n"
+
+    with pytest.raises(MeaningChangedError) as excinfo:
+        check_meaning_preserved(source, result)
+
+    message = str(excinfo.value)
+    assert "block 2" in message, message
+    assert "block 0" not in message, "the unbolded heading is accepted, not the blocker"
+
+
+@pandocless
 def test_mismatch_names_the_block_when_only_content_differs():
     """
     Equal block types are the harder case: the old message could say nothing but

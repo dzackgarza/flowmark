@@ -618,9 +618,18 @@ def check_meaning_preserved(source: str, result: str, label: str = "input") -> l
             if normalized_before == normalized_after:
                 return [key for key, _text, _normalize in combo]
 
+    # Locate the difference against *every* normalization applied, not against the
+    # raw trees. A block that a declared opinion reconciles is not the problem, and
+    # naming it sends the reader to a block that is fine -- which costs exactly the
+    # bisection this diagnostic exists to prevent. Whatever still differs when the
+    # gate is at its most permissive is what actually blocked acceptance.
+    permissive_before, permissive_after = before_canon, after_canon
+    for _key, _text, normalize in _NORMALIZATIONS:
+        permissive_before, permissive_after = normalize(permissive_before, permissive_after)
+
     raise MeaningChangedError(
         f"Refusing to write {label}: reformatting would change what pandoc reads "
-        f"({_first_difference(before_canon, after_canon)}). The file is unchanged. This is a "
-        f"flowmark bug -- please report it with the input document. To skip this check and "
-        f"format anyway, pass --no-verify."
+        f"({_first_difference(permissive_before, permissive_after)}). The file is unchanged. "
+        f"This is a flowmark bug -- please report it with the input document. To skip this "
+        f"check and format anyway, pass --no-verify."
     )
