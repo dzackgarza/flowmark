@@ -8,6 +8,10 @@ __all__ = (
     "simple_word_splitter",
     "line_wrap_by_sentence",
     "line_wrap_to_width",
+    # Checking a document for constructs pandoc reads differently than intended,
+    # without reformatting it.
+    "Finding",
+    "preflight",
     "reformat_file",
     "reformat_text",
     "split_sentences_regex",
@@ -36,4 +40,5 @@ from flowmark.linewrapping.text_wrapping import (
     wrap_paragraph_lines,
 )
 from flowmark.markdown_ast import Link, extract_links
+from flowmark.preflight import Finding, preflight
 from flowmark.reformat_api import reformat_file, reformat_text

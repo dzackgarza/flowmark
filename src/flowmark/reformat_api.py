@@ -17,6 +17,7 @@ from flowmark.pandoc_verify import (
     check_meaning_preserved,
     describe,
 )
+from flowmark.preflight import preflight
 
 
 def reformat_text(
@@ -72,7 +73,26 @@ def reformat_text(
             #
             # Anything but flowmark's intentional normalizations raises here, so the
             # caller never gets a document whose meaning changed.
-            applied = check_meaning_preserved(text, result, verify_label)
+            try:
+                applied = check_meaning_preserved(text, result, verify_label)
+            except MeaningChangedError as changed:
+                # The gate can only ask "did flowmark break this?". Before answering
+                # yes, ask the other question -- "was this already broken?" -- because
+                # in #17 the answer was yes and the misattribution cost a bisection.
+                findings = preflight(text)
+                if not findings:
+                    raise
+                named = "; ".join(
+                    f"{verify_label}:{finding.line}: {finding.message}" for finding in findings[:3]
+                )
+                more = "" if len(findings) <= 3 else f" (and {len(findings) - 3} more)"
+                raise MeaningChangedError(
+                    f"Refusing to write {verify_label}: reformatting would change what "
+                    f"pandoc reads ({changed.detail}). The file is unchanged. Your input "
+                    f"looks ambiguous, so this is probably not a flowmark defect -- "
+                    f"{named}{more}. Fix the input, or pass --no-verify to format anyway.",
+                    detail=changed.detail,
+                ) from changed
             # Asking for a normalization and getting it is not news; getting one
             # without asking is, so only the latter is reported.
             requested = {

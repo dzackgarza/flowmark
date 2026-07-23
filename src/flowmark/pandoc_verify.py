@@ -83,7 +83,20 @@ class PandocParseError(ValueError):
 
 
 class MeaningChangedError(ValueError):
-    """Raised when reformatting changed the document's parsed AST."""
+    """
+    Raised when reformatting changed the document's parsed AST.
+
+    `detail` is the machine-readable half of the message (`"block 7: Para ->
+    Header"`), kept separately so a caller that learns something further about the
+    document -- that the input was already ambiguous, say -- can rebuild the message
+    around it rather than parsing it back out of prose.
+    """
+
+    detail: str
+
+    def __init__(self, message: str, detail: str = "") -> None:
+        super().__init__(message)
+        self.detail = detail
 
 
 def _pandoc_exe() -> str:
@@ -702,9 +715,11 @@ def check_meaning_preserved(source: str, result: str, label: str = "input") -> l
     for _key, _text, normalize in _NORMALIZATIONS:
         permissive_before, permissive_after = normalize(permissive_before, permissive_after)
 
+    detail = _first_difference(permissive_before, permissive_after)
     raise MeaningChangedError(
         f"Refusing to write {label}: reformatting would change what pandoc reads "
-        f"({_first_difference(permissive_before, permissive_after)}). The file is unchanged. "
+        f"({detail}). The file is unchanged. "
         f"This is a flowmark bug -- please report it with the input document. To skip this "
-        f"check and format anyway, pass --no-verify."
+        f"check and format anyway, pass --no-verify.",
+        detail=detail,
     )
