@@ -23,14 +23,38 @@ QUOTE_PATTERN: Pattern[str] = re.compile(
 # move which text the document quotes.  Mirrors QUOTE_PATTERN's prefix class.
 OPENER_SHAPED_PATTERN: Pattern[str] = re.compile(r"(?:^|[\s—])(['\"])(?=\S)", re.MULTILINE)
 
-# An elision apostrophe before a digit: '90s, '20s.  A markdown reader treats a
-# lone one as an apostrophe rather than an open quote -- two of them don't even
-# pair with each other -- so curling it is meaning-neutral.  The exception is a
-# closing-capable straight quote later in the segment (one preceded by
-# non-whitespace, like the trailing quote of 'n'): the reader then pairs the
-# elision with *it* as a quotation, so the elision must stay straight.
-# Letter elisions ('til, 'em) are NOT safe: a reader takes them as open quotes.
-DIGIT_ELISION_PATTERN: Pattern[str] = re.compile(r"(^|\s)'(?=\d)", re.MULTILINE)
+# An elision apostrophe: a leading straight quote standing for omitted characters,
+# before a digit ('90s, '20s) or opening one of the words below ('til, 'em, 'tis).
+# Pandoc reads a lone one as an apostrophe rather than an open quote -- two of them
+# don't even pair with each other -- so curling it is meaning-neutral.  Verified
+# against pandoc 3.9.0.2; the probes are recorded as data in
+# `tests/test_smartquotes.py::ELISION_PROBES` so a change in pandoc's reading fails
+# there rather than silently making these conversions unsound.
+#
+# The exception is a closing-capable straight quote later in the segment (one
+# preceded by non-whitespace, like the trailing quote of 'n'): pandoc then pairs the
+# elision with *it* into a `Quoted` span, and curling would erase that span.  So the
+# elision must stay straight, and `CLOSER_CAPABLE_PATTERN` is what detects it.
+#
+# ## The paired case is a permanent refusal
+#
+# In `the '90s, rock 'n' roll` pandoc pairs the quote before `90s` with the one
+# after `n`, giving one `Quoted SingleQuote` span across the whole run.  Curling the
+# elisions erases it -- a meaning change, not a spelling one -- so flowmark leaves
+# them straight, and that is deliberate and permanent rather than pending.
+#
+# No verify normalization is added for it.  An entry narrow enough to accept this
+# while still refusing genuinely moved quote pairing would have to reproduce
+# pandoc's left-to-right pairing algorithm, at which point the gate stops being an
+# independent check on the formatter and becomes a copy of it.  See #13.
+#
+# Letter elisions are an explicit list rather than `[a-z]`.  Any lowercase letter
+# would also curl the opening quote of an unterminated quotation (`he said 'hello`),
+# turning an author's intent to quote into an apostrophe.
+_ELISION_WORDS = ("til", "em", "tis", "twas", "cause", "bout", "round", "n")
+DIGIT_ELISION_PATTERN: Pattern[str] = re.compile(
+    r"(^|\s)'(?=\d|(?:" + "|".join(_ELISION_WORDS) + r")\b)", re.MULTILINE
+)
 CLOSER_CAPABLE_PATTERN: Pattern[str] = re.compile(r"\S'")
 
 

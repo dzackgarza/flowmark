@@ -396,10 +396,22 @@ def test_digit_elision_stays_straight_when_a_closer_follows():
     )
 
 
-def test_letter_elisions_never_curl():
-    """'til/'em read as open quotes to a markdown reader; only digits are safe."""
-    assert smart_quotes("'til we meet") == "'til we meet"
-    assert smart_quotes("don't stop 'til you drop") == "don’t stop 'til you drop"
+def test_letter_elisions_curl_when_nothing_can_pair_with_them():
+    """
+    Replaces `test_letter_elisions_never_curl`, deliberately and with evidence.
+
+    That test asserted "'til/'em read as open quotes to a markdown reader; only
+    digits are safe". Probed against pandoc 3.9.0.2 that is false for the unpaired
+    case: `don't stop 'til you drop` and `don’t stop ’til you drop` have identical
+    ASTs. The probe is recorded in `ELISION_PROBES` below.
+
+    What was true, and is kept, is the *paired* case -- see
+    `test_digit_elision_stays_straight_when_a_closer_follows`, which is the same
+    guard and still holds. The old test drew the line at digit-versus-letter; the
+    line actually falls at whether a later quote can pair with the elision.
+    """
+    assert smart_quotes("'til we meet") == "’til we meet"
+    assert smart_quotes("don't stop 'til you drop") == "don’t stop ’til you drop"
 
 
 # --- #13: letter elisions ----------------------------------------------------
