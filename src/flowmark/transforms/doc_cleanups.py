@@ -115,7 +115,10 @@ def _join_hyphen_breaks(element: Element) -> int:
             continue
         kept.append(child)
 
-    element.children = kept  # pyright: ignore[reportAttributeAccessIssue]
+    # `children` is not declared on marko's `Element` base (only on concrete
+    # container subclasses), so assign it dynamically -- mirroring the `getattr`
+    # read above -- rather than via a checker-suppression comment.
+    setattr(element, "children", kept)
     for child in kept:
         if isinstance(child, Element):
             joined += _join_hyphen_breaks(child)
