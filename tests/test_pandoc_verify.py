@@ -30,9 +30,7 @@ from flowmark.pandoc_verify import (
 from flowmark.reformat_api import reformat_file, reformat_text
 from flowmark.typography.ellipses import ellipses
 
-pandocless = pytest.mark.skipif(
-    shutil.which("pandoc") is None, reason="requires the pandoc binary on PATH"
-)
+pandocless = pytest.mark.skipif(shutil.which("pandoc") is None, reason="requires the pandoc binary on PATH")
 
 
 # Each pair is a reproducer and the bytes flowmark actually emitted for it before
@@ -110,10 +108,7 @@ NORMALIZATION_CONTRACT: tuple[NormalizationContract, ...] = (
         key=UNBOLD_HEADING,
         positive=("# **X**\n", "# X\n"),
         negative=("# **X**\n", "# *X*\n"),
-        negative_reason=(
-            "the heading's bold became emphasis rather than being dropped, so the "
-            "document gained markup flowmark never claims to add"
-        ),
+        negative_reason=("the heading's bold became emphasis rather than being dropped, so the document gained markup flowmark never claims to add"),
     ),
     NormalizationContract(
         key=LIST_SPACING,
@@ -125,10 +120,7 @@ NORMALIZATION_CONTRACT: tuple[NormalizationContract, ...] = (
         key=SMART_QUOTES,
         positive=('He said "hi" and there.\n', "He said “hi” and there.\n"),
         negative=('He said "hi" and there.\n', "He said hi and there.\n"),
-        negative_reason=(
-            "the quotation marks were dropped rather than curled; the entry writes "
-            "the marks into the text precisely so a lost or moved quote still shows"
-        ),
+        negative_reason=("the quotation marks were dropped rather than curled; the entry writes the marks into the text precisely so a lost or moved quote still shows"),
     ),
     NormalizationContract(
         key=LAZY_LIST,
@@ -208,9 +200,7 @@ def test_normalization_still_refuses_its_negative_case(contract: NormalizationCo
 # CommonMark starts a list at the `-`; pandoc's `markdown` dialect swallows it as
 # lazy continuation of the open paragraph. Ordinary "intro sentence, then bullets"
 # markdown, and unformattable today.
-LAZY_LIST_SOURCE = (
-    "Shared infrastructure:\n- Polynomial reduction backends\n- Modular reconstruction\n"
-)
+LAZY_LIST_SOURCE = "Shared infrastructure:\n- Polynomial reduction backends\n- Modular reconstruction\n"
 
 
 @pandocless
@@ -429,10 +419,7 @@ def test_verify_is_on_by_default(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("flowmark.pandoc_verify.shutil.which", lambda _: None)
 
     with pytest.raises(PandocUnavailableError, match="pandoc"):
-        reformat_text(
-            "Sentence one is here. Sentence two follows it. Sentence three ends the\n"
-            "paragraph now, quite long indeed, wrapping past width.\n"
-        )
+        reformat_text("Sentence one is here. Sentence two follows it. Sentence three ends the\nparagraph now, quite long indeed, wrapping past width.\n")
 
 
 def test_no_verify_skips_the_gate(monkeypatch: pytest.MonkeyPatch):
@@ -453,15 +440,12 @@ def test_missing_pandoc_fails_loudly(monkeypatch: pytest.MonkeyPatch):
 
     with pytest.raises(PandocUnavailableError, match="pandoc"):
         reformat_text(
-            "Sentence one is here. Sentence two follows it. Sentence three ends the\n"
-            "paragraph now, quite long indeed, wrapping past width.\n",
+            "Sentence one is here. Sentence two follows it. Sentence three ends the\nparagraph now, quite long indeed, wrapping past width.\n",
             verify=True,
         )
 
 
-def test_a_destructive_change_leaves_the_file_untouched(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_a_destructive_change_leaves_the_file_untouched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """
     The whole point of the gate: a document flowmark would damage keeps its
     original bytes.

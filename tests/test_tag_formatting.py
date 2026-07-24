@@ -163,11 +163,7 @@ def test_smart_quotes_not_applied_in_tag_attributes():
             f"Input: {tag[:100]}...\n"
             f"Output: {result[:100]}..."
         )
-        assert result_smart == 0, (
-            f"Test {i}: Smart quotes were introduced.\n"
-            f"Input: {tag[:100]}...\n"
-            f"Output: {result[:100]}..."
-        )
+        assert result_smart == 0, f"Test {i}: Smart quotes were introduced.\nInput: {tag[:100]}...\nOutput: {result[:100]}..."
 
 
 def test_tag_with_array_spanning_lines():
@@ -223,9 +219,7 @@ def test_pipeline_preserves_tag_quotes():
 
         # All straight quotes in tags should be preserved
         assert result_straight == original_straight, (
-            f"Test {i}: Pipeline converted quotes in tag.\n"
-            f"Original straight: {original_straight}, Result straight: {result_straight}\n"
-            f"Input:\n{tag}\n\nOutput:\n{result}"
+            f"Test {i}: Pipeline converted quotes in tag.\nOriginal straight: {original_straight}, Result straight: {result_straight}\nInput:\n{tag}\n\nOutput:\n{result}"
         )
 
 
@@ -463,11 +457,7 @@ def test_single_line_paired_tags_not_split():
 def test_multiline_tag_through_pipeline():
     """Test that long tags stay together through the full pipeline."""
     # A tag that's long enough to exceed width 88
-    long_tag = (
-        '{% field kind="string" id="name" label="Full Name" role="user" '
-        'required=true minLength=2 maxLength=100 placeholder="Enter your full name" %}'
-        "{% /field %}"
-    )
+    long_tag = '{% field kind="string" id="name" label="Full Name" role="user" required=true minLength=2 maxLength=100 placeholder="Enter your full name" %}{% /field %}'
 
     # Tags should stay on ONE line, never broken (atomic behavior)
     result = fill_markdown(long_tag, semantic=True, width=88)
@@ -670,12 +660,9 @@ def test_list_item_with_tag_on_continuation_line():
 
     # The tag should NOT have an extra blank line before it
     # The continuation line with the tag should be preserved as-is
-    assert "\n\n  <!-- #kg-32zz -->" not in result, (
-        f"Extra blank line incorrectly added before tag on continuation line.\nResult:\n{result}"
-    )
+    assert "\n\n  <!-- #kg-32zz -->" not in result, f"Extra blank line incorrectly added before tag on continuation line.\nResult:\n{result}"
 
     # The proper indented continuation should be preserved
-    assert (
-        "tsconfig.base.json)\n  <!-- #kg-32zz -->" in result
-        or "(tsconfig.base.json)\n<!-- #kg-32zz -->" in result
-    ), f"Tag continuation line not preserved correctly.\nResult:\n{result}"
+    assert "tsconfig.base.json)\n  <!-- #kg-32zz -->" in result or "(tsconfig.base.json)\n<!-- #kg-32zz -->" in result, (
+        f"Tag continuation line not preserved correctly.\nResult:\n{result}"
+    )

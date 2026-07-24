@@ -113,8 +113,7 @@ def fill_markdown(
         joined = doc_cleanups(document)
         if joined:
             print(
-                f"Note: closed up {joined} line break{'s' if joined != 1 else ''} "
-                f"that fell after a hyphen",
+                f"Note: closed up {joined} line break{'s' if joined != 1 else ''} that fell after a hyphen",
                 file=sys.stderr,
             )
     if smartquotes:

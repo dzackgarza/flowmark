@@ -25,9 +25,7 @@ def _unbold_heading_transformer(element: Element) -> None:
         # ***text***  -> *text*
         elif len(element.children) == 1 and isinstance(element.children[0], inline.Emphasis):
             emphasis_node = element.children[0]
-            if len(emphasis_node.children) == 1 and isinstance(
-                emphasis_node.children[0], inline.StrongEmphasis
-            ):
+            if len(emphasis_node.children) == 1 and isinstance(emphasis_node.children[0], inline.StrongEmphasis):
                 strong_node = emphasis_node.children[0]
                 emphasis_node.children = strong_node.children
 
@@ -112,12 +110,7 @@ def _join_hyphen_breaks(element: Element) -> int:
     items: list[Any] = children
     for index, child in enumerate(items):
         is_soft_break = isinstance(child, inline.LineBreak) and child.soft
-        if (
-            is_soft_break
-            and kept
-            and index + 1 < len(items)
-            and _joins_across_break(kept[-1], items[index + 1])
-        ):
+        if is_soft_break and kept and index + 1 < len(items) and _joins_across_break(kept[-1], items[index + 1]):
             joined += 1
             continue
         kept.append(child)

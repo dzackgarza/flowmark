@@ -45,10 +45,7 @@ def test_same_line_double_dollar_math_preserves_latex_subscripts_verbatim():
 # The span is only split when moving it wholesale would leave the previous line
 # short, so this is a wrap-cost decision: "inside math" has to cost infinity.
 
-MATH_WRAP_SOURCE = (
-    "word word word word word word word word word word word word word and "
-    "$H^1(X,\\mathcal O_X)=0$ plus more trailing words here to force a wrap decision.\n"
-)
+MATH_WRAP_SOURCE = "word word word word word word word word word word word word word and $H^1(X,\\mathcal O_X)=0$ plus more trailing words here to force a wrap decision.\n"
 
 
 def test_wrapping_never_breaks_inside_inline_math():

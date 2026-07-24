@@ -303,9 +303,7 @@ def _match_name(patterns: tuple[AtomicPattern, ...], text: str, start: int) -> s
     return None
 
 
-def iter_atomic_spans(
-    text: str, patterns: tuple[AtomicPattern, ...] = ATOMIC_PATTERNS
-) -> Iterator[AtomicSpan]:
+def iter_atomic_spans(text: str, patterns: tuple[AtomicPattern, ...] = ATOMIC_PATTERNS) -> Iterator[AtomicSpan]:
     """
     Split `text` into contiguous spans (each a slice of `text` with its `[start, end)`
     offsets) that cover it exactly, each flagged `is_atomic`.
@@ -326,9 +324,7 @@ def iter_atomic_spans(
     for m in regex.finditer(text):
         if m.start() > pos:
             yield AtomicSpan(text[pos : m.start()], pos, m.start(), False)
-        yield AtomicSpan(
-            m.group(0), m.start(), m.end(), True, _match_name(patterns, text, m.start())
-        )
+        yield AtomicSpan(m.group(0), m.start(), m.end(), True, _match_name(patterns, text, m.start()))
         pos = m.end()
     if pos < len(text):
         yield AtomicSpan(text[pos:], pos, len(text), False)
@@ -349,9 +345,7 @@ class AtomicWord(NamedTuple):
     end: int
 
 
-def iter_atomic_words(
-    text: str, patterns: tuple[AtomicPattern, ...] = ATOMIC_PATTERNS
-) -> Iterator[AtomicWord]:
+def iter_atomic_words(text: str, patterns: tuple[AtomicPattern, ...] = ATOMIC_PATTERNS) -> Iterator[AtomicWord]:
     """
     Yield the whitespace-delimited words of `text` with their `[start, end)` offsets,
     treating each atomic construct (link, code span, URL, tag) as indivisible: a

@@ -18,20 +18,14 @@ from flowmark.pandoc_verify import MeaningChangedError
 from flowmark.preflight import preflight
 from flowmark.reformat_api import reformat_text
 
-pandocless = pytest.mark.skipif(
-    shutil.which("pandoc") is None, reason="requires the pandoc binary on PATH"
-)
+pandocless = pytest.mark.skipif(shutil.which("pandoc") is None, reason="requires the pandoc binary on PATH")
 
 
 # The reporter's actual line from #17: an unescaped `|` from a linear system inside
 # inline math, in a pipe-table row. Pandoc already mis-parses it -- the three logical
 # cells read as five, and the citation is swallowed -- so reflowing the table shuffles
 # the mis-split differently. Escaping the bars makes it verify clean on the first try.
-AMBIGUOUS_TABLE = (
-    "| col | status | ref |\n"
-    "|---|---|---|\n"
-    "| $|-2K_{\\widetilde V}|=\\{C\\}$ generically | established | @sec:anti-bicanonical |\n"
-)
+AMBIGUOUS_TABLE = "| col | status | ref |\n|---|---|---|\n| $|-2K_{\\widetilde V}|=\\{C\\}$ generically | established | @sec:anti-bicanonical |\n"
 
 
 def test_preflight_finds_a_bar_inside_inline_math_in_a_table_row():

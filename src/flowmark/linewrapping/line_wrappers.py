@@ -156,12 +156,7 @@ def line_wrap_by_sentence(
             )
             # If last line is shorter than min_line_len, combine with next line.
             # Also handles if the first word doesn't fit.
-            if (
-                len(lines) > 0
-                and wrapped
-                and length(lines[-1]) < min_line_len
-                and length(lines[-1]) + 1 + length(wrapped[0]) <= width
-            ):
+            if len(lines) > 0 and wrapped and length(lines[-1]) < min_line_len and length(lines[-1]) + 1 + length(wrapped[0]) <= width:
                 lines[-1] += " " + wrapped[0]
                 wrapped.pop(0)
 

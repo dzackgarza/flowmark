@@ -89,7 +89,7 @@ def _pyproject_has_flowmark_section(path: Path) -> bool:
     try:
         data = tomllib.loads(path.read_text())
         return "flowmark" in data.get("tool", {})
-    except (tomllib.TOMLDecodeError, OSError):
+    except tomllib.TOMLDecodeError, OSError:
         return False
 
 
@@ -103,7 +103,7 @@ def load_config(config_path: Path) -> FlowmarkConfig:
     """
     try:
         data = tomllib.loads(config_path.read_text())
-    except (tomllib.TOMLDecodeError, OSError):
+    except tomllib.TOMLDecodeError, OSError:
         import sys
 
         print(f"Warning: could not parse config file {config_path}", file=sys.stderr)

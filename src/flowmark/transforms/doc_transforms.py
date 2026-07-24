@@ -79,11 +79,7 @@ def coalesce_raw_text_nodes(doc: Document) -> None:
                         next_elem = children[j]
                         following_elem = children[j + 1] if j + 1 < len(children) else None
 
-                        if (
-                            isinstance(next_elem, inline.LineBreak)
-                            and next_elem.soft
-                            and isinstance(following_elem, inline.RawText)
-                        ):
+                        if isinstance(next_elem, inline.LineBreak) and next_elem.soft and isinstance(following_elem, inline.RawText):
                             # Coalesce: add newline and the next text
                             coalesced_text += "\n" + following_elem.children
                             j += 2  # Skip the LineBreak and RawText we just consumed
@@ -107,9 +103,7 @@ def coalesce_raw_text_nodes(doc: Document) -> None:
     transform_tree(doc, transformer)
 
 
-def rewrite_text_content(
-    doc: Document, rewrite_func: Callable[[str], str], *, coalesce_lines: bool = False
-) -> None:
+def rewrite_text_content(doc: Document, rewrite_func: Callable[[str], str], *, coalesce_lines: bool = False) -> None:
     """
     Apply a string rewrite function to all `RawText` nodes that are not part of
     code blocks.
@@ -228,10 +222,7 @@ def rewrite_text_across_inlines(doc: Document, rewrite_func: Callable[[str], str
         # Apply rewrite to the full composite text
         converted = rewrite_func(composite)
 
-        assert len(converted) == len(composite), (
-            f"Rewrite function must be length-preserving: "
-            f"input length {len(composite)} != output length {len(converted)}"
-        )
+        assert len(converted) == len(composite), f"Rewrite function must be length-preserving: input length {len(composite)} != output length {len(converted)}"
 
         # Map changes back only to mutable (RawText) segments
         pos = 0

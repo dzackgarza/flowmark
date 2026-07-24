@@ -75,8 +75,7 @@ def _check_table(lines: list[str], start: int, end: int) -> list[Finding]:
                 findings.append(
                     Finding(
                         number,
-                        f"unescaped `|` inside {span.group(0)!r} in a pipe-table row; "
-                        f"pandoc splits the row there, so this cell is read as two",
+                        f"unescaped `|` inside {span.group(0)!r} in a pipe-table row; pandoc splits the row there, so this cell is read as two",
                     )
                 )
                 break

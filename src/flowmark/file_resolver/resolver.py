@@ -31,12 +31,8 @@ class FileResolver:
 
     def __init__(self, config: FileResolverConfig) -> None:
         self._config: FileResolverConfig = config
-        self._exclude_spec: pathspec.PathSpec = pathspec.PathSpec.from_lines(
-            "gitignore", config.effective_exclude
-        )
-        self._include_spec: pathspec.PathSpec = pathspec.PathSpec.from_lines(
-            "gitignore", config.effective_include
-        )
+        self._exclude_spec: pathspec.PathSpec = pathspec.PathSpec.from_lines("gitignore", config.effective_exclude)
+        self._include_spec: pathspec.PathSpec = pathspec.PathSpec.from_lines("gitignore", config.effective_include)
         self._tool_ignore_cache: dict[Path, pathspec.PathSpec | None] = {}
         # Cache gitignore specs per directory to avoid re-reading from disk.
         self._gitignore_cache: dict[Path, pathspec.PathSpec | None] = {}
@@ -107,11 +103,7 @@ class FileResolver:
             rel_to_root = current.relative_to(root)
 
             # Prune excluded directories in-place (prevents descent)
-            dirnames[:] = [
-                d
-                for d in dirnames
-                if not self._is_dir_excluded(d, rel_to_root / d, current, tool_ignore, root)
-            ]
+            dirnames[:] = [d for d in dirnames if not self._is_dir_excluded(d, rel_to_root / d, current, tool_ignore, root)]
 
             # Collect gitignore specs for this directory (including ancestors)
             gitignore_specs: list[pathspec.PathSpec] = []
@@ -208,7 +200,7 @@ class FileResolver:
                 break
             try:
                 next_part = resolved_dir.relative_to(current).parts[0]
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 break
             current = current / next_part
         return specs

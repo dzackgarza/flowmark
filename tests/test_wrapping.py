@@ -241,25 +241,14 @@ def test_line_wrap_to_width_with_markdown_breaks():
 
     # Test wrapping with indentation
     indented_wrapper = line_wrap_to_width(width=40, is_markdown=True)
-    long_text = (
-        "This is a very long line that will be wrapped and it ends with a line break  \n"
-        "Next line with content that continues"
-    )
+    long_text = "This is a very long line that will be wrapped and it ends with a line break  \nNext line with content that continues"
     wrapped_long = indented_wrapper(long_text, initial_indent="  ", subsequent_indent="    ")
-    assert wrapped_long == (
-        "  This is a very long line that will be\n"
-        "    wrapped and it ends with a line\n"
-        "    break\\\n"
-        "    Next line with content that\n"
-        "    continues"
-    )
+    assert wrapped_long == ("  This is a very long line that will be\n    wrapped and it ends with a line\n    break\\\n    Next line with content that\n    continues")
 
     # Test different indentation for segments
     mixed_indent_wrapper = line_wrap_to_width(width=30, is_markdown=True)
     mixed_indent_text = "First segment  \nSecond segment\\\nThird segment"
-    wrapped_mixed_indent = mixed_indent_wrapper(
-        mixed_indent_text, initial_indent="* ", subsequent_indent="  "
-    )
+    wrapped_mixed_indent = mixed_indent_wrapper(mixed_indent_text, initial_indent="* ", subsequent_indent="  ")
     assert wrapped_mixed_indent == ("* First segment\\\n  Second segment\\\n  Third segment")
 
     # Test empty segments
@@ -360,9 +349,7 @@ def test_long_template_tags():
     assert long_tag in result
 
     # 12-word template tag (at the limit)
-    very_long_tag = (
-        "{% table columns=[a, b, c] rows=[1, 2, 3] border=true striped=true hover=true %}"
-    )
+    very_long_tag = "{% table columns=[a, b, c] rows=[1, 2, 3] border=true striped=true hover=true %}"
     text = f"Before {very_long_tag} after."
     result = splitter(text)
     assert very_long_tag in result
@@ -373,9 +360,7 @@ def test_long_html_tags():
     splitter = _HtmlMdWordSplitter()
 
     # Long HTML tag with many attributes
-    long_html = (
-        "<div class='container' id='main' data-value='test' style='color: red'>content</div>"
-    )
+    long_html = "<div class='container' id='main' data-value='test' style='color: red'>content</div>"
     text = f"Before {long_html} after."
     result = splitter(text)
     assert long_html in result
@@ -531,9 +516,7 @@ def test_newline_after_opening_tag():
     text = "{% description ref='example' %}\nThis is content after the tag."
     result = wrapper(text, "", "")
     # The newline after the tag should be preserved
-    assert "{% description ref='example' %}\n" in result or result.startswith(
-        "{% description ref='example' %}\n"
-    )
+    assert "{% description ref='example' %}\n" in result or result.startswith("{% description ref='example' %}\n")
 
     # HTML comment tag followed by newline
     text2 = "<!-- f:description ref='example' -->\nContent after HTML comment tag."
@@ -842,9 +825,7 @@ def test_block_heuristics_mixed_content():
     wrapper = line_wrap_to_width(width=80, is_markdown=True)
 
     # Mixed content: text, table, more text, all inside tags
-    text = (
-        "{% field %}\nIntro text here.\n| Col1 | Col2 |\n|------|------|\nOutro text.\n{% /field %}"
-    )
+    text = "{% field %}\nIntro text here.\n| Col1 | Col2 |\n|------|------|\nOutro text.\n{% /field %}"
     result = wrapper(text, "", "")
 
     # Opening tag preserved
@@ -1060,9 +1041,7 @@ def test_adjacent_jinja_tags_no_space():
     # Test normalize/denormalize directly
     original = "{% field kind='string' %}{% /field %}"
     normalized = normalize_adjacent_tags(original)
-    assert normalized == "{% field kind='string' %} {% /field %}", (
-        f"Expected space, got: {normalized}"
-    )
+    assert normalized == "{% field kind='string' %} {% /field %}", f"Expected space, got: {normalized}"
     denormalized = denormalize_adjacent_tags(normalized)
     assert denormalized == original, f"Expected {original}, got: {denormalized}"
 
@@ -1092,9 +1071,7 @@ def test_adjacent_html_comment_tags_no_space():
     # Test normalize/denormalize directly
     original = '<!-- f:field kind="string" id="name" --><!-- /f:field -->'
     normalized = normalize_adjacent_tags(original)
-    assert " <!-- /f:field -->" in normalized, (
-        f"Expected space after normalization, got: {normalized}"
-    )
+    assert " <!-- /f:field -->" in normalized, f"Expected space after normalization, got: {normalized}"
     denormalized = denormalize_adjacent_tags(normalized)
     assert denormalized == original, f"Expected {original}, got: {denormalized}"
 
@@ -1162,16 +1139,12 @@ def test_adjacent_tags_full_pipeline():
     # Jinja tags
     jinja_input = "{% field kind='string' %}{% /field %}"
     jinja_result = fill_markdown(jinja_input, semantic=True)
-    assert jinja_result.strip() == jinja_input, (
-        f"Jinja: Expected {jinja_input}, got: {jinja_result.strip()}"
-    )
+    assert jinja_result.strip() == jinja_input, f"Jinja: Expected {jinja_input}, got: {jinja_result.strip()}"
 
     # HTML comment tags
     html_input = '<!-- f:field kind="string" id="name" --><!-- /f:field -->'
     html_result = fill_markdown(html_input, semantic=True)
-    assert html_result.strip() == html_input, (
-        f"HTML: Expected {html_input}, got: {html_result.strip()}"
-    )
+    assert html_result.strip() == html_input, f"HTML: Expected {html_input}, got: {html_result.strip()}"
 
     # With surrounding text
     mixed_input = "Before {% field %}{% /field %} after."
@@ -1195,18 +1168,14 @@ def test_paragraph_text_no_extra_blank_lines():
     result = wrapper(text, "", "")
 
     # Should NOT have double newlines before the closing tag
-    assert "\n\n{% /description %}" not in result, (
-        f"Unexpected blank line before closing tag: {result}"
-    )
+    assert "\n\n{% /description %}" not in result, f"Unexpected blank line before closing tag: {result}"
     # The closing tag should still be on its own line
     assert "\n{% /description %}" in result
 
     # HTML comment version
     text2 = "<!-- f:note -->\nThis is text content.\n<!-- /f:note -->"
     result2 = wrapper(text2, "", "")
-    assert "\n\n<!-- /f:note -->" not in result2, (
-        f"Unexpected blank line before closing tag: {result2}"
-    )
+    assert "\n\n<!-- /f:note -->" not in result2, f"Unexpected blank line before closing tag: {result2}"
     assert "\n<!-- /f:note -->" in result2
 
 

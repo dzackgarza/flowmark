@@ -102,10 +102,7 @@ class MeaningChangedError(ValueError):
 def _pandoc_exe() -> str:
     pandoc_exe = shutil.which("pandoc")
     if pandoc_exe is None:
-        raise PandocUnavailableError(
-            "Verification requires the `pandoc` binary on PATH. "
-            "Install pandoc (https://pandoc.org/installing.html) or drop --verify."
-        )
+        raise PandocUnavailableError("Verification requires the `pandoc` binary on PATH. Install pandoc (https://pandoc.org/installing.html) or drop --verify.")
     return pandoc_exe
 
 
@@ -440,16 +437,11 @@ def _collapse_lazy_lists(before: Any, after: Any) -> Any:
     if isinstance(before, dict) and isinstance(after, dict):
         original: dict[str, Any] = before
         current: dict[str, Any] = after
-        return {
-            key: _collapse_lazy_lists(original.get(key), value) for key, value in current.items()
-        }
+        return {key: _collapse_lazy_lists(original.get(key), value) for key, value in current.items()}
     if isinstance(before, list) and isinstance(after, list):
         originals: list[Any] = before
         collapsed = _collapse_lazy_lists_at_level(originals, after)
-        return [
-            _collapse_lazy_lists(originals[index] if index < len(originals) else None, item)
-            for index, item in enumerate(collapsed)
-        ]
+        return [_collapse_lazy_lists(originals[index] if index < len(originals) else None, item) for index, item in enumerate(collapsed)]
     return after
 
 

@@ -47,14 +47,8 @@ def test_numbered_list_preserve():
     input_tight = "1. one\n2. two\n3. three\n"
     input_loose = "1. one\n\n2. two\n\n3. three\n"
 
-    assert (
-        fill_markdown(input_tight, list_spacing=ListSpacing.preserve)
-        == "1. one\n2. two\n3. three\n"
-    )
-    assert (
-        fill_markdown(input_loose, list_spacing=ListSpacing.preserve)
-        == "1. one\n\n2. two\n\n3. three\n"
-    )
+    assert fill_markdown(input_tight, list_spacing=ListSpacing.preserve) == "1. one\n2. two\n3. three\n"
+    assert fill_markdown(input_loose, list_spacing=ListSpacing.preserve) == "1. one\n\n2. two\n\n3. three\n"
 
 
 # --- Tests for loose mode ---
@@ -370,9 +364,7 @@ def test_complex_content_with_loose_mode():
         + "\n"
     )
 
-    assert (
-        fill_markdown(input_doc, semantic=True, list_spacing=ListSpacing.loose) == expected_output
-    )
+    assert fill_markdown(input_doc, semantic=True, list_spacing=ListSpacing.loose) == expected_output
 
 
 def test_multi_paragraph_spacing_loose_mode():
@@ -405,6 +397,4 @@ def test_multi_paragraph_spacing_loose_mode():
         + "\n"
     )
 
-    assert (
-        fill_markdown(input_doc, semantic=True, list_spacing=ListSpacing.loose) == expected_output
-    )
+    assert fill_markdown(input_doc, semantic=True, list_spacing=ListSpacing.loose) == expected_output

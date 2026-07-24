@@ -52,9 +52,7 @@ OPENER_SHAPED_PATTERN: Pattern[str] = re.compile(r"(?:^|[\s—])(['\"])(?=\S)", 
 # would also curl the opening quote of an unterminated quotation (`he said 'hello`),
 # turning an author's intent to quote into an apostrophe.
 _ELISION_WORDS = ("til", "em", "tis", "twas", "cause", "bout", "round", "n")
-DIGIT_ELISION_PATTERN: Pattern[str] = re.compile(
-    r"(^|\s)'(?=\d|(?:" + "|".join(_ELISION_WORDS) + r")\b)", re.MULTILINE
-)
+DIGIT_ELISION_PATTERN: Pattern[str] = re.compile(r"(^|\s)'(?=\d|(?:" + "|".join(_ELISION_WORDS) + r")\b)", re.MULTILINE)
 CLOSER_CAPABLE_PATTERN: Pattern[str] = re.compile(r"\S'")
 
 
@@ -95,9 +93,7 @@ def _apply_smart_quotes_to_text(text: str) -> str:
         open_idx = match.start() + len(prefix)
         close_idx = match.end() - len(suffix) - 1
 
-        stray_before = any(
-            idx < open_idx and char == quote_char and idx not in converted for idx, char in openers
-        )
+        stray_before = any(idx < open_idx and char == quote_char and idx not in converted for idx, char in openers)
         # Don't convert quotes that contain paragraph breaks, or whose pairing
         # is ambiguous because of an earlier stray quote.
         if stray_before or is_multi_paragraph(content):
@@ -131,9 +127,7 @@ def _apply_smart_quotes_to_text(text: str) -> str:
     # span is already curled by this point, so a straight opener-shaped single quote
     # still in `result` is exactly such a stray.  Mirrors the span pass's
     # `stray_before`; a contraction (`\w'\w`) never closes a quote, so it is exempt.
-    single_opener_positions = [
-        m.start(1) for m in OPENER_SHAPED_PATTERN.finditer(result) if m.group(1) == "'"
-    ]
+    single_opener_positions = [m.start(1) for m in OPENER_SHAPED_PATTERN.finditer(result) if m.group(1) == "'"]
 
     # Split by whitespace to process words individually
     words = re.split(r"(\s+)", result)

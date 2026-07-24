@@ -33,11 +33,7 @@ def test_fenced_div_brace_in_quoted_value_stays_on_opening_fence():
     """
     md = flowmark_markdown()
 
-    source = (
-        '::: {#thm:main-identification .theorem title="{[@AEGS23, Thm. 1.1]}"}\n'
-        "Let $F$ be the moduli space.\n"
-        ":::\n"
-    )
+    source = '::: {#thm:main-identification .theorem title="{[@AEGS23, Thm. 1.1]}"}\nLet $F$ be the moduli space.\n:::\n'
 
     assert md(source) == source
 
@@ -141,9 +137,7 @@ def test_fenced_div_opening_fence_never_leaks_into_the_body():
 # changed). These are `{.problem}`/`{.theorem}` environments, the mathematically
 # dense sections where sentence-granular diffs matter most.
 
-DIV_PARAGRAPH = (
-    "The first sentence states a fact. The second sentence states another fact entirely.\n"
-)
+DIV_PARAGRAPH = "The first sentence states a fact. The second sentence states another fact entirely.\n"
 
 
 def test_fenced_div_body_reflows_like_any_other_markdown():
@@ -152,14 +146,9 @@ def test_fenced_div_body_reflows_like_any_other_markdown():
     or not it is wrapped in a div.
     """
     bare = fill_markdown(DIV_PARAGRAPH, semantic=True, dedent_input=False)
-    wrapped = fill_markdown(
-        f"::: {{.problem}}\n{DIV_PARAGRAPH}:::\n", semantic=True, dedent_input=False
-    )
+    wrapped = fill_markdown(f"::: {{.problem}}\n{DIV_PARAGRAPH}:::\n", semantic=True, dedent_input=False)
 
-    assert (
-        bare
-        == "The first sentence states a fact.\nThe second sentence states another fact entirely.\n"
-    )
+    assert bare == "The first sentence states a fact.\nThe second sentence states another fact entirely.\n"
     assert wrapped == f"::: {{.problem}}\n{bare}:::\n"
 
 
@@ -171,26 +160,6 @@ def test_fenced_div_body_keeps_block_structure():
     """
     md = flowmark_markdown()
 
-    source = (
-        "::: {.theorem}\n"
-        "Intro paragraph.\n"
-        "\n"
-        "- first item\n"
-        "\n"
-        "- second item\n"
-        "\n"
-        "```python\n"
-        "x  =  1\n"
-        "```\n"
-        "\n"
-        "$$\n"
-        "a  +  b\n"
-        "$$\n"
-        "\n"
-        "::: {.proof}\n"
-        "Inner body.\n"
-        ":::\n"
-        ":::\n"
-    )
+    source = "::: {.theorem}\nIntro paragraph.\n\n- first item\n\n- second item\n\n```python\nx  =  1\n```\n\n$$\na  +  b\n$$\n\n::: {.proof}\nInner body.\n:::\n:::\n"
 
     assert md(source) == source

@@ -97,9 +97,7 @@ def test_escaped_tildes_preserved():
 
 def test_strikethrough_in_paragraph():
     """Strikethrough within a longer paragraph should be preserved during wrapping."""
-    result = fill_markdown(
-        "This paragraph has some ~~deleted text~~ in it and also mentions ~50 users."
-    )
+    result = fill_markdown("This paragraph has some ~~deleted text~~ in it and also mentions ~50 users.")
     assert "~~deleted text~~" in result
     assert "~50 users" in result
     # Make sure ~50 doesn't become ~~50

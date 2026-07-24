@@ -26,9 +26,7 @@ def _make_tree(root: Path) -> None:
     (venv / "README.md").write_text("# Should be excluded\n")
 
 
-def test_list_files_directory(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_list_files_directory(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _make_tree(tmp_path)
     monkeypatch.chdir(tmp_path)
     assert main(["--list-files", "."]) == 0
@@ -37,9 +35,7 @@ def test_list_files_directory(
     assert names == ["README.md", "api.md", "guide.md"]
 
 
-def test_list_files_skips_excluded_dirs(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_list_files_skips_excluded_dirs(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _make_tree(tmp_path)
     monkeypatch.chdir(tmp_path)
     assert main(["--list-files", "."]) == 0
@@ -48,9 +44,7 @@ def test_list_files_skips_excluded_dirs(
     assert ".venv" not in out
 
 
-def test_list_files_extend_include(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_list_files_extend_include(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _make_tree(tmp_path)
     (tmp_path / "page.mdx").write_text("# MDX page\n")
     monkeypatch.chdir(tmp_path)
@@ -59,9 +53,7 @@ def test_list_files_extend_include(
     assert "page.mdx" in out
 
 
-def test_list_files_extend_exclude(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_list_files_extend_exclude(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _make_tree(tmp_path)
     drafts = tmp_path / "drafts"
     drafts.mkdir()
@@ -73,9 +65,7 @@ def test_list_files_extend_exclude(
     assert "README.md" in out
 
 
-def test_list_files_no_respect_gitignore(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_list_files_no_respect_gitignore(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "keep.md").write_text("# Keep\n")
     (tmp_path / ".gitignore").write_text("ignored/\n")
     ignored = tmp_path / "ignored"
@@ -87,9 +77,7 @@ def test_list_files_no_respect_gitignore(
     assert "found.md" in out
 
 
-def test_list_files_force_exclude(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_list_files_force_exclude(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     nm = tmp_path / "node_modules"
     nm.mkdir()
     (nm / "README.md").write_text("# Excluded\n")
@@ -99,9 +87,7 @@ def test_list_files_force_exclude(
     assert out.strip() == ""
 
 
-def test_list_files_max_size(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_list_files_max_size(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "small.md").write_text("# Small\n")
     (tmp_path / "large.md").write_text("x" * 2_000_000)
     monkeypatch.chdir(tmp_path)
@@ -142,9 +128,7 @@ def test_explicit_file_still_works(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "# Hello World" in out
 
 
-def test_stdin_still_works(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_stdin_still_works(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.stdin", io.StringIO("# From stdin\n"))
     assert main(["-"]) == 0
     out = capsys.readouterr().out
@@ -159,9 +143,7 @@ def test_auto_with_explicit_file(tmp_path: Path) -> None:
     assert "# Test" in content
 
 
-def test_flowmarkignore(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_flowmarkignore(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "keep.md").write_text("# Keep\n")
     skip = tmp_path / "skip"
     skip.mkdir()
@@ -174,9 +156,7 @@ def test_flowmarkignore(
     assert "skip" not in out
 
 
-def test_list_files_stdin_does_not_crash(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_list_files_stdin_does_not_crash(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     """--list-files with stdin arg should not raise FileNotFoundError (fm-1xaz)."""
     (tmp_path / "README.md").write_text("# Root\n")
     monkeypatch.chdir(tmp_path)
@@ -196,9 +176,7 @@ def test_no_args_errors(capsys: pytest.CaptureFixture[str]) -> None:
     assert "--help" in err
 
 
-def test_stdin_explicit_dash(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_stdin_explicit_dash(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     """Explicit `-` argument should still read from stdin after default change."""
     monkeypatch.setattr("sys.stdin", io.StringIO("# Via dash\n"))
     assert main(["-"]) == 0

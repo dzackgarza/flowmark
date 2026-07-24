@@ -216,6 +216,4 @@ def split_sentences_atomic(
     code span, or URL. Suitable as the `split_sentences` argument to
     `line_wrap_by_sentence`.
     """
-    return [
-        s.text for s in split_sentences_with_spans(text, min_length=min_length, heuristic=heuristic)
-    ]
+    return [s.text for s in split_sentences_with_spans(text, min_length=min_length, heuristic=heuristic)]

@@ -88,11 +88,7 @@ def test_label_equals_text_followed_by_reference_keeps_both_links():
     losing the flowmark link entirely.
     """
     md = flowmark_markdown()
-    src = (
-        "See [flowmark][flowmark][ref2] end.\n\n"
-        "[flowmark]: https://example.com\n"
-        "[ref2]: https://example.org\n"
-    )
+    src = "See [flowmark][flowmark][ref2] end.\n\n[flowmark]: https://example.com\n[ref2]: https://example.org\n"
     result = md(src)
     assert _html(result) == _html(src)
     assert '<a href="https://example.com">flowmark</a>' in _html(result)

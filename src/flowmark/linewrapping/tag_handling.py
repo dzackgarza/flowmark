@@ -210,11 +210,7 @@ def line_ends_with_tag(line: str) -> bool:
     if not stripped:
         return False
     # Check for Jinja-style tags
-    if (
-        stripped.endswith(SINGLE_JINJA_TAG.close_delim)
-        or stripped.endswith(SINGLE_JINJA_COMMENT.close_delim)
-        or stripped.endswith(SINGLE_JINJA_VAR.close_delim)
-    ):
+    if stripped.endswith(SINGLE_JINJA_TAG.close_delim) or stripped.endswith(SINGLE_JINJA_COMMENT.close_delim) or stripped.endswith(SINGLE_JINJA_VAR.close_delim):
         return True
     # Check for HTML comments
     if stripped.endswith(SINGLE_HTML_COMMENT.close_delim):
@@ -228,11 +224,7 @@ def line_starts_with_tag(line: str) -> bool:
     if not stripped:
         return False
     # Check for Jinja-style tags
-    if (
-        stripped.startswith(SINGLE_JINJA_TAG.open_delim)
-        or stripped.startswith(SINGLE_JINJA_COMMENT.open_delim)
-        or stripped.startswith(SINGLE_JINJA_VAR.open_delim)
-    ):
+    if stripped.startswith(SINGLE_JINJA_TAG.open_delim) or stripped.startswith(SINGLE_JINJA_COMMENT.open_delim) or stripped.startswith(SINGLE_JINJA_VAR.open_delim):
         return True
     # Check for HTML comments
     if stripped.startswith(SINGLE_HTML_COMMENT.open_delim):
@@ -343,9 +335,7 @@ def add_tag_newline_handling(
             curr_is_table = line_is_table_row(line)
             prev_is_table = not is_first_line and line_is_table_row(lines[i - 1])
             curr_is_block = curr_is_table or (has_tags and line_is_list_item(line))
-            prev_is_block = prev_is_table or (
-                has_tags and not is_first_line and line_is_list_item(lines[i - 1])
-            )
+            prev_is_block = prev_is_table or (has_tags and not is_first_line and line_is_list_item(lines[i - 1]))
 
             # Start a new segment if there's a tag or block content boundary
             if prev_ends_with_tag or curr_starts_with_tag or curr_is_block or prev_is_block:
@@ -401,14 +391,10 @@ def add_tag_newline_handling(
             # Check if we're transitioning to/from block content
             prev_is_block = any(line_is_block_content(line) for line in prev_segment.split("\n"))
             curr_is_block = any(line_is_block_content(line) for line in curr_segment.split("\n"))
-            prev_is_tag = (
-                line_ends_with_tag(prev_segment.split("\n")[-1]) if prev_segment else False
-            )
+            prev_is_tag = line_ends_with_tag(prev_segment.split("\n")[-1]) if prev_segment else False
             # Only treat unindented tag lines as "tag" for blank line insertion.
             # Indented tag lines are continuations and shouldn't trigger blank lines.
-            curr_is_tag = (
-                _is_unindented_tag_line(curr_segment.split("\n")[0]) if curr_segment else False
-            )
+            curr_is_tag = _is_unindented_tag_line(curr_segment.split("\n")[0]) if curr_segment else False
 
             # Ensure exactly one blank line between tag and block content
             if (prev_is_tag and curr_is_block) or (prev_is_block and curr_is_tag):
@@ -436,12 +422,7 @@ def add_tag_newline_handling(
 def _is_closing_tag(line: str) -> bool:
     """Check if a line is a closing tag."""
     stripped = line.lstrip()
-    return (
-        stripped.startswith("{% /")
-        or stripped.startswith("{# /")
-        or stripped.startswith("{{ /")
-        or stripped.startswith("<!-- /")
-    )
+    return stripped.startswith("{% /") or stripped.startswith("{# /") or stripped.startswith("{{ /") or stripped.startswith("<!-- /")
 
 
 def _fix_closing_tag_spacing(text: str) -> str:

@@ -57,9 +57,7 @@ def benchmark_current(test_file: Path, iterations: int, semantic: bool = True) -
     return times
 
 
-def benchmark_version(
-    version: str, test_file: Path, iterations: int, semantic: bool = True
-) -> list[float]:
+def benchmark_version(version: str, test_file: Path, iterations: int, semantic: bool = True) -> list[float]:
     """Benchmark a specific released version using uvx."""
     content = test_file.read_text()
     print(f"Benchmarking v{version}")

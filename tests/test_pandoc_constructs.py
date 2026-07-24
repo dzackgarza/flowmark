@@ -126,10 +126,7 @@ def test_indented_code_block_alone_stays_code():
 
 
 def test_indented_code_block_after_paragraph_stays_code():
-    assert (
-        reformat_text("Intro.\n\n    literal code\n\nAfter.\n")
-        == "Intro.\n\n```\nliteral code\n```\n\nAfter.\n"
-    )
+    assert reformat_text("Intro.\n\n    literal code\n\nAfter.\n") == "Intro.\n\n```\nliteral code\n```\n\nAfter.\n"
 
 
 def test_leading_blank_lines_are_still_stripped():

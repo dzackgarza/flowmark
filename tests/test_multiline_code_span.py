@@ -14,10 +14,7 @@ from flowmark import reformat_text
 # A list item containing an inline code span `assert x ... is not None` whose
 # opening and closing backticks sit on different source lines. This exact byte
 # sequence hangs flowmark's markdown line-wrapping.
-REPRO = (
-    "- **Slop patterns:** tautological checks (e.g., `assert x\n"
-    "is not None` without asserting values), testing trivial getters.\n"
-)
+REPRO = "- **Slop patterns:** tautological checks (e.g., `assert x\nis not None` without asserting values), testing trivial getters.\n"
 
 
 class _Timeout(Exception):

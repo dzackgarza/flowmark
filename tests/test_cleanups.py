@@ -120,9 +120,7 @@ SUSPENSION_WORDS = ["and", "or", "to", "nor", "but", "through", "versus"]
 @pytest.mark.parametrize("word", SUSPENSION_WORDS)
 def test_suspended_hyphenation_is_never_joined(word: str):
     """One test per member of the suspension scope."""
-    result = fill_markdown(
-        f"the pre-\n{word} post-stable models\n", cleanups=True, dedent_input=False
-    )
+    result = fill_markdown(f"the pre-\n{word} post-stable models\n", cleanups=True, dedent_input=False)
 
     assert f"pre- {word}" in result, result
 
@@ -174,9 +172,7 @@ def test_gate_refuses_a_joined_suspension(word: str):
     hyphen corrupts the sentence.
     """
     with pytest.raises(MeaningChangedError):
-        check_meaning_preserved(
-            f"the pre-\n{word} post-stable models\n", f"the pre-{word} post-stable models\n"
-        )
+        check_meaning_preserved(f"the pre-\n{word} post-stable models\n", f"the pre-{word} post-stable models\n")
 
 
 def test_hyphen_join_reports_how_many(capsys: pytest.CaptureFixture[str]):
@@ -184,8 +180,6 @@ def test_hyphen_join_reports_how_many(capsys: pytest.CaptureFixture[str]):
     #18 asks for a count rather than silence, because the scope is heuristic and
     will not be right every time. Saying how many is what lets a reader check them.
     """
-    fill_markdown(
-        "the degree-\n2 locus and the white-\nroot wall\n", cleanups=True, dedent_input=False
-    )
+    fill_markdown("the degree-\n2 locus and the white-\nroot wall\n", cleanups=True, dedent_input=False)
 
     assert "closed up 2 line breaks" in capsys.readouterr().err
