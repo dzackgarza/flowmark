@@ -82,7 +82,6 @@ if [ -n "$GH_TOKEN" ]; then
     fi
 else
     echo "[gh] NOTE: GH_TOKEN not set - some operations may require authentication"
-    echo "[gh] See: docs/general/agent-setup/github-cli-setup.md"
 fi
 
 exit 0
