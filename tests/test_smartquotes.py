@@ -373,6 +373,21 @@ def test_stray_single_inside_converted_double_span_blocks_later_single():
     )
 
 
+def test_single_pair_inside_converted_double_span_stays_straight():
+    """A genuine single-quote pair inside a converted double span stays straight on
+    *both* sides (#30).
+
+    The outer double span swallows the interior, so the inner `'single quotes'` is
+    never offered to the span pass; leaving both marks straight keeps pandoc reading
+    it as one `Quoted SingleQuote` span, exactly as in the source. The bug was that
+    the possessive rule saw the word `quotes'` (ending in `s'`) and curled only the
+    closing mark, producing an asymmetric `'single quotes’` that pandoc reads
+    differently -- a meaning change the verify gate then refuses.
+    """
+    result = smart_quotes('"Nested \'single quotes\' inside double quotes" are tricky.')
+    assert result == "“Nested 'single quotes' inside double quotes” are tricky."
+
+
 def test_attribute_style_pair_does_not_block():
     """x='foo' is not in prose position, and its quotes pair with each other, so
     it does not block later spans."""
