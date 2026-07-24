@@ -54,6 +54,8 @@ import subprocess
 from itertools import combinations
 from typing import Any
 
+from flowmark.formats.frontmatter import split_frontmatter
+
 PANDOC_FORMAT = "markdown"
 """Pandoc's own markdown dialect -- the one these documents are written in.
 
@@ -101,7 +103,13 @@ def _spawn_pandoc(pandoc_exe: str) -> subprocess.Popen[str]:
 
 
 def _collect_blocks(proc: subprocess.Popen[str], markdown_text: str) -> list[Any]:
-    stdout, stderr = proc.communicate(markdown_text)
+    # YAML frontmatter is document metadata, not body. The formatter (via the same
+    # split_frontmatter) preserves it verbatim, so it can never be the source of a
+    # meaning change; and it is frequently lax YAML that pandoc's metadata reader
+    # rejects outright (a Cursor/agent-rule `globs: *.py` reads as a YAML alias and
+    # aborts the parse). Compare the body only, so frontmatter never reaches pandoc.
+    _frontmatter, content = split_frontmatter(markdown_text)
+    stdout, stderr = proc.communicate(content)
     if proc.returncode != 0:
         raise PandocParseError(f"pandoc could not parse the document: {stderr.strip()}")
     blocks: list[Any] = json.loads(stdout)["blocks"]
