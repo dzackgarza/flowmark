@@ -87,23 +87,42 @@ def test_verify_failure_on_ambiguous_input_does_not_blame_flowmark():
     assert "ambiguous" in message.lower(), message
 
 
-@pandocless
-def test_verify_failure_on_clean_input_keeps_the_original_message():
+def test_verify_failure_on_clean_input_keeps_the_original_message(
+    monkeypatch: pytest.MonkeyPatch,
+):
     """
-    When preflight finds nothing, today's wording stands. A real flowmark defect
-    must not be relabelled as the user's fault.
+    When preflight finds nothing to blame, a genuine verify failure keeps its
+    original "flowmark bug" wording rather than being relabelled as the user's
+    fault.
 
-    The document is #30's live defect -- smartquotes half-converts a single-quoted
-    span nested in a double-quoted one -- which is exactly the case that must keep
-    saying "flowmark bug": its quotes are balanced, its tables and fences are fine,
-    and preflight rightly finds nothing to blame.
+    The gate is forced to fire rather than pinned to a live defect. This test used
+    #30's document -- smartquotes half-converting a single-quoted span nested in a
+    double-quoted one -- but fixing #30 made that input verify clean, so a pinned
+    test started failing the day the bug it named was fixed. Forcing the failure
+    keeps the check on the attribution branch (preflight-clean input must not be
+    relabelled), which is what is under test here, not the detection.
     """
-    with pytest.raises(MeaningChangedError) as excinfo:
-        reformat_text(
-            "\"Nested 'single quotes' inside double quotes\" are tricky.\n",
-            verify=True,
-            smartquotes=True,
-            verify_label="doc.md",
+
+    def refuse(source: str, result: str, label: str = "input") -> list[str]:
+        detail = "block 0: Para content differs"
+        raise MeaningChangedError(
+            f"Refusing to write {label}: reformatting would change what pandoc reads "
+            f"({detail}). The file is unchanged. "
+            f"This is a flowmark bug -- please report it with the input document. To skip "
+            f"this check and format anyway, pass --no-verify.",
+            detail=detail,
         )
 
-    assert "flowmark bug" in str(excinfo.value)
+    monkeypatch.setattr("flowmark.reformat_api.check_meaning_preserved", refuse)
+
+    # Clean input that reformatting genuinely changes (collapsed spaces) but in which
+    # preflight finds no suspect construct, so the attribution branch must not relabel.
+    clean_but_reformatted = "# Title\n\nsome   text   here\n"
+    assert preflight(clean_but_reformatted) == []
+
+    with pytest.raises(MeaningChangedError) as excinfo:
+        reformat_text(clean_but_reformatted, verify=True, verify_label="doc.md")
+
+    message = str(excinfo.value)
+    assert "flowmark bug" in message, message
+    assert "ambiguous" not in message.lower(), message

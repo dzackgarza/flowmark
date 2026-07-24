@@ -122,10 +122,27 @@ def _apply_smart_quotes_to_text(text: str) -> str:
     # 1. The only quote in the word
     # 2. Have word characters on both sides OR are possessives at end of words ending in s/S
 
+    # A possessive-shaped mark (`quotes'`) is really the *closer* of a straight
+    # single-quote pair whenever an opener-shaped straight single quote sits earlier
+    # in the segment -- the shape of a pair the double-span pass swallowed whole
+    # (`"Nested 'single quotes' inside"`), which never offered its inner span to the
+    # span pass.  Curling only the closer there half-converts the pair and moves what
+    # the document quotes, so the mark must stay straight.  Any convertible single
+    # span is already curled by this point, so a straight opener-shaped single quote
+    # still in `result` is exactly such a stray.  Mirrors the span pass's
+    # `stray_before`; a contraction (`\w'\w`) never closes a quote, so it is exempt.
+    single_opener_positions = [
+        m.start(1) for m in OPENER_SHAPED_PATTERN.finditer(result) if m.group(1) == "'"
+    ]
+
     # Split by whitespace to process words individually
     words = re.split(r"(\s+)", result)
 
+    offset = 0
     for i, word in enumerate(words):
+        word_start = offset
+        offset += len(word)
+
         # Skip whitespace
         if word.isspace():
             continue
@@ -142,8 +159,12 @@ def _apply_smart_quotes_to_text(text: str) -> str:
                 words[i] = re.sub(r"\'", "\u2019", word)
             # Check if it's a possessive at the end of a word ending in s/S
             elif re.match(r"\w*[sS]\'$", word):
-                # Replace the single quote with apostrophe
-                words[i] = re.sub(r"\'", "\u2019", word)
+                close_pos = word_start + len(word) - 1
+                # ...unless an earlier opener-shaped single quote pairs with this
+                # mark, making it a quote closer rather than a possessive.
+                if not any(pos < close_pos for pos in single_opener_positions):
+                    # Replace the single quote with apostrophe
+                    words[i] = re.sub(r"\'", "\u2019", word)
 
     result = "".join(words)
 
