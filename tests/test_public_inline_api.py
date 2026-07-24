@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from marko.block import Document
+
 from flowmark import Link, extract_links, flowmark_markdown
 from flowmark.atomic_spans import (
     ATOMIC_PATTERNS,
@@ -17,8 +19,6 @@ from flowmark.atomic_spans import (
     split_sentences_atomic,
     split_sentences_with_spans,
 )
-from marko.block import Document
-
 from flowmark.markdown_ast import walk_elements
 
 

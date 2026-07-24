@@ -1,16 +1,8 @@
 ## Publishing Releases
 
-This is how to publish a Python package to [**PyPI**](https://pypi.org/) from GitHub
-Actions, when using the
-[**simple-modern-uv**](https://github.com/jlevy/simple-modern-uv) template.
+This is how to publish a Python package to [**PyPI**](https://pypi.org/) from GitHub Actions, when using the [**simple-modern-uv**](https://github.com/jlevy/simple-modern-uv) template.
 
-Thanks to
-[the dynamic versioning plugin](https://github.com/ninoseki/uv-dynamic-versioning/) and
-the
-[`publish.yml` workflow](https://github.com/jlevy/simple-modern-uv/blob/main/template/.github/workflows/publish.yml),
-you can simply create tagged releases (using standard format for the tag name, e.g.
-`v0.1.0`) on GitHub and the tag will trigger a release build, which then uploads it to
-PyPI.
+Thanks to [the dynamic versioning plugin](https://github.com/ninoseki/uv-dynamic-versioning/) and the [`publish.yml` workflow](https://github.com/jlevy/simple-modern-uv/blob/main/template/.github/workflows/publish.yml), you can simply create tagged releases (using standard format for the tag name, e.g. `v0.1.0`) on GitHub and the tag will trigger a release build, which then uploads it to PyPI.
 
 ### First-Time Setup
 
@@ -22,8 +14,7 @@ For the purposes of this example replace OWNER and PROJECT with the right values
 
 2. **Pick a name for the project** that isn’t already taken.
 
-   - Go to `https://pypi.org/project/PROJECT` to see if another project with that name
-     already exits.
+   - Go to `https://pypi.org/project/PROJECT` to see if another project with that name already exits.
 
    - If needed, update your `pyproject.toml` with the correct name.
 
@@ -31,11 +22,10 @@ For the purposes of this example replace OWNER and PROJECT with the right values
 
    - Go to [the publishing settings page](https://pypi.org/manage/account/publishing/).
 
-   - Find “Trusted Publisher Management” and register your GitHub repo as a new
-     “pending” trusted publisher.
+   - Find “Trusted Publisher Management” and register your GitHub repo as a new “pending” trusted publisher.
 
-   - Enter the project name, repo owner, repo name, and `publish.yml` as the workflow
-     name. (You can leave the “environment name” field blank.)
+   - Enter the project name, repo owner, repo name, and `publish.yml` as the workflow name.
+     (You can leave the “environment name” field blank.)
 
 4. **Create a release** on GitHub:
 
@@ -44,8 +34,7 @@ For the purposes of this example replace OWNER and PROJECT with the right values
    - Go to your GitHub project page, then click on Actions tab.
 
    - Confirm all tests are passing in the last CI workflow.
-     (If you want, you can even publish this template when it’s empty as just a stub
-     project, to try all this out.)
+     (If you want, you can even publish this template when it’s empty as just a stub project, to try all this out.)
 
    - Go to your GitHub project page, click on Releases.
 
@@ -141,8 +130,7 @@ Follow this checklist for each new release.
    )"
    ```
 
-   Alternatively, use `--generate-notes` for GitHub’s auto-generated notes, or
-   `--notes-file FILENAME` to read from a file.
+   Alternatively, use `--generate-notes` for GitHub’s auto-generated notes, or `--notes-file FILENAME` to read from a file.
 
 7. **Verify the release published successfully:**
 
@@ -157,8 +145,7 @@ Follow this checklist for each new release.
 ### Release Notes Format
 
 Use this structure for release notes.
-List sections in this order, from most to least disruptive, and **omit any section that
-is empty** (do not pad with “none”):
+List sections in this order, from most to least disruptive, and **omit any section that is empty** (do not pad with “none”):
 
 ```markdown
 ## What's Changed
@@ -205,32 +192,24 @@ Guidelines:
 - The four categories are deliberately distinct.
   Classify each change by asking, in order:
 
-  1. Does it remove or incompatibly change a public API, CLI flag, or documented
-     behavior? → **Breaking Changes**.
+  1. Does it remove or incompatibly change a public API, CLI flag, or documented behavior?
+     → **Breaking Changes**.
 
-  2. For the same input, does the tool now produce different output or behave
-     differently (even if valid and rendering-equivalent), or did a default change?
-     → **Behavior & Compatibility Changes**. This is the category most often missed: a
-     formatter whose output drifts between versions is a compatibility concern (diffs,
-     golden tests, re-flowed files) even when nothing is strictly “broken”.
+  2. For the same input, does the tool now produce different output or behave differently (even if valid and rendering-equivalent), or did a default change?
+     → **Behavior & Compatibility Changes**. This is the category most often missed: a formatter whose output drifts between versions is a compatibility concern (diffs, golden tests, re-flowed files) even when nothing is strictly “broken”.
 
-  3. Is it purely additive — new flag, new public function/type, new capability, with no
-     change to existing behavior?
+  3. Is it purely additive — new flag, new public function/type, new capability, with no change to existing behavior?
      → **New Features & API**.
 
   4. Did it correct previously-wrong or broken output?
      → **Bug Fixes** (and state plainly when output changes as a result).
 
-- When in doubt between *Behavior & Compatibility* and *Bug Fixes*, prefer **Behavior &
-  Compatibility** and explain — readers diffing reformatted files care about *any*
-  output change regardless of intent.
+- When in doubt between *Behavior & Compatibility* and *Bug Fixes*, prefer **Behavior & Compatibility** and explain — readers diffing reformatted files care about *any* output change regardless of intent.
 
-- Describe the **aggregate delta** between the previous release and this one, not
-  individual commits. If a feature was added and then fixed before release, describe the
-  feature as it now works rather than listing the intermediate fix separately.
+- Describe the **aggregate delta** between the previous release and this one, not individual commits.
+  If a feature was added and then fixed before release, describe the feature as it now works rather than listing the intermediate fix separately.
 
-- Skip **internal-only** changes that users never see — CI/tooling, pure refactors,
-  test-only work, and dependency or doc housekeeping.
+- Skip **internal-only** changes that users never see — CI/tooling, pure refactors, test-only work, and dependency or doc housekeeping.
 
 - Use `**bold**` for short titles of individual changes.
 
@@ -238,11 +217,8 @@ Guidelines:
 
 - Always include the Full Changelog compare link at the end.
 
-- For small releases, a simple bullet list is acceptable — but still group it under
-  these headings so behavior/compatibility changes are never buried among features or
-  fixes.
+- For small releases, a simple bullet list is acceptable — but still group it under these headings so behavior/compatibility changes are never buried among features or fixes.
 
 * * *
 
-*This file was built with
-[simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
+*This file was built with [simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*

@@ -2,15 +2,14 @@
 
 ## Purpose
 
-This is a technical design doc used for assembling full context for feature or task and
-to plan its implementation, including architecture and all key technical choices.
+This is a technical design doc used for assembling full context for feature or task and to plan its implementation, including architecture and all key technical choices.
 
-It should be updated during the planning process, then kept as a record for later
-context once implementation is begun.
+It should be updated during the planning process, then kept as a record for later context once implementation is begun.
 
 > AGENT INSTRUCTIONS:
 > 
-> This is a template. It has pre-filled sections you must fill in as you progress.
+> This is a template.
+> It has pre-filled sections you must fill in as you progress.
 > 
 > - You will fill this in based on user’s instructions, proceeding one stage at a time:
 >   
@@ -24,20 +23,17 @@ context once implementation is begun.
 >
 >     - Implementation may be broken into Phases
 >
->     - In each Phase track progress using Markdown checkboxes for TODOs and outstanding
->       questions
+>     - In each Phase track progress using Markdown checkboxes for TODOs and outstanding questions
 >
 >   - Stage 4: Validation Stage
 >
-> - If possible, look for a previous example of a feature spec for this project for an
->   illustration of what a complete spec looks like.
+> - If possible, look for a previous example of a feature spec for this project for an illustration of what a complete spec looks like.
 
 ## Background
 
 > AGENT INSTRUCTIONS:
 > 
-> - Describe the relevant background on the product and why this task or feature is
->   needed.
+> - Describe the relevant background on the product and why this task or feature is needed.
 >
 > - Reference other documentation or previous specs.
 
@@ -51,11 +47,9 @@ context once implementation is begun.
 
 > AGENT INSTRUCTIONS:
 > 
-> - Fill out this section by reading `@backward-compatibility-rules.md` for the
->   template, definitions, and guidance.
+> - Fill out this section by reading `@backward-compatibility-rules.md` for the template, definitions, and guidance.
 >
-> - Copy the template from that file and fill in the appropriate values for each area
->   based on the feature requirements.
+> - Copy the template from that file and fill in the appropriate values for each area based on the feature requirements.
 
 ## Stage 1: Planning Stage
 
@@ -65,14 +59,11 @@ context once implementation is begun.
 > 
 > - Stage one context gathering and strategizing.
 >
-> - Go through project and get an understanding of current state of the features at a
->   product level
+> - Go through project and get an understanding of current state of the features at a product level
 >
-> - Clearly define whether to maintain backwards compatibility or not - ask users what
->   should be included in feature
+> - Clearly define whether to maintain backwards compatibility or not - ask users what should be included in feature
 >
-> - Define minimum feature, make sure u have a list of not to implement, include scale
->   and scope include acceptance criteria
+> - Define minimum feature, make sure u have a list of not to implement, include scale and scope include acceptance criteria
 >
 > - Review with user and clarify ambiguity.
 >   Specifically around what are the feature requirements.
@@ -87,11 +78,9 @@ context once implementation is begun.
 > AGENT INSTRUCTIONS:
 > 
 > - Review codebase and current technical implementation.
->   With goal of putting relevant technical context in one area either in memory or
->   current doc
+>   With goal of putting relevant technical context in one area either in memory or current doc
 >
-> - List and research latest SDKs that will be relevant that we currently use as well as
->   potential ones we have to add
+> - List and research latest SDKs that will be relevant that we currently use as well as potential ones we have to add
 >
 > - Read through feature doc come up with architecture design
 >
@@ -111,8 +100,7 @@ context once implementation is begun.
 > 
 > 1. **Find Reusable Components**
 >    
->    - Search codebase for existing components, utilities, and APIs that solve similar
->      problems
+>    - Search codebase for existing components, utilities, and APIs that solve similar problems
 >
 >    - Review recent similar feature specs for patterns to follow
 >

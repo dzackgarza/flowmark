@@ -1,10 +1,8 @@
 ## Developer Workflows
 
-> This is a sample `development.md` file describing developer workflows for agents and
-> humans, using a simple npm/node project as an example.
+> This is a sample `development.md` file describing developer workflows for agents and humans, using a simple npm/node project as an example.
 > 
-> Fill this in or adjust as needed with all information agents should routinely need
-> (such as what you’d put in CLAUDE.md).
+> Fill this in or adjust as needed with all information agents should routinely need (such as what you’d put in CLAUDE.md).
 
 ### Initial Setup
 
@@ -17,8 +15,7 @@ npm install     # Installs dependencies + git hooks via prepare script
 
 ### Development Environment Variables
 
-For local development, the single source of truth for secrets is `.env` (optionally
-override with `.env.local`).
+For local development, the single source of truth for secrets is `.env` (optionally override with `.env.local`).
 
 ### Running Tests
 

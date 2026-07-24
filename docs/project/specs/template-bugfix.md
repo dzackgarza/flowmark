@@ -4,14 +4,13 @@
 
 This is a bugfix template, used for planning and implementing a fix to a bug.
 
-It should be updated during the bugfix process, then kept as a record for later context
-once implementation is complete.
+It should be updated during the bugfix process, then kept as a record for later context once implementation is complete.
 
 > AGENT INSTRUCTIONS:
 > 
-> This is a template. It has pre-filled sections you must fill in as you progress.
-> You will fill in the bug template and then the rest of this template based on user’s
-> instructions, proceeding one stage at a time:
+> This is a template.
+> It has pre-filled sections you must fill in as you progress.
+> You will fill in the bug template and then the rest of this template based on user’s instructions, proceeding one stage at a time:
 > 
 > - Stage 1: Clarifying the Bug
 >
@@ -47,8 +46,8 @@ once implementation is complete.
 
 3. What is the desired behavior?
 
-4. Is it reproducible? If so, what are the data records, inputs, or steps to reproduce
-   it?
+4. Is it reproducible?
+   If so, what are the data records, inputs, or steps to reproduce it?
 
 5. Could this bug appear in other situations?
 
@@ -62,8 +61,7 @@ once implementation is complete.
 > AGENT INSTRUCTIONS:
 > 
 > Carefully describe each of the items below based on the answers to the bug template.
-> If information is incomplete, note explicit assumptions and list open questions to
-> resolve.
+> If information is incomplete, note explicit assumptions and list open questions to resolve.
 
 ### Current Behavior
 
@@ -92,19 +90,16 @@ once implementation is complete.
 
 ### Questions to Investigate
 
-> Based on the information above, are there any questions that should be investigated
-> before a fix is identified?
+> Based on the information above, are there any questions that should be investigated before a fix is identified?
 
 ## Stage 2: Debugging Environment and Tools
 
 > AGENT INSTRUCTIONS:
 > 
 > Identify where and how to reproduce, and what instrumentation is available.
-> Keep this generic; use the project’s standard tooling without naming specific
-> commands.
+> Keep this generic; use the project’s standard tooling without naming specific commands.
 > 
-> Be sure to read all project documentation for context on setup, environments, unit
-> tests, integration tests, end-to-end tests, linting, type-checking, and formatting.
+> Be sure to read all project documentation for context on setup, environments, unit tests, integration tests, end-to-end tests, linting, type-checking, and formatting.
 
 ### Environments and Data
 
@@ -126,8 +121,7 @@ once implementation is complete.
 
 > AGENT INSTRUCTIONS:
 > 
-> Build a minimal, reliable reproduction and gather evidence to understand scope and
-> root cause candidates.
+> Build a minimal, reliable reproduction and gather evidence to understand scope and root cause candidates.
 
 ### Minimal Reproduction Steps
 
@@ -136,8 +130,7 @@ once implementation is complete.
 
 ### Evidence Collected
 
-> Summarize logs, traces, metrics, screenshots, or other artifacts that characterize the
-> failure.
+> Summarize logs, traces, metrics, screenshots, or other artifacts that characterize the failure.
 
 ### Scope and Impact
 
@@ -172,30 +165,25 @@ once implementation is complete.
 
 ### Decision and Rationale
 
-> State the chosen approach and why it is preferred (correctness, risk, effort,
-> maintainability).
+> State the chosen approach and why it is preferred (correctness, risk, effort, maintainability).
 
 ### Risks and Mitigations
 
-> Enumerate risks (regressions, performance, data correctness) and how you will mitigate
-> them (feature flag, progressive rollout, additional tests).
+> Enumerate risks (regressions, performance, data correctness) and how you will mitigate them (feature flag, progressive rollout, additional tests).
 
 ### Data Changes or Migrations
 
-> Note any data corrections or migrations needed, and how they will be validated and
-> rolled back if necessary.
+> Note any data corrections or migrations needed, and how they will be validated and rolled back if necessary.
 
 ### Compatibility Expectations
 
-> Define backward/forward compatibility expectations if applicable, or explicitly note
-> that compatibility is not required.
+> Define backward/forward compatibility expectations if applicable, or explicitly note that compatibility is not required.
 
 ## Stage 5: Implementation (TDD)
 
 > AGENT INSTRUCTIONS:
 > 
-> Start by writing a failing test, implement the fix, then iterate until all checks pass
-> using the project’s standard testing, linting, and type-checking workflows.
+> Start by writing a failing test, implement the fix, then iterate until all checks pass using the project’s standard testing, linting, and type-checking workflows.
 
 ### Minimal Test Case
 
@@ -221,8 +209,8 @@ once implementation is complete.
 
 ### Confirmation of Fix
 
-> Show that the minimal test now passes and the original failure is no longer
-> reproducible. Include any additional checks performed.
+> Show that the minimal test now passes and the original failure is no longer reproducible.
+> Include any additional checks performed.
 
 ## Stage 6: Validation
 
@@ -232,8 +220,7 @@ once implementation is complete.
 
 ### Validation Plan
 
-> Outline final checks: automated tests, manual E2E, regression passes, performance and
-> security smoke tests.
+> Outline final checks: automated tests, manual E2E, regression passes, performance and security smoke tests.
 
 ### Test Results Summary
 
@@ -241,8 +228,7 @@ once implementation is complete.
 
 ### Additional Tests to Prevent Recurrence
 
-> Identify and add tests that would prevent similar regressions (e.g., edge cases,
-> negative tests, property-based tests where applicable).
+> Identify and add tests that would prevent similar regressions (e.g., edge cases, negative tests, property-based tests where applicable).
 
 ## Stage 7: Release
 
@@ -252,8 +238,7 @@ once implementation is complete.
 
 ### Release Plan
 
-> Describe rollout strategy (immediate, staged, or behind a flag) and any required
-> coordination.
+> Describe rollout strategy (immediate, staged, or behind a flag) and any required coordination.
 
 ### Monitoring Plan
 
@@ -270,8 +255,7 @@ once implementation is complete.
 
 ### Reference Examples
 
-> Link to previous feature specs or bugfix docs consulted as examples for style or
-> process.
+> Link to previous feature specs or bugfix docs consulted as examples for style or process.
 
 ## Supplemental Sections
 
@@ -289,8 +273,7 @@ once implementation is complete.
 
 ### Out of Scope (do NOT do now)
 
-> Explicitly list related issues or refactors not addressed by this fix to avoid scope
-> creep.
+> Explicitly list related issues or refactors not addressed by this fix to avoid scope creep.
 
 ### Assumptions and Open Questions
 
