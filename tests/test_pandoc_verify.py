@@ -293,3 +293,30 @@ def test_unchanged_output_needs_no_pandoc(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr("flowmark.pandoc_verify.shutil.which", lambda _: None)
 
     assert reformat_text("Hi.\n") == "Hi.\n"
+
+
+@pandocless
+def test_pandoc_hostile_frontmatter_is_excluded_from_the_oracle() -> None:
+    """YAML frontmatter is document metadata, not body, and the formatter preserves
+    it verbatim -- so the oracle compares the body only and frontmatter never
+    reaches pandoc.
+
+    This matters because real-world frontmatter is often lax YAML that pandoc's
+    metadata reader rejects: a Cursor/agent-rule `globs: *.py` value is read as a
+    YAML alias (`*`) and aborts the whole parse. Sending it to pandoc would fail
+    verification for a document flowmark never intended to touch there.
+    """
+    fm = "---\ndescription: Rules\nglobs: *.py, pyproject.toml\nalwaysApply: false\n---\n\n"
+    # Body meaning is identical (whitespace only); frontmatter is pandoc-hostile.
+    assert check_meaning_preserved(fm + "Some   body    text.\n", fm + "Some body text.\n") == []
+
+
+@pandocless
+def test_frontmatter_stripping_does_not_hide_a_body_change() -> None:
+    """Excluding frontmatter from the oracle must not blind it to the body: a real
+    body meaning change is still caught even when the frontmatter itself is
+    pandoc-hostile."""
+    fm = "---\nglobs: *.py\n---\n\n"
+    with pytest.raises(MeaningChangedError):
+        # Paragraph -> heading is a genuine meaning change in the body.
+        check_meaning_preserved(fm + "A plain paragraph.\n", fm + "# A plain paragraph.\n")
