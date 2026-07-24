@@ -2,13 +2,10 @@
 
 ## Setting Up uv
 
-This project is set up to use [uv](https://docs.astral.sh/uv/) to manage Python and
-dependencies. First, be sure you
-[have uv installed](https://docs.astral.sh/uv/getting-started/installation/).
+This project is set up to use [uv](https://docs.astral.sh/uv/) to manage Python and dependencies.
+First, be sure you [have uv installed](https://docs.astral.sh/uv/getting-started/installation/).
 
-Then [fork the jlevy/flowmark repo](https://github.com/jlevy/flowmark/fork) (having your
-own fork will make it easier to contribute) and
-[clone it](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
+Then [fork the jlevy/flowmark repo](https://github.com/jlevy/flowmark/fork) (having your own fork will make it easier to contribute) and [clone it](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
 
 ## Basic Developer Workflows
 
@@ -77,9 +74,7 @@ See [uv docs](https://docs.astral.sh/uv/) for details.
 ## Agent Rules
 
 See [.cursor/rules](.cursor/rules) for agent rules.
-These are written for [Cursor](https://www.cursor.com/) but are also used by other
-agents because the Makefile will generate `CLAUDE.md` and `AGENTS.md` from the same
-rules.
+These are written for [Cursor](https://www.cursor.com/) but are also used by other agents because the Makefile will generate `CLAUDE.md` and `AGENTS.md` from the same rules.
 
 ```shell
 make agent-rules
@@ -87,14 +82,12 @@ make agent-rules
 
 ## IDE setup
 
-If you use VSCode or a fork like Cursor or Windsurf, you can install the following
-extensions:
+If you use VSCode or a fork like Cursor or Windsurf, you can install the following extensions:
 
 - [Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python)
 
-- [Based Pyright](https://marketplace.visualstudio.com/items?itemName=detachhead.basedpyright)
-  for type checking. Note that this extension works with non-Microsoft VSCode forks like
-  Cursor.
+- [Based Pyright](https://marketplace.visualstudio.com/items?itemName=detachhead.basedpyright) for type checking.
+  Note that this extension works with non-Microsoft VSCode forks like Cursor.
 
 ## Publishing Releases
 
@@ -108,5 +101,4 @@ See [publishing.md](publishing.md) for instructions on publishing to PyPI.
 
 * * *
 
-*This file was built with
-[simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*
+*This file was built with [simple-modern-uv](https://github.com/jlevy/simple-modern-uv).*

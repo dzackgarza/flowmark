@@ -223,7 +223,7 @@ Complex should be possible.*” —Alan Kay </p>
 ).lstrip()
 
 
-def test_normalize_markdown():
+def test_normalize_markdown() -> None:
     parsed = marko.parse(_original_doc)
     print("---Parsed")
     print(parsed)
@@ -238,7 +238,7 @@ def test_normalize_markdown():
     assert normalized_doc == _expected_doc
 
 
-def test_multi_paragraph_list_items():
+def test_multi_paragraph_list_items() -> None:
     # Test that multi-paragraph list items get proper spacing between them.
     input_doc = dedent(
         """
@@ -279,7 +279,7 @@ def test_multi_paragraph_list_items():
     assert normalized_doc == expected_doc
 
 
-def test_wide_table_adjacent_to_paragraph():
+def test_wide_table_adjacent_to_paragraph() -> None:
     """
     Test that a wide table row immediately following paragraph text (no blank line)
     is preserved on a single line by fill_markdown.
@@ -303,21 +303,16 @@ def test_wide_table_adjacent_to_paragraph():
         result = fill_markdown(input_doc, semantic=semantic)
 
         # Every table row must remain on its own single line
-        assert (
-            "| Quarter | Revenue ($M) | YoY % | QoQ % | Segment A % | Segment B % | Geo: US % | Geo: Intl % |"
-            in result
-        )
+        assert "| Quarter | Revenue ($M) | YoY % | QoQ % | Segment A % | Segment B % | Geo: US % | Geo: Intl % |" in result
         assert "| Q1 2025 | 125.3 | +12% | +3% | 45% | 55% | 60% | 40% |" in result
 
         # Verify rows are each on their own line (not merged with text)
         result_lines = result.strip().split("\n")
         table_lines = [line for line in result_lines if line.startswith("|")]
-        assert len(table_lines) == 3, (
-            f"Expected 3 table lines, got {len(table_lines)} in {semantic=}"
-        )
+        assert len(table_lines) == 3, f"Expected 3 table lines, got {len(table_lines)} in {semantic=}"
 
 
-def test_standalone_wide_table():
+def test_standalone_wide_table() -> None:
     """
     Test that a standalone wide table (properly parsed by GFM) continues to work.
     This is a regression guard — tables that GFM recognizes should not be affected.

@@ -130,7 +130,7 @@ def line_is_block_content(line: str) -> bool:
 ## Tests
 
 
-def test_line_is_table_row():
+def test_line_is_table_row() -> None:
     # Valid table rows
     assert line_is_table_row("| A | B |")
     assert line_is_table_row("|---|---|")
@@ -145,7 +145,7 @@ def test_line_is_table_row():
     assert not line_is_table_row("   ")
 
 
-def test_line_is_list_item_unordered():
+def test_line_is_list_item_unordered() -> None:
     # Valid unordered list items
     assert line_is_list_item("- Item")
     assert line_is_list_item("* Item")
@@ -164,7 +164,7 @@ def test_line_is_list_item_unordered():
     assert line_is_list_item("- -")
 
 
-def test_line_is_list_item_ordered():
+def test_line_is_list_item_ordered() -> None:
     # Valid ordered list items
     assert line_is_list_item("1. Item")
     assert line_is_list_item("1) Item")
@@ -183,7 +183,7 @@ def test_line_is_list_item_ordered():
     assert not line_is_list_item("12345678901. Item")  # Too many digits (>9)
 
 
-def test_line_is_table_separator():
+def test_line_is_table_separator() -> None:
     # Valid separator rows
     assert line_is_table_separator("|---|---|")
     assert line_is_table_separator("| --- | --- |")
@@ -198,7 +198,7 @@ def test_line_is_table_separator():
     assert not line_is_table_separator("")
 
 
-def test_normalize_table_separator():
+def test_normalize_table_separator() -> None:
     # Basic normalization
     assert normalize_table_separator("|---|---|") == "| --- | --- |"
     assert normalize_table_separator("|---------|-------------|") == "| --- | --- |"
@@ -213,7 +213,7 @@ def test_normalize_table_separator():
     assert normalize_table_separator("Not a table") == "Not a table"
 
 
-def test_line_is_block_content():
+def test_line_is_block_content() -> None:
     # Table rows
     assert line_is_block_content("| A | B |")
     assert line_is_block_content("|---|---|")

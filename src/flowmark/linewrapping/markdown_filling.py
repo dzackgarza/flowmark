@@ -11,6 +11,7 @@ discussion on why line wrapping this way is convenient.)
 
 from __future__ import annotations
 
+import sys
 from textwrap import dedent
 
 from flowmark.formats.flowmark_markdown import ListSpacing, flowmark_markdown
@@ -105,7 +106,16 @@ def fill_markdown(
     marko = flowmark_markdown(line_wrapper, list_spacing)
     document = marko.parse(markdown_text)
     if cleanups:
-        doc_cleanups(document)
+        # The hyphen join is a heuristic -- #18 says so plainly, and asks for a count
+        # rather than silence, because its scope ("digit, lowercase, or inline math",
+        # minus the suspension conjunctions) will not be right every time. Saying how
+        # many is what lets a reader check them.
+        joined = doc_cleanups(document)
+        if joined:
+            print(
+                f"Note: closed up {joined} line break{'s' if joined != 1 else ''} that fell after a hyphen",
+                file=sys.stderr,
+            )
     if smartquotes:
         rewrite_text_across_inlines(document, smart_quotes)
     if ellipses:

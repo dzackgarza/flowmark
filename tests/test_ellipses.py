@@ -1,7 +1,7 @@
 from flowmark.typography.ellipses import ellipses
 
 
-def test_ellipses():
+def test_ellipses() -> None:
     # Basic conversions, adding space only if needed next to a word character
     assert ellipses("word...") == "word …"
     assert ellipses("word ...") == "word …"
@@ -23,13 +23,8 @@ def test_ellipses():
     assert ellipses("I think... well... maybe...") == "I think … well … maybe …"
     assert ellipses("First...second...third") == "First … second … third"
     assert ellipses("Wait... what... really?") == "Wait … what … really?"
-    assert (
-        ellipses("I was thinking... maybe we should go.") == "I was thinking … maybe we should go."
-    )
-    assert (
-        ellipses("The options are... well... complicated.")
-        == "The options are … well … complicated."
-    )
+    assert ellipses("I was thinking... maybe we should go.") == "I was thinking … maybe we should go."
+    assert ellipses("The options are... well... complicated.") == "The options are … well … complicated."
 
     # Punctuation cases.
     assert ellipses("word....") == "word …."
@@ -57,10 +52,7 @@ def test_ellipses():
     assert ellipses("...#") == "...#"  # Not followed by word char or end
 
     # Multiline cases.
-    assert (
-        ellipses("First line...\nSecond line... continues\n...starts here")
-        == "First line …\nSecond line … continues\n… starts here"
-    )
+    assert ellipses("First line...\nSecond line... continues\n...starts here") == "First line …\nSecond line … continues\n… starts here"
     assert ellipses("Hello....\n") == "Hello ….\n"
 
     # Edge cases.

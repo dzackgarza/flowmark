@@ -25,14 +25,14 @@ def _html(src: str) -> str:
     return parser.render(parser.parse(src)).strip()
 
 
-def test_full_reference_with_distinct_label_preserved():
+def test_full_reference_with_distinct_label_preserved() -> None:
     """[text][label] with text != label stays a full reference (the 'fm' case)."""
     md = flowmark_markdown()
     src = "Use [flowmark][fm]\n\n[fm]: https://github.com/jlevy/flowmark\n"
     assert md(src) == "Use [flowmark][fm]\n\n[fm]: https://github.com/jlevy/flowmark\n"
 
 
-def test_label_equals_text_not_collapsed_to_shortcut():
+def test_label_equals_text_not_collapsed_to_shortcut() -> None:
     """[flowmark][flowmark] must not become a bare [flowmark] shortcut.
 
     This is the exact case from issue #45.
@@ -43,7 +43,7 @@ def test_label_equals_text_not_collapsed_to_shortcut():
     assert result == "Use [flowmark][]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
 
 
-def test_issue_45_link_survives_round_trip():
+def test_issue_45_link_survives_round_trip() -> None:
     """The reformatted output must still parse to the same link as the input."""
     md = flowmark_markdown()
     src = "Use [flowmark][flowmark]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
@@ -53,7 +53,7 @@ def test_issue_45_link_survives_round_trip():
     assert '<a href="https://github.com/jlevy/flowmark">flowmark</a>' in _html(result)
 
 
-def test_idempotent_on_collapsed_reference():
+def test_idempotent_on_collapsed_reference() -> None:
     """Formatting is stable: collapsed reference output is a fixed point."""
     md = flowmark_markdown()
     src = "Use [flowmark][]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
@@ -61,14 +61,14 @@ def test_idempotent_on_collapsed_reference():
     assert md(once) == once
 
 
-def test_shortcut_input_normalized_to_collapsed_reference():
+def test_shortcut_input_normalized_to_collapsed_reference() -> None:
     """A shortcut reference [flowmark] is normalized to the explicit [flowmark][]."""
     md = flowmark_markdown()
     src = "Use [flowmark]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
     assert md(src) == "Use [flowmark][]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
 
 
-def test_label_equals_text_followed_by_parens_keeps_link():
+def test_label_equals_text_followed_by_parens_keeps_link() -> None:
     """[flowmark][flowmark](/path): collapsing to shortcut would steal the parens.
 
     Shortcut [flowmark](/path) reparses as an inline link to '/path', changing the
@@ -81,18 +81,14 @@ def test_label_equals_text_followed_by_parens_keeps_link():
     assert '<a href="https://example.com">flowmark</a>' in _html(result)
 
 
-def test_label_equals_text_followed_by_reference_keeps_both_links():
+def test_label_equals_text_followed_by_reference_keeps_both_links() -> None:
     """[flowmark][flowmark][ref2]: collapsing to shortcut would drop the first link.
 
     Shortcut [flowmark][ref2] reparses as one full reference (flowmark -> ref2),
     losing the flowmark link entirely.
     """
     md = flowmark_markdown()
-    src = (
-        "See [flowmark][flowmark][ref2] end.\n\n"
-        "[flowmark]: https://example.com\n"
-        "[ref2]: https://example.org\n"
-    )
+    src = "See [flowmark][flowmark][ref2] end.\n\n[flowmark]: https://example.com\n[ref2]: https://example.org\n"
     result = md(src)
     assert _html(result) == _html(src)
     assert '<a href="https://example.com">flowmark</a>' in _html(result)

@@ -8,12 +8,16 @@ from flowmark.linewrapping.markdown_filling import fill_markdown
 from flowmark.linewrapping.text_filling import Wrap, fill_text
 from flowmark.linewrapping.text_wrapping import get_html_md_word_splitter
 from flowmark.pandoc_verify import (
+    HYPHEN_JOIN,
+    LAZY_LIST,
     LIST_SPACING,
+    SMART_QUOTES,
     UNBOLD_HEADING,
     MeaningChangedError,
     check_meaning_preserved,
     describe,
 )
+from flowmark.preflight import preflight
 
 
 def reformat_text(
@@ -69,18 +73,39 @@ def reformat_text(
             #
             # Anything but flowmark's intentional normalizations raises here, so the
             # caller never gets a document whose meaning changed.
-            applied = check_meaning_preserved(text, result, verify_label)
+            try:
+                applied = check_meaning_preserved(text, result, verify_label)
+            except MeaningChangedError as changed:
+                # The gate can only ask "did flowmark break this?". Before answering
+                # yes, ask the other question -- "was this already broken?" -- because
+                # in #17 the answer was yes and the misattribution cost a bisection.
+                findings = preflight(text)
+                if not findings:
+                    raise
+                named = "; ".join(f"{verify_label}:{finding.line}: {finding.message}" for finding in findings[:3])
+                more = "" if len(findings) <= 3 else f" (and {len(findings) - 3} more)"
+                raise MeaningChangedError(
+                    f"Refusing to write {verify_label}: reformatting would change what "
+                    f"pandoc reads ({changed.detail}). The file is unchanged. Your input "
+                    f"looks ambiguous, so this is probably not a flowmark defect -- "
+                    f"{named}{more}. Fix the input, or pass --no-verify to format anyway.",
+                    detail=changed.detail,
+                ) from changed
             # Asking for a normalization and getting it is not news; getting one
             # without asking is, so only the latter is reported.
             requested = {
                 UNBOLD_HEADING: cleanups,
                 LIST_SPACING: list_spacing is not ListSpacing.preserve,
+                SMART_QUOTES: smartquotes,
+                HYPHEN_JOIN: cleanups,
+                # No flag asks for this one, so it is always worth saying: the
+                # author's bullets under a paragraph line became a real list.
+                LAZY_LIST: False,
             }
             for normalization in applied:
                 if not requested.get(normalization, False):
                     print(
-                        f"Warning: {verify_label}: {describe(normalization)} "
-                        f"without being asked to",
+                        f"Warning: {verify_label}: {describe(normalization)} without being asked to",
                         file=sys.stderr,
                     )
 
@@ -153,9 +178,7 @@ def reformat_file(
 
     if inplace:
         backup_suffix = ".orig" if not nobackup else ""
-        with atomic_output_file(
-            path, backup_suffix=backup_suffix, make_parents=make_parents
-        ) as tmp_path:
+        with atomic_output_file(path, backup_suffix=backup_suffix, make_parents=make_parents) as tmp_path:
             tmp_path.write_text(result)
     else:
         if not output or write_stdout:
@@ -221,9 +244,7 @@ def reformat_files(
 
     # Multiple files case
     if not inplace and output and output != "-":
-        raise ValueError(
-            "Cannot specify output file when processing multiple files (use --inplace instead)"
-        )
+        raise ValueError("Cannot specify output file when processing multiple files (use --inplace instead)")
 
     refused = 0
     for file_path in files:

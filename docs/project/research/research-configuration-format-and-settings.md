@@ -7,31 +7,32 @@
 **Related**:
 
 - [File Discovery and Globbing Plan Spec](../specs/active/plan-2026-02-15-file-discovery-and-globbing.md)
+
 - [Auto-Formatter File Discovery Research](research-auto-formatter-file-discovery.md)
+
 - [Ruff Configuration Docs](https://docs.astral.sh/ruff/configuration/)
+
 - [Biome Configuration Docs](https://biomejs.dev/reference/configuration/)
 
 * * *
 
 ## Executive Summary
 
-Flowmark currently has **no configuration file support** — every option must be passed
-via CLI arguments.
-As we add file discovery (exclude/include patterns, `.gitignore` integration) and
-potentially `--files-max-size`, the number of settings is growing to the point where a
-configuration file is essential for practical use.
+Flowmark currently has **no configuration file support** — every option must be passed via CLI arguments.
+As we add file discovery (exclude/include patterns, `.gitignore` integration) and potentially `--files-max-size`, the number of settings is growing to the point where a configuration file is essential for practical use.
 
-This research examines what config format to use, how to structure the config system,
-and how to ensure it works well across Python, TypeScript/JavaScript, and Rust ecosystems
-(since Flowmark is used on projects in all these languages and may itself be ported to
-Rust).
+This research examines what config format to use, how to structure the config system, and how to ensure it works well across Python, TypeScript/JavaScript, and Rust ecosystems (since Flowmark is used on projects in all these languages and may itself be ported to Rust).
 
 **Key recommendations:**
 
 1. **TOML** as the configuration format, following the Ruff model
+
 2. Support both `flowmark.toml` (standalone) and `pyproject.toml` `[tool.flowmark]`
+
 3. Add `files-max-size` as both a CLI flag and config setting (default: 1 MiB)
+
 4. Systematically expose all existing CLI options as config settings
+
 5. CLI flags always override config file values
 
 * * *
@@ -39,10 +40,13 @@ Rust).
 ## Research Questions
 
 1. What format should Flowmark's configuration file use?
-2. How should Ruff's configuration model (the current gold standard) inform Flowmark's
-   design?
+
+2. How should Ruff's configuration model (the current gold standard) inform Flowmark's design?
+
 3. How does Biome's `files.maxSize` work and what should Flowmark adopt?
+
 4. What settings should be configurable and what should the config schema look like?
+
 5. How should CLI flags and config file settings interact?
 
 * * *
@@ -83,47 +87,44 @@ Rust).
 YAML has two critical problems for this use case:
 
 1. **Implicit type coercion** makes it dangerous for config files.
-   In YAML 1.1 (what PyYAML implements), `NO` is parsed as `false`, `3.10` is parsed
-   as `3.1`, and certain strings are silently interpreted as dates or numbers.
+   In YAML 1.1 (what PyYAML implements), `NO` is parsed as `false`, `3.10` is parsed as `3.1`, and certain strings are silently interpreted as dates or numbers.
    Modern tools (Biome, Deno, ESLint v9) are all moving away from YAML.
 
-2. **The Rust YAML story is fragmented and risky.**
-   `serde_yaml` — the standard Rust YAML library with 200M+ downloads — was deprecated
-   in March 2024 with no clear successor.
+2. **The Rust YAML story is fragmented and risky.** `serde_yaml` — the standard Rust YAML library with 200M+ downloads — was deprecated in March 2024 with no clear successor.
    Community forks (`serde-yaml-ng`, `serde_yml`) have quality and maintenance concerns.
    Choosing YAML now would create a dependency risk for a future Rust port.
 
 ### Why Not JSON?
 
-1. **No comments** in standard JSON.
-   JSONC helps but is non-standard and has uneven tooling.
+1. **No comments** in standard JSON. JSONC helps but is non-standard and has uneven tooling.
+
 2. **Not the convention** for Python or Rust tools.
    Users of Python projects expect `pyproject.toml`; Rust users expect `*.toml`.
+
 3. **Verbose for config** — requires quoting all keys and no trailing commas.
 
 ### Why TOML
 
-1. **Native in the two target ecosystems** — `tomllib` is in Python's stdlib since 3.11;
-   the `toml` crate is Rust's native config format.
+1. **Native in the two target ecosystems** — `tomllib` is in Python's stdlib since 3.11; the `toml` crate is Rust's native config format.
+
 2. **`pyproject.toml` integration** is idiomatic for Python projects.
    Ruff, Black, Mypy, Pytest, uv all support `[tool.X]` sections.
-3. **Clean Rust port path** — the `toml` crate (v0.9) is excellent and actively
-   maintained.
+
+3. **Clean Rust port path** — the `toml` crate (v0.9) is excellent and actively maintained.
+
 4. **Human-readable with comments** — critical for config files that humans maintain.
+
 5. **No implicit type coercion** — what you write is what you get.
-6. **JS/TS is the weakest link, but acceptable.**
-   `smol-toml` and `js-toml` are adequate.
-   JS/TS developers already encounter TOML in polyglot repos (`pyproject.toml`,
-   `Cargo.toml`).
-   Prettier already supports `.prettierrc.toml`, establishing precedent.
+
+6. **JS/TS is the weakest link, but acceptable.** `smol-toml` and `js-toml` are adequate.
+   JS/TS developers already encounter TOML in polyglot repos (`pyproject.toml`, `Cargo.toml`). Prettier already supports `.prettierrc.toml`, establishing precedent.
 
 * * *
 
 ## Ruff's Configuration Model
 
 Ruff (by Astral) is the current gold standard for developer tool configuration.
-Its model is particularly relevant because Ruff is written in Rust, configured in TOML,
-and serves the Python ecosystem — exactly the trajectory Flowmark may follow.
+Its model is particularly relevant because Ruff is written in Rust, configured in TOML, and serves the Python ecosystem — exactly the trajectory Flowmark may follow.
 
 ### Config File Discovery
 
@@ -147,14 +148,18 @@ Explicit inheritance via the `extend` field.
 From highest to lowest:
 
 1. Dedicated CLI flags (e.g., `--line-length=90`)
+
 2. `--config` key-value overrides (e.g., `--config "line-length=100"`)
+
 3. `--config` pointing to a specific file
+
 4. Closest discovered config file
+
 5. Inherited config files (via `extend`)
+
 6. Built-in defaults
 
-**CLI always wins over config.**
-This is the universal convention across all formatters studied.
+**CLI always wins over config.** This is the universal convention across all formatters studied.
 
 ### Config Structure
 
@@ -176,9 +181,13 @@ quote-style = "double"
 ### Key Takeaways for Flowmark
 
 - Support both `pyproject.toml` and standalone TOML file
+
 - Same schema in both (just different prefix)
+
 - CLI always overrides config
+
 - `extend-*` fields for additive overrides (don't replace defaults)
+
 - Keep config flat where possible (Flowmark is simpler than Ruff)
 
 * * *
@@ -188,9 +197,13 @@ quote-style = "double"
 Biome sets a maximum file size to silently skip oversized files during formatting.
 
 - **Config key**: `files.maxSize`
+
 - **CLI flag**: `--files-max-size=<bytes>`
+
 - **Default**: `1048576` bytes (1 MiB)
+
 - **Type**: integer (bytes)
+
 - **Behavior**: Files exceeding the limit are skipped with a diagnostic message
 
 ```json
@@ -203,16 +216,13 @@ Biome sets a maximum file size to silently skip oversized files during formattin
 
 ### Why This Matters for Flowmark
 
-Large Markdown files exist in practice — generated API docs, concatenated changelogs,
-data files with `.md` extensions.
+Large Markdown files exist in practice — generated API docs, concatenated changelogs, data files with `.md` extensions.
 Formatting a 10 MB Markdown file is slow and usually unintentional.
 A sensible default protects users from accidentally formatting generated content.
 
 ### Recommendation
 
-Add `files-max-size` with a default of **1048576 bytes (1 MiB)**.
-This matches Biome's default and is generous enough for any hand-written Markdown file
-while protecting against generated content.
+Add `files-max-size` with a default of **1048576 bytes (1 MiB)**. This matches Biome's default and is generous enough for any hand-written Markdown file while protecting against generated content.
 
 * * *
 
@@ -321,23 +331,12 @@ These are operational flags that don't belong in a project config:
 This is the most important semantic to get right.
 `--auto` and config files serve different purposes and interact in a specific way.
 
-**`--auto` is a fixed, complete formatting preset.**
-It always means the same thing: `semantic + cleanups + smartquotes + ellipses +
-inplace + nobackup`.
-It does NOT read formatting settings from the config file and it does NOT change
-behavior based on what's in `flowmark.toml`.
-This makes `--auto` predictable and portable — `flowmark --auto .` produces the same
-formatting result regardless of project config.
+**`--auto` is a fixed, complete formatting preset.** It always means the same thing: `semantic + cleanups + smartquotes + ellipses + inplace + nobackup`. It does NOT read formatting settings from the config file and it does NOT change behavior based on what's in `flowmark.toml`. This makes `--auto` predictable and portable — `flowmark --auto .` produces the same formatting result regardless of project config.
 
-**Without `--auto`, the config file provides formatting settings.**
-Running `flowmark .` (or `flowmark README.md`) reads formatting preferences from
-the config file.
-This lets projects configure their preferred formatting style once and have it apply
-to all team members and CI runs.
+**Without `--auto`, the config file provides formatting settings.** Running `flowmark .` (or `flowmark README.md`) reads formatting preferences from the config file.
+This lets projects configure their preferred formatting style once and have it apply to all team members and CI runs.
 
-**File discovery settings always apply**, regardless of `--auto`.
-Exclude patterns, `files-max-size`, `.gitignore` integration, and include patterns
-are read from the config file even when `--auto` is used.
+**File discovery settings always apply**, regardless of `--auto`. Exclude patterns, `files-max-size`, `.gitignore` integration, and include patterns are read from the config file even when `--auto` is used.
 `--auto` only overrides *formatting behavior*, not *which files to process*.
 
 **Resolution order by invocation style:**
@@ -353,27 +352,29 @@ are read from the config file even when `--auto` is used.
 **Detailed precedence for `flowmark .` (no `--auto`):**
 
 1. Explicit CLI flags (`--semantic`, `--width=80`, etc.) — highest priority
+
 2. Config file (`flowmark.toml` / `pyproject.toml [tool.flowmark]`)
+
 3. Built-in defaults (`width=88`, `semantic=false`, etc.) — lowest priority
 
 **Detailed precedence for `flowmark --auto .`:**
 
-1. `--auto` forces: `semantic=true`, `cleanups=true`, `smartquotes=true`,
-   `ellipses=true`, `inplace=true`, `nobackup=true`
+1. `--auto` forces: `semantic=true`, `cleanups=true`, `smartquotes=true`, `ellipses=true`, `inplace=true`, `nobackup=true`
+
 2. Non-formatting settings (file discovery): config file, then defaults
-3. `width` is NOT set by `--auto` — uses config file value if present,
-   otherwise built-in default (88)
+
+3. `width` is NOT set by `--auto` — uses config file value if present, otherwise built-in default (88)
 
 **Why this design:**
 
 - `--auto` is the "just format everything nicely" command.
   It should always do the same thing so users and agents can rely on it.
-- Config files are for projects that want a specific, possibly different, formatting
-  style (e.g., `width = 72`, `smartquotes = false` for a project that uses ASCII-only).
-- Keeping `--auto` independent of config prevents surprising interactions where
-  `--auto` behaves differently in different repos.
-- File discovery config (excludes, max-size, etc.) always applies because that's
-  about *which files exist in this project*, not *how to format them*.
+
+- Config files are for projects that want a specific, possibly different, formatting style (e.g., `width = 72`, `smartquotes = false` for a project that uses ASCII-only).
+
+- Keeping `--auto` independent of config prevents surprising interactions where `--auto` behaves differently in different repos.
+
+- File discovery config (excludes, max-size, etc.) always applies because that's about *which files exist in this project*, not *how to format them*.
 
 **Example: a project that uses config WITHOUT `--auto`:**
 
@@ -433,20 +434,16 @@ files-max-size = 2097152
 
 ### The `pyproject.toml` Question for Non-Python Projects
 
-`pyproject.toml` is the right location for Python projects, but a TypeScript project
-won't have one.
+`pyproject.toml` is the right location for Python projects, but a TypeScript project won't have one.
 The standalone `flowmark.toml` serves these projects.
 
-Notable precedent: **Pyright** (written in TypeScript) reads from both
-`pyrightconfig.json` and `[tool.pyright]` in `pyproject.toml`.
-This dual-file approach is well-established.
+Notable precedent: **Pyright** (written in TypeScript) reads from both `pyrightconfig.json` and `[tool.pyright]` in `pyproject.toml`. This dual-file approach is well-established.
 
 ### Rust Port Considerations
 
 If Flowmark is ported to Rust:
 
-1. **TOML parsing is native** — the `toml` crate with serde derives is the standard
-   approach.
+1. **TOML parsing is native** — the `toml` crate with serde derives is the standard approach.
    The config struct maps directly to Rust:
    ```rust
    #[derive(Deserialize)]
@@ -457,8 +454,7 @@ If Flowmark is ported to Rust:
    }
    ```
 
-2. **Same config files work** — `flowmark.toml` and `pyproject.toml` `[tool.flowmark]`
-   are format-identical.
+2. **Same config files work** — `flowmark.toml` and `pyproject.toml` `[tool.flowmark]` are format-identical.
    Zero migration needed for users.
 
 3. **YAML would be problematic** — `serde_yaml` is deprecated, forks are immature.
@@ -466,14 +462,15 @@ If Flowmark is ported to Rust:
 
 ### Why Not Also Support JSON?
 
-Biome, Deno, and `tsconfig.json` demonstrate that JSON/JSONC is natural for JS/TS
-tools.
+Biome, Deno, and `tsconfig.json` demonstrate that JSON/JSONC is natural for JS/TS tools.
 However, adding a second format increases maintenance burden for limited benefit:
 
 - JS/TS users working on polyglot repos already encounter TOML
+
 - `flowmark.toml` is a small, simple file — TOML syntax is trivial to learn
-- Prettier supports `.prettierrc.toml`, showing the JS ecosystem accepts TOML for
-  formatters
+
+- Prettier supports `.prettierrc.toml`, showing the JS ecosystem accepts TOML for formatters
+
 - If demand arises, JSON support can be added later without breaking changes
 
 **Recommendation**: Start with TOML only.
@@ -488,7 +485,9 @@ Add JSONC support later if there's clear demand from JS/TS-only projects.
 From highest to lowest priority:
 
 1. CLI flags
+
 2. Closest config file (`.flowmark.toml` > `flowmark.toml` > `pyproject.toml`)
+
 3. Built-in defaults
 
 ### Config Loading Implementation
@@ -544,23 +543,23 @@ def find_config_file(start_dir: Path) -> Path | None:
 ### Dependency Notes
 
 - **Python 3.11+**: `tomllib` is in stdlib (zero dependencies)
-- **Python 3.10**: Use `tomli` backport (already standard practice; Flowmark requires
-  `>=3.10`)
+
+- **Python 3.10**: Use `tomli` backport (already standard practice; Flowmark requires `>=3.10`)
+
 - **Writing TOML**: Not needed — Flowmark only reads config.
   If a `--init` command is added later, use `tomli_w` or template strings.
 
 ### Phasing
 
-This config system should be implemented **after** the file discovery module (which is
-already spec'd) but can share a phase:
+This config system should be implemented **after** the file discovery module (which is already spec'd) but can share a phase:
 
 1. **Phase 1**: File discovery module (already planned)
-2. **Phase 2**: Config file loading + `files-max-size` + systematic config for all
-   options
+
+2. **Phase 2**: Config file loading + `files-max-size` + systematic config for all options
+
 3. **Phase 3**: Documentation and `flowmark --init` convenience command
 
-The `FileResolverConfig` dataclass from the file discovery spec can be absorbed into
-the broader `FlowmarkConfig` — one config object for the whole tool.
+The `FileResolverConfig` dataclass from the file discovery spec can be absorbed into the broader `FlowmarkConfig` — one config object for the whole tool.
 
 * * *
 
@@ -574,36 +573,27 @@ the broader `FlowmarkConfig` — one config object for the whole tool.
 | **dprint** | JSON | `dprint.json` | No | Plugin-based, simple config |
 | **Biome** | JSON/JSONC | `biome.json` | Yes (1 MiB default) | Only tool with max-size |
 
-Flowmark with TOML config and `files-max-size` would be the first Markdown formatter
-to have both a proper config file system and file size limits.
+Flowmark with TOML config and `files-max-size` would be the first Markdown formatter to have both a proper config file system and file size limits.
 
 * * *
 
 ## Resolved Questions
 
-1. **Should `--auto` be representable in config?**
-   **No.** `--auto` is a fixed formatting preset that ignores config formatting
-   settings.
-   Projects that want specific formatting configure individual settings in the config
-   file and run `flowmark --inplace .` (or just `flowmark .` to stdout).
+1. **Should `--auto` be representable in config?** **No.** `--auto` is a fixed formatting preset that ignores config formatting settings.
+   Projects that want specific formatting configure individual settings in the config file and run `flowmark --inplace .` (or just `flowmark .` to stdout).
    See "Settings Resolution" section above for full details.
 
-2. **Should `files-max-size = 0` mean "no limit" or "skip all files"?**
-   **0 = no limit** (disable the check).
+2. **Should `files-max-size = 0` mean "no limit" or "skip all files"?** **0 = no limit** (disable the check).
    This matches developer intuition (0 = off/disabled).
    Biome's interpretation (0 = skip all) is technically valid but surprising.
 
 ## Open Questions
 
-1. **Nested config files for monorepos?**
-   Ruff supports hierarchical configs.
-   For a Markdown formatter this is less critical — most monorepos want the same
-   Markdown formatting everywhere.
+1. **Nested config files for monorepos?** Ruff supports hierarchical configs.
+   For a Markdown formatter this is less critical — most monorepos want the same Markdown formatting everywhere.
    Defer to a later version.
 
-2. **`extend` field for config inheritance?**
-   Ruff supports `extend = "../base-ruff.toml"`.
-   Useful for monorepos and shared configs.
+2. **`extend` field for config inheritance?** Ruff supports `extend = "../base-ruff.toml"`. Useful for monorepos and shared configs.
    Nice to have but not essential for v1.
 
 * * *
@@ -611,13 +601,23 @@ to have both a proper config file system and file size limits.
 ## References
 
 - [Ruff Configuration](https://docs.astral.sh/ruff/configuration/)
+
 - [Ruff Settings Reference](https://docs.astral.sh/ruff/settings/)
+
 - [Biome Configuration](https://biomejs.dev/reference/configuration/)
+
 - [Biome `files.maxSize`](https://biomejs.dev/reference/configuration/#filesmaxsize)
+
 - [Python `tomllib` (PEP 680)](https://peps.python.org/pep-0680/)
+
 - [pyproject.toml Specification](https://packaging.python.org/en/latest/specifications/pyproject-toml/)
+
 - [Rust `toml` Crate](https://docs.rs/toml)
+
 - [`smol-toml` (npm)](https://www.npmjs.com/package/smol-toml)
+
 - [`serde_yaml` Deprecation Discussion](https://users.rust-lang.org/t/serde-yaml-deprecation-alternatives/108868)
+
 - [Prettier Configuration](https://prettier.io/docs/configuration)
+
 - [mdformat Configuration](https://mdformat.readthedocs.io/en/stable/)

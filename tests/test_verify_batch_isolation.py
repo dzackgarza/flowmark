@@ -18,21 +18,28 @@ import pytest
 from flowmark.pandoc_verify import MeaningChangedError
 from flowmark.reformat_api import reformat_file, reformat_files
 
-# Ambiguous markdown: CommonMark (flowmark's parser) reads a list interrupting
-# the paragraph, pandoc reads one paragraph. Loose-list normalization would
-# insert a blank line and change what pandoc reads, so verify must refuse.
+# Ambiguous markdown: an unescaped `|` from a linear system inside inline math,
+# in a pipe-table row (the #17 reporter's actual line). Pandoc already mis-parses
+# the row -- the three logical cells read as five -- so reflowing the table
+# shuffles the mis-split differently and verify correctly refuses.
+#
+# This fixture was previously a paragraph followed by a tight list. That was a
+# live bug (#16), and pinning a test to a live bug means the test fails the day it
+# is fixed -- which is exactly what happened when the `lazy_list` normalization
+# landed. The refusal here is not a flowmark defect due to be fixed: the input is
+# genuinely ambiguous, so this document keeps refusing by design.
 AMBIGUOUS = dedent(
     """\
-    Extracts the side:
-    - item one
-    - item two
+    | col | status | ref |
+    |---|---|---|
+    | $|-2K_{\\widetilde V}|=\\{C\\}$ generically | established | @sec:anti-bicanonical |
     """
 )
 
 NEEDS_FORMAT = "A paragraph with an accidentally   wide gap.  Another sentence here.\n"
 
 
-def test_batch_skips_refused_file_and_formats_the_rest(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+def test_batch_skips_refused_file_and_formats_the_rest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     bad = tmp_path / "bad.md"
     good = tmp_path / "good.md"
     bad.write_text(AMBIGUOUS)
@@ -49,7 +56,7 @@ def test_batch_skips_refused_file_and_formats_the_rest(tmp_path: Path, capsys: p
     assert "1 file left unformatted" in err, "batch must summarize skips"
 
 
-def test_single_file_call_still_raises(tmp_path: Path):
+def test_single_file_call_still_raises(tmp_path: Path) -> None:
     bad = tmp_path / "bad.md"
     bad.write_text(AMBIGUOUS)
     with pytest.raises(MeaningChangedError):

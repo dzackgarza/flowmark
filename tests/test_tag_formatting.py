@@ -143,7 +143,7 @@ def _count_smart_quotes(text: str) -> int:
     return text.count("\u201c") + text.count("\u201d")
 
 
-def test_smart_quotes_not_applied_in_tag_attributes():
+def test_smart_quotes_not_applied_in_tag_attributes() -> None:
     """
     Verify that smart quotes are NOT applied to quotes inside Markdoc/Jinja tag attributes.
 
@@ -163,14 +163,10 @@ def test_smart_quotes_not_applied_in_tag_attributes():
             f"Input: {tag[:100]}...\n"
             f"Output: {result[:100]}..."
         )
-        assert result_smart == 0, (
-            f"Test {i}: Smart quotes were introduced.\n"
-            f"Input: {tag[:100]}...\n"
-            f"Output: {result[:100]}..."
-        )
+        assert result_smart == 0, f"Test {i}: Smart quotes were introduced.\nInput: {tag[:100]}...\nOutput: {result[:100]}..."
 
 
-def test_tag_with_array_spanning_lines():
+def test_tag_with_array_spanning_lines() -> None:
     """Test that arrays spanning multiple lines inside tags are preserved."""
     # This is a specific regression test for the bug where quotes after newlines
     # inside arrays were converted to smart quotes
@@ -180,7 +176,7 @@ def test_tag_with_array_spanning_lines():
     assert result == tag, f"Array spanning lines was modified: {result}"
 
 
-def test_tag_with_object_spanning_lines():
+def test_tag_with_object_spanning_lines() -> None:
     """Test that objects spanning multiple lines inside tags are preserved."""
     tag = '{% field config={key: "value",\nother: "data"} %}'
 
@@ -188,7 +184,7 @@ def test_tag_with_object_spanning_lines():
     assert result == tag, f"Object spanning lines was modified: {result}"
 
 
-def test_multiline_tag_with_surrounding_text():
+def test_multiline_tag_with_surrounding_text() -> None:
     """Test multiline tags with regular text that SHOULD get smart quotes."""
     text = dedent("""
         Here is some "quoted text" that should be converted.
@@ -211,7 +207,7 @@ def test_multiline_tag_with_surrounding_text():
     assert '"two"]' in result, "Array quotes on continuation lines should be preserved"
 
 
-def test_pipeline_preserves_tag_quotes():
+def test_pipeline_preserves_tag_quotes() -> None:
     """Test that the full Markdown pipeline preserves tag attribute quotes."""
     for i, tag in enumerate(ALL_TAGS, 1):
         original_straight = _count_straight_quotes(tag)
@@ -223,13 +219,11 @@ def test_pipeline_preserves_tag_quotes():
 
         # All straight quotes in tags should be preserved
         assert result_straight == original_straight, (
-            f"Test {i}: Pipeline converted quotes in tag.\n"
-            f"Original straight: {original_straight}, Result straight: {result_straight}\n"
-            f"Input:\n{tag}\n\nOutput:\n{result}"
+            f"Test {i}: Pipeline converted quotes in tag.\nOriginal straight: {original_straight}, Result straight: {result_straight}\nInput:\n{tag}\n\nOutput:\n{result}"
         )
 
 
-def test_tag_newlines_preserved_in_pipeline():
+def test_tag_newlines_preserved_in_pipeline() -> None:
     """Test that newlines within multiline tags are preserved through the pipeline."""
     # Tag 6 has vertical formatting
     result = fill_markdown(TAG_6, semantic=True)
@@ -239,7 +233,7 @@ def test_tag_newlines_preserved_in_pipeline():
     assert "%}\n{% /field %}" in result or "%}{% /field %}" in result
 
 
-def test_word_splitter_handles_multiline_tags():
+def test_word_splitter_handles_multiline_tags() -> None:
     """Test that the word splitter correctly handles multiline tags."""
     splitter = _HtmlMdWordSplitter()
 
@@ -254,7 +248,7 @@ def test_word_splitter_handles_multiline_tags():
     assert multi in tokens, f"Multi-word tag should be coalesced: {tokens}"
 
 
-def test_line_wrapper_preserves_multiline_tags():
+def test_line_wrapper_preserves_multiline_tags() -> None:
     """Test that line wrappers preserve structure of multiline tags."""
     wrapper = line_wrap_to_width(width=80, is_markdown=True)
 
@@ -267,7 +261,7 @@ def test_line_wrapper_preserves_multiline_tags():
     assert "{% /field %}" in result
 
 
-def test_tag_with_embedded_percent_brace():
+def test_tag_with_embedded_percent_brace() -> None:
     """Test that %} inside a string attribute doesn't end the tag early."""
     # This is TAG_9 - pattern contains %}
     result = fill_markdown(TAG_9, semantic=True)
@@ -279,7 +273,7 @@ def test_tag_with_embedded_percent_brace():
     assert 'pattern="test %} not end"' in result or "pattern=" in result
 
 
-def test_jinja_variable_tags_in_prose():
+def test_jinja_variable_tags_in_prose() -> None:
     """Test that Jinja variable tags {{ }} work correctly."""
     text = 'Hello {{ user.name }}, welcome to "our site".'
 
@@ -291,7 +285,7 @@ def test_jinja_variable_tags_in_prose():
     assert "{{ user.name }}" in result
 
 
-def test_jinja_comment_tags():
+def test_jinja_comment_tags() -> None:
     """Test that Jinja comment tags {# #} are handled correctly."""
     text = '{# TODO: fix "this" later #} Some "quoted" text.'
 
@@ -303,7 +297,7 @@ def test_jinja_comment_tags():
     # Note: Current implementation may convert these - document the behavior
 
 
-def test_html_comment_tags_with_quotes():
+def test_html_comment_tags_with_quotes() -> None:
     """Test that HTML comment tags with quotes are handled."""
     text = '<!-- f:field kind="string" --> Some "quoted" text <!-- /f:field -->'
 
@@ -315,7 +309,7 @@ def test_html_comment_tags_with_quotes():
     assert 'kind="string"' in result
 
 
-def test_adjacent_closing_tags():
+def test_adjacent_closing_tags() -> None:
     """Test that %}{% stays adjacent (no space inserted)."""
     from flowmark.linewrapping.tag_handling import (
         denormalize_adjacent_tags,
@@ -329,7 +323,7 @@ def test_adjacent_closing_tags():
     assert denormalized == original
 
 
-def test_selection_field_with_task_list():
+def test_selection_field_with_task_list() -> None:
     """Test selection fields with task list items (TAG_8)."""
     result = fill_markdown(TAG_8, semantic=True)
 
@@ -340,7 +334,7 @@ def test_selection_field_with_task_list():
     assert "{% /field %}" in result
 
 
-def test_smart_quotes_preserves_apostrophe_in_jinja_variable():
+def test_smart_quotes_preserves_apostrophe_in_jinja_variable() -> None:
     """Test that apostrophes inside {{ }} variable tags are NOT converted."""
     # This is a regression test for the bug where won't was converted to won't
     text = "{{ won't }}"
@@ -349,35 +343,35 @@ def test_smart_quotes_preserves_apostrophe_in_jinja_variable():
     assert result == text, f"Apostrophe in variable tag was converted: {result}"
 
 
-def test_smart_quotes_preserves_double_quotes_in_include():
+def test_smart_quotes_preserves_double_quotes_in_include() -> None:
     """Test that double quotes in {% include %} are NOT converted."""
     text = '{% include "header.html" %}'
     result = smart_quotes(text)
     assert result == text, f"Quotes in include tag were converted: {result}"
 
 
-def test_smart_quotes_preserves_single_quotes_in_attributes():
+def test_smart_quotes_preserves_single_quotes_in_attributes() -> None:
     """Test that single quotes in tag attributes are NOT converted."""
     text = "{% field kind='string' label='Name' %}"
     result = smart_quotes(text)
     assert result == text, f"Single quotes in tag were converted: {result}"
 
 
-def test_smart_quotes_preserves_quotes_in_jinja_comments():
+def test_smart_quotes_preserves_quotes_in_jinja_comments() -> None:
     """Test that quotes inside {# #} comment tags are NOT converted."""
     text = '{# "quoted text" in comment #}'
     result = smart_quotes(text)
     assert result == text, f"Quotes in Jinja comment were converted: {result}"
 
 
-def test_smart_quotes_preserves_quotes_in_html_comments():
+def test_smart_quotes_preserves_quotes_in_html_comments() -> None:
     """Test that quotes inside <!-- --> comment tags are NOT converted."""
     text = '<!-- f:field kind="string" -->'
     result = smart_quotes(text)
     assert result == text, f"Quotes in HTML comment were converted: {result}"
 
 
-def test_smart_quotes_converts_prose_but_not_tags():
+def test_smart_quotes_converts_prose_but_not_tags() -> None:
     """Test that prose quotes are converted but tag quotes are preserved."""
     text = 'She said "hello" and {% field label="Name" %} was set.'
     result = smart_quotes(text)
@@ -389,7 +383,7 @@ def test_smart_quotes_converts_prose_but_not_tags():
     assert 'label="Name"' in result, "Tag attribute quotes should be preserved"
 
 
-def test_smart_quotes_with_nunjucks_raw_block():
+def test_smart_quotes_with_nunjucks_raw_block() -> None:
     """Test the specific Nunjucks raw block pattern from testdoc."""
     text = "{% raw %}This {{ won't }} be {% processed %}{% endraw %}"
     result = smart_quotes(text)
@@ -397,7 +391,7 @@ def test_smart_quotes_with_nunjucks_raw_block():
     assert result == text, f"Raw block content was modified: {result}"
 
 
-def test_smart_quotes_multiline_tag_with_prose():
+def test_smart_quotes_multiline_tag_with_prose() -> None:
     """Test smart quotes with multiline tag surrounded by prose."""
     text = dedent("""
         He said "yes" to the form.
@@ -421,7 +415,7 @@ def test_smart_quotes_multiline_tag_with_prose():
     assert 'label="Full Name"' in result
 
 
-def test_multiline_opening_tag_closing_on_own_line():
+def test_multiline_opening_tag_closing_on_own_line() -> None:
     """
     Test that closing tags are placed on their own line after multiline opening tags.
 
@@ -441,7 +435,7 @@ def test_multiline_opening_tag_closing_on_own_line():
     assert "%}\n{% /field %}" in result, f"Closing tag not on own line: {result}"
 
 
-def test_single_line_paired_tags_not_split():
+def test_single_line_paired_tags_not_split() -> None:
     """
     Test that single-line paired tags like {% field %}{% /field %} are NOT split.
 
@@ -460,14 +454,10 @@ def test_single_line_paired_tags_not_split():
     assert result == single_line, f"Single-line tag was incorrectly split: {result}"
 
 
-def test_multiline_tag_through_pipeline():
+def test_multiline_tag_through_pipeline() -> None:
     """Test that long tags stay together through the full pipeline."""
     # A tag that's long enough to exceed width 88
-    long_tag = (
-        '{% field kind="string" id="name" label="Full Name" role="user" '
-        'required=true minLength=2 maxLength=100 placeholder="Enter your full name" %}'
-        "{% /field %}"
-    )
+    long_tag = '{% field kind="string" id="name" label="Full Name" role="user" required=true minLength=2 maxLength=100 placeholder="Enter your full name" %}{% /field %}'
 
     # Tags should stay on ONE line, never broken (atomic behavior)
     result = fill_markdown(long_tag, semantic=True, width=88)
@@ -482,7 +472,7 @@ def test_multiline_tag_through_pipeline():
     assert "maxLength=100" in result, "maxLength=100 should stay together"
 
 
-def test_html_comment_multiline_closing():
+def test_html_comment_multiline_closing() -> None:
     """Test HTML comment tags with multi-line opening and closing on same line."""
     from flowmark.linewrapping.tag_handling import (
         _fix_multiline_opening_tag_with_closing,  # pyright: ignore[reportPrivateUsage]
@@ -496,7 +486,7 @@ def test_html_comment_multiline_closing():
     assert "-->\n<!-- /f:field -->" in result, f"HTML closing tag not split: {result}"
 
 
-def test_preprocess_tag_block_spacing_lists():
+def test_preprocess_tag_block_spacing_lists() -> None:
     """
     Test that blank lines are added around lists inside tags.
 
@@ -524,7 +514,7 @@ def test_preprocess_tag_block_spacing_lists():
     assert "\n\n{% /field" in result, f"Missing blank line before closing tag: {result}"
 
 
-def test_preprocess_tag_block_spacing_tables():
+def test_preprocess_tag_block_spacing_tables() -> None:
     """Test that blank lines are added around tables inside tags."""
     from flowmark.linewrapping.tag_handling import (
         preprocess_tag_block_spacing,
@@ -548,7 +538,7 @@ def test_preprocess_tag_block_spacing_tables():
     assert "|\n\n{% /table" in result, f"Missing blank line before closing tag: {result}"
 
 
-def test_preprocess_tag_block_spacing_already_spaced():
+def test_preprocess_tag_block_spacing_already_spaced() -> None:
     """Test that already-spaced content is not double-spaced."""
     from flowmark.linewrapping.tag_handling import (
         preprocess_tag_block_spacing,
@@ -570,7 +560,7 @@ def test_preprocess_tag_block_spacing_already_spaced():
     assert "\n\n\n" not in result, f"Extra blank lines added: {result}"
 
 
-def test_preprocess_tag_block_spacing_inline_tags():
+def test_preprocess_tag_block_spacing_inline_tags() -> None:
     """Test that inline tags in list items don't trigger extra spacing."""
     from flowmark.linewrapping.tag_handling import (
         preprocess_tag_block_spacing,
@@ -592,7 +582,7 @@ def test_preprocess_tag_block_spacing_inline_tags():
     assert "{% #item1 %}\n- Item 2" in result, f"Incorrectly added blank between items: {result}"
 
 
-def test_fill_markdown_with_list_in_tags():
+def test_fill_markdown_with_list_in_tags() -> None:
     """
     Integration test: fill_markdown properly formats lists inside tags.
 
@@ -638,7 +628,7 @@ def test_fill_markdown_with_list_in_tags():
     assert lines[closing_idx - 1] == "", "Expected blank line before closing tag"
 
 
-def test_list_item_with_tag_on_continuation_line():
+def test_list_item_with_tag_on_continuation_line() -> None:
     """
     Test that HTML comment tags on continuation lines don't get extra newlines.
 
@@ -670,12 +660,9 @@ def test_list_item_with_tag_on_continuation_line():
 
     # The tag should NOT have an extra blank line before it
     # The continuation line with the tag should be preserved as-is
-    assert "\n\n  <!-- #kg-32zz -->" not in result, (
-        f"Extra blank line incorrectly added before tag on continuation line.\nResult:\n{result}"
-    )
+    assert "\n\n  <!-- #kg-32zz -->" not in result, f"Extra blank line incorrectly added before tag on continuation line.\nResult:\n{result}"
 
     # The proper indented continuation should be preserved
-    assert (
-        "tsconfig.base.json)\n  <!-- #kg-32zz -->" in result
-        or "(tsconfig.base.json)\n<!-- #kg-32zz -->" in result
-    ), f"Tag continuation line not preserved correctly.\nResult:\n{result}"
+    assert "tsconfig.base.json)\n  <!-- #kg-32zz -->" in result or "(tsconfig.base.json)\n<!-- #kg-32zz -->" in result, (
+        f"Tag continuation line not preserved correctly.\nResult:\n{result}"
+    )

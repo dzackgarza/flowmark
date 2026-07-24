@@ -60,6 +60,41 @@ INLINE_CODE_SPAN = AtomicPattern(
     close_re="",
 )
 
+# Inline math: $...$ or $$...$$ on one line, and \(...\).
+#
+# Wrapping inside a math span changes what pandoc reads -- `$H^1(X,\mathcal O_X)=0$`
+# broken at its space becomes `Math InlineMath "H^1(X,\mathcal\nO_X)=0"` -- so the
+# span has to be one token to the wrapper, exactly like a code span (#17 part 2).
+#
+# This is deliberately *stricter* than `CustomInlineMath.pattern` in
+# `formats/flowmark_markdown.py`, which decides whether a run is math for parsing.
+# A single-`$` span here must have no whitespace just inside either delimiter, which
+# is the usual TeX-ish rule and is what keeps prose currency out. Without it,
+# `their $420K at the 20% discount, they would be paying $` matches as one span --
+# 48 characters of ordinary prose turned into an unbreakable token, which wraps far
+# worse than not knowing about math at all. That exact sentence is in
+# `tests/testdocs/testdoc.orig.md`.
+#
+# Erring strict is the safe direction for a *wrapping* pattern specifically: a missed
+# span reverts to today's behaviour for that one construct, while a false positive
+# degrades wrapping for prose that has nothing to do with math.
+#
+# `$$...$$` keeps the loose rule, because same-line display math is conventionally
+# written with the spaces (`$$ \operatorname{GL}_n = G_\beta $$`) and `$$` does not
+# occur in prose the way a lone `$` does.
+_INLINE_MATH_DOUBLE = r"(?<!\\)(?<!\$)\$\$(?!\$)(?:\\.|[^\n\\$])+?(?<!\\)\$\$(?!\$)"
+_INLINE_MATH_SINGLE = r"(?<!\\)(?<!\$)\$(?![\s$])(?:\\.|[^\n\\$])+?(?<![\s\\])\$(?!\$)"
+_INLINE_MATH_PAREN = r"\\\((?:\\.|[^\n\\])*?\\\)"
+
+INLINE_MATH = AtomicPattern(
+    name="inline_math",
+    # No capturing groups, so nothing here depends on its position in the combined
+    # alternation `_combined_pattern` builds. `INLINE_CODE_SPAN` gets away with a
+    # numbered backreference only because it happens to be first; that is not a
+    # property a second pattern can rely on.
+    pattern="|".join((_INLINE_MATH_DOUBLE, _INLINE_MATH_SINGLE, _INLINE_MATH_PAREN)),
+)
+
 # Markdown links: [text](url) or [text][ref] or [text]
 MARKDOWN_LINK = AtomicPattern(
     name="markdown_link",
@@ -187,6 +222,7 @@ HTML_CLOSE_TAG = AtomicPattern(
 # Paired tag patterns must come before single tag patterns to match correctly.
 ATOMIC_PATTERNS: tuple[AtomicPattern, ...] = (
     INLINE_CODE_SPAN,
+    INLINE_MATH,
     MARKDOWN_LINK,
     # Paired tags must come before single tags
     PAIRED_JINJA_TAG,
@@ -217,6 +253,7 @@ ATOMIC_CONSTRUCT_PATTERN: re.Pattern[str] = re.compile(
 # omits the dedicated URL patterns this prose set needs).
 MARKDOWN_INLINE_PATTERNS: tuple[AtomicPattern, ...] = (
     INLINE_CODE_SPAN,
+    INLINE_MATH,
     MARKDOWN_LINK,
     AUTOLINK,
     BARE_URL,
@@ -266,9 +303,7 @@ def _match_name(patterns: tuple[AtomicPattern, ...], text: str, start: int) -> s
     return None
 
 
-def iter_atomic_spans(
-    text: str, patterns: tuple[AtomicPattern, ...] = ATOMIC_PATTERNS
-) -> Iterator[AtomicSpan]:
+def iter_atomic_spans(text: str, patterns: tuple[AtomicPattern, ...] = ATOMIC_PATTERNS) -> Iterator[AtomicSpan]:
     """
     Split `text` into contiguous spans (each a slice of `text` with its `[start, end)`
     offsets) that cover it exactly, each flagged `is_atomic`.
@@ -289,9 +324,7 @@ def iter_atomic_spans(
     for m in regex.finditer(text):
         if m.start() > pos:
             yield AtomicSpan(text[pos : m.start()], pos, m.start(), False)
-        yield AtomicSpan(
-            m.group(0), m.start(), m.end(), True, _match_name(patterns, text, m.start())
-        )
+        yield AtomicSpan(m.group(0), m.start(), m.end(), True, _match_name(patterns, text, m.start()))
         pos = m.end()
     if pos < len(text):
         yield AtomicSpan(text[pos:], pos, len(text), False)
@@ -312,9 +345,7 @@ class AtomicWord(NamedTuple):
     end: int
 
 
-def iter_atomic_words(
-    text: str, patterns: tuple[AtomicPattern, ...] = ATOMIC_PATTERNS
-) -> Iterator[AtomicWord]:
+def iter_atomic_words(text: str, patterns: tuple[AtomicPattern, ...] = ATOMIC_PATTERNS) -> Iterator[AtomicWord]:
     """
     Yield the whitespace-delimited words of `text` with their `[start, end)` offsets,
     treating each atomic construct (link, code span, URL, tag) as indivisible: a

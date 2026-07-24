@@ -5,7 +5,7 @@ import unicodedata
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from enum import Enum
-from typing import Any, NamedTuple, cast
+from typing import Any, NamedTuple, cast, override
 
 from marko import Markdown, Renderer, block, inline
 from marko.block import HTMLBlock
@@ -15,7 +15,6 @@ from marko.ext.gfm import elements as gfm_elements
 from marko.helpers import partition_by_spaces
 from marko.parser import Parser
 from marko.source import Source
-from typing_extensions import override
 
 from flowmark.linewrapping.line_wrappers import (
     line_wrap_by_sentence,
@@ -99,12 +98,7 @@ def _is_unicode_punctuation(c: str) -> bool:
     Includes characters in Unicode categories Pc, Pd, Pe, Pf, Pi, Po, Ps,
     plus ASCII symbols (U+0021-U+002F, U+003A-U+0040, U+005B-U+0060, U+007B-U+007E).
     """
-    return unicodedata.category(c).startswith("P") or (
-        "\u0021" <= c <= "\u002f"
-        or "\u003a" <= c <= "\u0040"
-        or "\u005b" <= c <= "\u0060"
-        or "\u007b" <= c <= "\u007e"
-    )
+    return unicodedata.category(c).startswith("P") or ("\u0021" <= c <= "\u002f" or "\u003a" <= c <= "\u0040" or "\u005b" <= c <= "\u0060" or "\u007b" <= c <= "\u007e")
 
 
 class CustomStrikethrough(gfm_elements.Strikethrough):
@@ -171,9 +165,7 @@ class CustomStrikethrough(gfm_elements.Strikethrough):
                 # Followed by punctuation — only left-flanking if preceded by
                 # whitespace, punctuation, or start of string
                 char_before_open = text[open_start - 1] if open_start > 0 else None
-                if char_before_open is not None and not (
-                    char_before_open.isspace() or _is_unicode_punctuation(char_before_open)
-                ):
+                if char_before_open is not None and not (char_before_open.isspace() or _is_unicode_punctuation(char_before_open)):
                     continue
 
             # Right-flanking check for closing delimiter (punctuation rule)
@@ -182,9 +174,7 @@ class CustomStrikethrough(gfm_elements.Strikethrough):
                 # Preceded by punctuation — only right-flanking if followed by
                 # whitespace, punctuation, or end of string
                 char_after_close = text[close_end] if close_end < len(text) else None
-                if char_after_close is not None and not (
-                    char_after_close.isspace() or _is_unicode_punctuation(char_after_close)
-                ):
+                if char_after_close is not None and not (char_after_close.isspace() or _is_unicode_punctuation(char_after_close)):
                     continue
 
             yield match
@@ -234,9 +224,7 @@ class CustomFencedCode(block.FencedCode):
         # Store extended info including fence_char and fence_len
         fence_char = leading[0]
         fence_len = len(leading)
-        source.context.code_info = ExtendedParseInfo(
-            prefix, leading, lang, extra, fence_char, fence_len
-        )
+        source.context.code_info = ExtendedParseInfo(prefix, leading, lang, extra, fence_char, fence_len)
         return m
 
     @override
@@ -251,7 +239,9 @@ class CustomFencedCode(block.FencedCode):
         lines: list[str] = []
         parse_info: ExtendedParseInfo = source.context.code_info
         while not source.exhausted:
-            line = source.next_line()
+            # marko types next_line() as non-Optional, but it returns None at
+            # end of input, so this defensive check is real, not dead code.
+            line: str | None = source.next_line()
             if line is None:  # pyright: ignore[reportUnnecessaryComparison]
                 break
             source.consume()
@@ -291,7 +281,7 @@ class CustomDisplayMath(block.BlockElement):
     opener: str
     prefix: str
 
-    def __init__(self, match: tuple[str, str]) -> None:
+    def __init__(self, match: re.Match[str]) -> None:
         self.opener = match[0]
         self.prefix = match[1]
         self.children = [inline.RawText(match[2], False)]
@@ -317,7 +307,9 @@ class CustomDisplayMath(block.BlockElement):
 
         lines: list[str] = []
         while not source.exhausted:
-            line = source.next_line()
+            # marko types next_line() as non-Optional, but it returns None at
+            # end of input, so this defensive check is real, not dead code.
+            line: str | None = source.next_line()
             if line is None:
                 break
             source.consume()
@@ -429,8 +421,19 @@ class CustomFencedDiv(block.BlockElement):
     content on the same line": pandoc rejects ``::: {.foo} text`` as a div
     outright, so the attribute spec is captured verbatim and never re-emitted
     as body content.  The closing fence may be shorter than the opening one and
-    is preserved as written.  Content up to the closing fence is preserved
-    verbatim, including nested divs and any colon runs inside code blocks.
+    is preserved as written.
+
+    The **body is ordinary markdown** and is parsed as blocks, so it reflows like
+    any other content (#20).  The fence is a semantic wrapper, not a content mode:
+    pandoc reads ``::: {.problem}\\ntext\\n:::`` as ``Div [Para [...]]`` with
+    normal inlines, so there is nothing in there to protect.  This is what
+    separates a div from its verbatim-capture neighbours -- ``DisplayMath``,
+    ``RawInlineTex``, ``LatexEnvironment`` -- whose bodies are genuinely not
+    markdown.
+
+    Finding the body still needs the scan below rather than marko's own block
+    loop: a nested div's closer must not terminate this one, and a colon run
+    inside a fenced code block is literal text rather than a fence.
 
     https://pandoc.org/MANUAL.html#divs-and-spans
     """
@@ -451,12 +454,12 @@ class CustomFencedDiv(block.BlockElement):
     closer: str  # the closing colon run as written (may be shorter than ``fence``)
     prefix: str
 
-    def __init__(self, match: tuple[str, str, str, str, str]) -> None:
-        self.fence = match[0]
-        self.attrs = match[1]
-        self.closer = match[2]
-        self.prefix = match[3]
-        self.children = [inline.RawText(match[4], False)]
+    def __init__(self) -> None:  # pyright: ignore[reportMissingSuperCall]
+        self.fence = ":::"
+        self.attrs = ""
+        self.closer = ":::"
+        self.prefix = ""
+        self.children = []
 
     @override
     @classmethod
@@ -470,7 +473,7 @@ class CustomFencedDiv(block.BlockElement):
 
     @override
     @classmethod
-    def parse(cls, source: Source) -> tuple[str, str, str, str, str]:
+    def parse(cls, source: Source) -> CustomFencedDiv:
         prefix, fence, attrs = source.context.div_info
         source.next_line()
         source.consume()
@@ -493,7 +496,9 @@ class CustomFencedDiv(block.BlockElement):
         code_fence: str | None = None
 
         while not source.exhausted:
-            line = source.next_line()
+            # marko types next_line() as non-Optional, but it returns None at
+            # end of input, so this defensive check is real, not dead code.
+            line: str | None = source.next_line()
             if line is None:
                 break
             source.consume()
@@ -501,12 +506,7 @@ class CustomFencedDiv(block.BlockElement):
             if code_fence is not None:
                 # Only a fence of the same character and at least the same length,
                 # with nothing after it, closes the block (CommonMark 4.5).
-                if (
-                    code_match
-                    and code_match.group(1)[0] == code_fence[0]
-                    and len(code_match.group(1)) >= len(code_fence)
-                    and not code_match.group(2).strip()
-                ):
+                if code_match and code_match.group(1)[0] == code_fence[0] and len(code_match.group(1)) >= len(code_fence) and not code_match.group(2).strip():
                     code_fence = None
             elif code_match and not (code_match.group(1)[0] == "`" and "`" in code_match.group(2)):
                 # A backtick fence's info string may not contain a backtick, which
@@ -528,7 +528,25 @@ class CustomFencedDiv(block.BlockElement):
                 line = line.lstrip()
             lines.append(line)
 
-        return (fence, attrs, closer, prefix, "".join(lines))
+        div = cls()
+        div.fence, div.attrs, div.closer, div.prefix = fence, attrs, closer, prefix
+
+        # The body is markdown, so parse it as blocks rather than keeping it as
+        # opaque text (#20). It runs through a fresh `Source` rather than the
+        # outer one because the scan above has already consumed the body's lines
+        # in order to find the closing fence -- which is the part marko's own
+        # block loop cannot do, since it does not know about div nesting or that
+        # a colon run inside a code fence is not a fence.
+        #
+        # Inline parsing is not done here: `Parser.parse_inline` walks down from
+        # the document root into any child that is a `BlockElement`, and these
+        # are, so the div's contents are reached for free once the document is
+        # built. Doing it here as well would parse them twice.
+        body = Source("".join(lines))
+        body.parser = source.parser
+        with body.under_state(div):
+            div.children = source.parser.parse_source(body)  # pyright: ignore[reportAttributeAccessIssue]
+        return div
 
     @override
     @classmethod
@@ -579,7 +597,9 @@ class CustomLatexEnvironment(block.BlockElement):
 
         lines: list[str] = []
         while not source.exhausted:
-            line = source.next_line()
+            # marko types next_line() as non-Optional, but it returns None at
+            # end of input, so this defensive check is real, not dead code.
+            line: str | None = source.next_line()
             if line is None:
                 break
             source.consume()
@@ -635,9 +655,7 @@ class CustomDefinitionList(block.BlockElement):
     pattern = re.compile(rf"{_TERM}\n(?:[ \t]*\n)?(?={_MARKER})")
     # Matches only the blank line; everything after lives in the lookahead so
     # `consume()` advances past the blank alone.
-    _BLANK_THEN_CONTINUATION = re.compile(
-        rf"[ \t]*\n(?={_MARKER}| {{4}}|{_TERM}\n(?:[ \t]*\n)?{_MARKER})"
-    )
+    _BLANK_THEN_CONTINUATION = re.compile(rf"[ \t]*\n(?={_MARKER}| {{4}}|{_TERM}\n(?:[ \t]*\n)?{_MARKER})")
 
     def __init__(self, match: str) -> None:
         self.children = [inline.RawText(match, False)]
@@ -652,7 +670,9 @@ class CustomDefinitionList(block.BlockElement):
     def parse(cls, source: Source) -> str:
         lines: list[str] = []
         while not source.exhausted:
-            line = source.next_line()
+            # marko types next_line() as non-Optional, but it returns None at
+            # end of input, so this defensive check is real, not dead code.
+            line: str | None = source.next_line()
             if line is None:
                 break
             if line.strip():
@@ -775,9 +795,7 @@ class MarkdownNormalizer(Renderer):
     https://github.com/frostming/marko/blob/master/marko/ext/gfm/renderer.py
     """
 
-    def __init__(
-        self, line_wrapper: LineWrapper, list_spacing: ListSpacing = ListSpacing.loose
-    ) -> None:
+    def __init__(self, line_wrapper: LineWrapper, list_spacing: ListSpacing = ListSpacing.loose) -> None:
         super().__init__()
         self._prefix: str = ""  # The prefix on the first line, with a bullet, such as `  - `.
         self._second_prefix: str = ""  # The prefix on subsequent lines, such as `    `.
@@ -796,7 +814,7 @@ class MarkdownNormalizer(Renderer):
         return super().__enter__()
 
     @contextmanager
-    def container(self, prefix: str, second_prefix: str = "") -> Generator[None, None, None]:
+    def container(self, prefix: str, second_prefix: str = "") -> Generator[None]:
         old_prefix, old_second_prefix = self._prefix, self._second_prefix
         self._prefix += prefix
         self._second_prefix += second_prefix
@@ -899,7 +917,9 @@ class MarkdownNormalizer(Renderer):
         return "".join(result)
 
     def render_list_item(self, element: block.ListItem) -> str:
-        result = ""
+        # Explicitly str-typed: render_children (inherited from marko) returns Any,
+        # so without this annotation the accumulated result widens to Any.
+        result: str = ""
         # For loose lists, add a blank line between items.
         # For tight lists, don't add blank lines.
         if not self._current_list_tight:
@@ -1010,24 +1030,29 @@ class MarkdownNormalizer(Renderer):
         return text
 
     def render_fenced_div(self, element: CustomFencedDiv) -> str:
+        """
+        Render the fence lines around a body rendered as ordinary blocks.
+
+        Structurally this is `render_quote` without an indent: the fence is a
+        wrapper, so its body gets the enclosing prefixes unchanged rather than a
+        `> ` of its own.  Before #20 the body was one `RawText` re-emitted line by
+        line, which is why nothing inside a div ever reflowed.
+        """
         self._skip_next_blank_line = False
         # Pandoc's canonical spacing is `::: {.foo}`; both spellings carry the
         # same attributes, so normalizing here does not change the parsed AST.
         opener = element.fence
         if element.attrs:
             opener += f" {element.attrs}"
-        closer = element.closer
-        code_child = cast(inline.RawText, element.children[0])
-        content = code_child.children.rstrip("\n")
 
-        lines = [f"{self._prefix}{opener}"]
-        empty_line_prefix = self._second_prefix.rstrip()
-        for line in content.splitlines():
-            if line:
-                lines.append(f"{self._second_prefix}{line}")
-            else:
-                lines.append(empty_line_prefix)
-        lines.append(f"{self._second_prefix}{closer}")
+        prefix = self._prefix
+        self._prefix = self._second_prefix
+        body = self.render_children(element).rstrip("\n")
+
+        lines = [f"{prefix}{opener}"]
+        if body:
+            lines.append(body)
+        lines.append(f"{self._second_prefix}{element.closer}")
         self._prefix = self._second_prefix
         self._suppress_item_break = False
         return "\n".join(lines) + "\n"
@@ -1306,7 +1331,9 @@ class MarkdownNormalizer(Renderer):
 
     def render_table_cell(self, element: gfm_elements.TableCell) -> str:
         """Render a cell within a GFM table row."""
-        return self.render_children(element).replace("|", "\\|")
+        # render_children (inherited from marko) returns Any; pin it to str.
+        rendered: str = self.render_children(element)
+        return rendered.replace("|", "\\|")
 
     def render_url(self, element: gfm_elements.Url) -> str:
         """For GFM autolink URLs, just output the URL directly."""
@@ -1331,8 +1358,10 @@ class MarkdownNormalizer(Renderer):
         # Reset the skip flag since we're not rendering a blank line
         self._skip_next_blank_line = False
 
-        # First render the alert header (Alert has alert_type attribute)
-        alert_type: str = element.alert_type  # pyright: ignore
+        # First render the alert header. `element` is typed block.Quote because
+        # marko's stubs omit the gfm Alert subclass; at runtime it is an Alert with
+        # an alert_type attribute, read dynamically to stay within marko's types.
+        alert_type: str = getattr(element, "alert_type")
         alert_header = f"> [!{alert_type}]\n"
 
         with self.container("> ", "> "):
@@ -1385,16 +1414,12 @@ def flowmark_markdown(
             for e in GFM.elements:
                 if e is gfm_elements.Strikethrough:
                     e = CustomStrikethrough
-                assert (
-                    e not in custom_parser.block_elements and e not in custom_parser.inline_elements
-                )
+                assert e not in custom_parser.block_elements and e not in custom_parser.inline_elements
                 custom_parser.add_element(e)
             # Add GFM footnote support.
             footnote_ext = footnote.make_extension()
             for e in footnote_ext.elements:
-                assert (
-                    e not in custom_parser.block_elements and e not in custom_parser.inline_elements
-                )
+                assert e not in custom_parser.block_elements and e not in custom_parser.inline_elements
                 custom_parser.add_element(e)
             # Accept pandoc's label-alone-on-its-line definition form.
             custom_parser.block_elements["FootnoteDef"] = CustomFootnoteDef

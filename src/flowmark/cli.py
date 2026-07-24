@@ -100,9 +100,7 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         default=88,
         help="Line width to wrap to, or 0 to disable line wrapping (default: %(default)s)",
     )
-    parser.add_argument(
-        "-p", "--plaintext", action="store_true", help="Process as plaintext (no Markdown parsing)"
-    )
+    parser.add_argument("-p", "--plaintext", action="store_true", help="Process as plaintext (no Markdown parsing)")
     parser.add_argument(
         "-s",
         "--semantic",
@@ -115,22 +113,19 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         "--cleanups",
         action="store_true",
         default=False,
-        help="Enable (safe) cleanups for common issues like accidentally boldfaced section "
-        "headers (only applies to Markdown mode)",
+        help="Enable (safe) cleanups for common issues like accidentally boldfaced section headers (only applies to Markdown mode)",
     )
     parser.add_argument(
         "--smartquotes",
         action="store_true",
         default=False,
-        help="Convert straight quotes to typographic (curly) quotes and apostrophes "
-        "(only applies to Markdown mode)",
+        help="Convert straight quotes to typographic (curly) quotes and apostrophes (only applies to Markdown mode)",
     )
     parser.add_argument(
         "--ellipses",
         action="store_true",
         default=False,
-        help="Convert three dots (...) to ellipsis character (…) with normalized spacing "
-        "(only applies to Markdown mode)",
+        help="Convert three dots (...) to ellipsis character (…) with normalized spacing (only applies to Markdown mode)",
     )
     parser.add_argument(
         "--verify",
@@ -151,9 +146,7 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         "'loose' adds blank lines between all items, 'tight' removes blank lines where possible "
         "(default: %(default)s)",
     )
-    parser.add_argument(
-        "-i", "--inplace", action="store_true", help="Edit the file in place (ignores --output)"
-    )
+    parser.add_argument("-i", "--inplace", action="store_true", help="Edit the file in place (ignores --output)")
     parser.add_argument(
         "--nobackup",
         action="store_true",
@@ -203,8 +196,7 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         "--list-files",
         action="store_true",
         dest="list_files",
-        help="Print resolved file paths without formatting. "
-        "Requires at least one file or directory argument (use '.' for current directory)",
+        help="Print resolved file paths without formatting. Requires at least one file or directory argument (use '.' for current directory)",
     )
     parser.add_argument(
         "--files-max-size",
@@ -274,9 +266,7 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
     sentinel_parser.add_argument("-c", "--cleanups", action="store_true", default=_SENTINEL)
     sentinel_parser.add_argument("--smartquotes", action="store_true", default=_SENTINEL)
     sentinel_parser.add_argument("--ellipses", action="store_true", default=_SENTINEL)
-    sentinel_parser.add_argument(
-        "--verify", action=argparse.BooleanOptionalAction, default=_SENTINEL
-    )
+    sentinel_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=_SENTINEL)
     sentinel_parser.add_argument("--list-spacing", dest="list_spacing", default=_SENTINEL)
     sentinel_parser.add_argument("--extend-include", action="append", default=None)
     sentinel_parser.add_argument("--exclude", action="append", default=None)
@@ -287,12 +277,8 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         action="store_true",
         default=_SENTINEL,
     )
-    sentinel_parser.add_argument(
-        "--force-exclude", dest="force_exclude", action="store_true", default=_SENTINEL
-    )
-    sentinel_parser.add_argument(
-        "--files-max-size", type=int, dest="files_max_size", default=_SENTINEL
-    )
+    sentinel_parser.add_argument("--force-exclude", dest="force_exclude", action="store_true", default=_SENTINEL)
+    sentinel_parser.add_argument("--files-max-size", type=int, dest="files_max_size", default=_SENTINEL)
     sentinel_opts, _ = sentinel_parser.parse_known_args(args if args is not None else sys.argv[1:])
 
     explicit_flags: set[str] = set()
@@ -434,21 +420,18 @@ def main(args: list[str] | None = None) -> int:
     if not options.files:
         if is_auto:
             print(
-                "Error: --auto requires at least one file or directory argument"
-                " (use '.' for current directory, --help for more options)",
+                "Error: --auto requires at least one file or directory argument (use '.' for current directory, --help for more options)",
                 file=sys.stderr,
             )
             return 1
         if options.list_files:
             print(
-                "Error: --list-files requires at least one file or directory argument"
-                " (use '.' for current directory, --help for more options)",
+                "Error: --list-files requires at least one file or directory argument (use '.' for current directory, --help for more options)",
                 file=sys.stderr,
             )
             return 1
         print(
-            "Error: No input specified. Provide files, directories (use '.' for current"
-            " directory), or '-' for stdin. Use --help for more options.",
+            "Error: No input specified. Provide files, directories (use '.' for current directory), or '-' for stdin. Use --help for more options.",
             file=sys.stderr,
         )
         return 1

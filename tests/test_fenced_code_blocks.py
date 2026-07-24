@@ -11,7 +11,7 @@ from textwrap import dedent
 from flowmark.linewrapping.markdown_filling import fill_markdown
 
 
-def test_simple_fenced_code_block():
+def test_simple_fenced_code_block() -> None:
     """Test basic fenced code block with no backticks in content."""
     input_doc = dedent(
         """
@@ -36,7 +36,7 @@ def test_simple_fenced_code_block():
     assert result == expected_doc
 
 
-def test_four_backtick_fence_preserved():
+def test_four_backtick_fence_preserved() -> None:
     """Test that 4-backtick fences are preserved as 4 backticks.
 
     This is needed for Markdoc and other systems that use extended fences.
@@ -64,7 +64,7 @@ def test_four_backtick_fence_preserved():
     assert result == expected_doc
 
 
-def test_nested_code_blocks():
+def test_nested_code_blocks() -> None:
     """Test code block containing triple backticks in content.
 
     When code content contains ```, the fence must use at least ```` (4 backticks).
@@ -100,7 +100,7 @@ def test_nested_code_blocks():
     assert result == expected_doc
 
 
-def test_deeply_nested_code_blocks():
+def test_deeply_nested_code_blocks() -> None:
     """Test code block containing 4-backtick fences in content.
 
     When code content contains ````, the fence must use at least ````` (5 backticks).
@@ -136,7 +136,7 @@ def test_deeply_nested_code_blocks():
     assert result == expected_doc
 
 
-def test_code_block_with_inline_backticks():
+def test_code_block_with_inline_backticks() -> None:
     """Test that inline backticks in code content are handled correctly."""
     input_doc = dedent(
         """
@@ -163,7 +163,7 @@ def test_code_block_with_inline_backticks():
     assert result == expected_doc
 
 
-def test_tilde_fence_stays_tilde():
+def test_tilde_fence_stays_tilde() -> None:
     """Test that tilde-fenced code blocks stay as tildes."""
     input_doc = dedent(
         """
@@ -188,7 +188,7 @@ def test_tilde_fence_stays_tilde():
     assert result == expected_doc
 
 
-def test_tilde_fence_with_backticks_in_content():
+def test_tilde_fence_with_backticks_in_content() -> None:
     """Test tilde-fenced code blocks with backticks in content."""
     input_doc = dedent(
         """
@@ -221,7 +221,7 @@ def test_tilde_fence_with_backticks_in_content():
     assert result == expected_doc
 
 
-def test_minimum_backticks_computed_from_content():
+def test_minimum_backticks_computed_from_content() -> None:
     """Test that even if input uses 3 backticks, output uses enough.
 
     If the content contains triple backticks, the output must use 4+ backticks
@@ -233,7 +233,7 @@ def test_minimum_backticks_computed_from_content():
     pass  # This is tested indirectly by other tests
 
 
-def test_empty_lines_in_code_block_no_trailing_whitespace():
+def test_empty_lines_in_code_block_no_trailing_whitespace() -> None:
     """Test that empty lines in code blocks remain truly empty (no trailing whitespace)."""
     input_doc = dedent(
         """
@@ -264,7 +264,7 @@ def test_empty_lines_in_code_block_no_trailing_whitespace():
     assert result.split("\n")[2] == ""
 
 
-def test_empty_lines_in_nested_code_block_no_trailing_whitespace():
+def test_empty_lines_in_nested_code_block_no_trailing_whitespace() -> None:
     """Test that empty lines in code blocks inside list items have no trailing whitespace.
 
     This is the key case: when a code block is nested inside a list item,
@@ -305,15 +305,11 @@ def test_empty_lines_in_nested_code_block_no_trailing_whitespace():
     assert result == expected_doc
     # Verify the empty line between functions has no trailing whitespace
     lines = result.split("\n")
-    empty_line_idx = next(
-        i
-        for i in range(len(lines))
-        if lines[i - 1].endswith("pass") and lines[i + 1].strip().startswith("def bar")
-    )
+    empty_line_idx = next(i for i in range(len(lines)) if lines[i - 1].endswith("pass") and lines[i + 1].strip().startswith("def bar"))
     assert lines[empty_line_idx] == ""
 
 
-def test_empty_lines_in_quoted_code_block_no_trailing_whitespace():
+def test_empty_lines_in_quoted_code_block_no_trailing_whitespace() -> None:
     """Test that empty lines in code blocks inside blockquotes preserve > but strip trailing space."""
     input_doc = dedent(
         """
@@ -332,7 +328,7 @@ def test_empty_lines_in_quoted_code_block_no_trailing_whitespace():
     assert result == expected_doc
 
 
-def test_multiple_empty_lines_in_code_block():
+def test_multiple_empty_lines_in_code_block() -> None:
     """Test code blocks with multiple consecutive empty lines stay clean."""
     input_doc = dedent(
         """

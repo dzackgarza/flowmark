@@ -16,12 +16,17 @@ check exists to catch.  Pandoc owns the definition of what these documents say,
 so it is the authority to ask, rather than re-deriving its grammar here and
 hoping.
 
-Most of flowmark's deliberate spelling changes are already invisible to pandoc's
+Some of flowmark's deliberate spelling changes are already invisible to pandoc's
 reader, so they need no special handling here: indented and fenced code blocks
-both read as `CodeBlock`, footnote definitions read the same with or without a
-blank line between them, and pandoc's `smart` extension (on by default for
-`markdown`) folds straight and curly quotes alike into `Quoted`, which covers
-`smartquotes`.
+both read as `CodeBlock`, and footnote definitions read the same with or without a
+blank line between them.
+
+`smartquotes` is *not* one of them, contrary to what this module assumed until
+issue #27.  Pandoc's `smart` extension does not fold straight and curly quotes
+into the same reading: `"hi"` is `Quoted DoubleQuote [Str "hi"]` and `“hi”` is a
+literal `Str` (checked against pandoc 3.9.0.2).  Curling a quote is therefore a
+real AST change and needs a declared normalization like any other opinion; see
+`SMART_QUOTES`.
 
 Two do need canonicalizing before comparison, both concerning inline whitespace:
 
@@ -51,6 +56,7 @@ import json
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from itertools import combinations
 from typing import Any
 
@@ -79,16 +85,26 @@ class PandocParseError(ValueError):
 
 
 class MeaningChangedError(ValueError):
-    """Raised when reformatting changed the document's parsed AST."""
+    """
+    Raised when reformatting changed the document's parsed AST.
+
+    `detail` is the machine-readable half of the message (`"block 7: Para ->
+    Header"`), kept separately so a caller that learns something further about the
+    document -- that the input was already ambiguous, say -- can rebuild the message
+    around it rather than parsing it back out of prose.
+    """
+
+    detail: str
+
+    def __init__(self, message: str, detail: str = "") -> None:
+        super().__init__(message)
+        self.detail = detail
 
 
 def _pandoc_exe() -> str:
     pandoc_exe = shutil.which("pandoc")
     if pandoc_exe is None:
-        raise PandocUnavailableError(
-            "Verification requires the `pandoc` binary on PATH. "
-            "Install pandoc (https://pandoc.org/installing.html) or drop --verify."
-        )
+        raise PandocUnavailableError("Verification requires the `pandoc` binary on PATH. Install pandoc (https://pandoc.org/installing.html) or drop --verify.")
     return pandoc_exe
 
 
@@ -144,10 +160,6 @@ def _pandoc_ast_pair(source: str, result: str) -> tuple[list[Any], list[Any]]:
         result_proc.communicate()
         raise
     return source_blocks, _collect_blocks(result_proc, result)
-
-
-def _block_types(blocks: list[Any]) -> list[str]:
-    return [block.get("t", "?") for block in blocks]
 
 
 _SPACE_INLINES = frozenset({"Space", "SoftBreak"})
@@ -255,15 +267,336 @@ def _plain_to_para(node: Any) -> Any:
     return node
 
 
+_QUOTE_MARKS = {"DoubleQuote": ("“", "”"), "SingleQuote": ("‘", "’")}
+
+
+def _flatten_quoted(node: Any) -> Any:
+    """
+    Replace a `Quoted` span with its curled spelling, on both sides of a comparison.
+
+    Pandoc's `smart` extension does *not* fold straight and curly quotes into the
+    same reading, contrary to what this module long assumed: a straight `"hi"` is
+    `Quoted DoubleQuote [Str "hi"]`, while the curled `“hi”` is a literal
+    `Str`.  So curling a quote -- which is all `smartquotes` does -- genuinely
+    changes the AST, and without this entry the released `--smartquotes` flag is
+    refused by the gate on any document containing a straight quote.
+
+    Writing the marks *into* the stream, rather than dropping the `Quoted` wrapper,
+    is what keeps this narrow: a quote that was deleted or whose pairing moved
+    lands its marks somewhere else in the text and still mismatches.
+    """
+    if isinstance(node, dict):
+        mapping: dict[str, Any] = node
+        return {key: _flatten_quoted(value) for key, value in mapping.items()}
+    if not isinstance(node, list):
+        return node
+
+    items: list[Any] = node
+    out: list[Any] = []
+    for item in items:
+        quoted = _as_quoted(item)
+        if quoted is None:
+            out.append(_flatten_quoted(item))
+            continue
+        (open_mark, close_mark), inner = quoted
+        out.append({"t": "Str", "c": open_mark})
+        out.extend(_flatten_quoted(inner))
+        out.append({"t": "Str", "c": close_mark})
+    return out
+
+
+def _as_quoted(item: Any) -> tuple[tuple[str, str], Any] | None:
+    """Return `((open, close), inlines)` if `item` is a `Quoted` span, else None."""
+    if not isinstance(item, dict) or item.get("t") != "Quoted":  # pyright: ignore[reportUnknownMemberType]
+        return None
+    content: Any = item.get("c")  # pyright: ignore[reportUnknownMemberType]
+    if not isinstance(content, list) or len(content) != 2:  # pyright: ignore[reportUnknownArgumentType]
+        return None
+    parts: list[Any] = content
+    kind: Any = parts[0]
+    if not isinstance(kind, dict):
+        return None
+    marks = _QUOTE_MARKS.get(str(kind.get("t")))  # pyright: ignore[reportUnknownMemberType]
+    return None if marks is None else (marks, parts[1])
+
+
+_BULLET_MARKERS = ("-", "*", "+")
+"""The three CommonMark bullet characters.
+
+Pandoc's `BulletList` does not record which one the source used, so reconstructing
+the paragraph a list came from means trying each.  The rest of the text has to
+match exactly either way, so a wrong guess simply fails to reconcile.
+"""
+
+_PARAGRAPH_BLOCKS = frozenset({"Para", "Plain"})
+
+
+def _list_items_and_markers(list_block: dict[str, Any]) -> tuple[list[Any], list[list[str]]]:
+    """
+    The items of `list_block`, and the candidate marker spellings for them.
+
+    Ordered lists are exact -- pandoc records the start number and the delimiter --
+    so they yield a single candidate.  Bullet lists yield one per bullet character.
+    A block that is not a list yields no items and no candidates.
+    """
+    kind = list_block.get("t")
+    content: Any = list_block.get("c")
+
+    if kind == "BulletList" and isinstance(content, list):
+        items: list[Any] = content
+        return items, [[marker] * len(items) for marker in _BULLET_MARKERS]
+
+    if kind == "OrderedList" and isinstance(content, list) and len(content) == 2:  # pyright: ignore[reportUnknownArgumentType]
+        parts: list[Any] = content
+        attrs: Any = parts[0]
+        ordered_items: Any = parts[1]
+        if not isinstance(attrs, list) or len(attrs) != 3 or not isinstance(ordered_items, list):  # pyright: ignore[reportUnknownArgumentType]
+            return [], []
+        triple: list[Any] = attrs
+        start: Any = triple[0]
+        delim: Any = triple[2]
+        first = start if isinstance(start, int) else 1
+        suffix = ")" if isinstance(delim, dict) and delim.get("t") == "OneParen" else "."  # pyright: ignore[reportUnknownMemberType]
+        listed: list[Any] = ordered_items
+        return listed, [[f"{first + offset}{suffix}" for offset in range(len(listed))]]
+
+    return [], []
+
+
+def _flatten_list_into_paragraph(para: dict[str, Any], list_block: dict[str, Any]) -> list[Any]:
+    """
+    Spell `para` followed by `list_block` back out as one paragraph's inlines, once
+    per candidate marker set.
+
+    Each marker is emitted surrounded by `Space`, which is what a line join between
+    the paragraph and the marker actually produces.  Items containing anything but
+    a single `Para`/`Plain` are refused: a lazy continuation cannot produce nested
+    blocks, so a list that has them was not made this way.
+    """
+    para_inlines: Any = para.get("c")
+    if not isinstance(para_inlines, list):
+        return []
+
+    items, marker_candidates = _list_items_and_markers(list_block)
+    candidates: list[Any] = []
+    for markers in marker_candidates:
+        flat: list[Any] = list(para_inlines)  # pyright: ignore[reportUnknownArgumentType]
+        usable = True
+        for marker, item in zip(markers, items, strict=False):
+            if not isinstance(item, list):
+                usable = False
+                break
+            blocks: list[Any] = item
+            flat.append({"t": "Space"})
+            flat.append({"t": "Str", "c": marker})
+            for inner in blocks:
+                if not isinstance(inner, dict) or inner.get("t") not in _PARAGRAPH_BLOCKS:  # pyright: ignore[reportUnknownMemberType]
+                    usable = False
+                    break
+                inner_inlines: Any = inner.get("c")  # pyright: ignore[reportUnknownMemberType]
+                if not isinstance(inner_inlines, list):
+                    usable = False
+                    break
+                flat.append({"t": "Space"})
+                flat.extend(inner_inlines)  # pyright: ignore[reportUnknownArgumentType]
+            if not usable:
+                break
+        if usable:
+            candidates.append(flat)
+    return candidates
+
+
+def _collapse_lazy_lists_at_level(before: list[Any], after: list[Any]) -> list[Any]:
+    """
+    Rewrite `after` so a paragraph that grew a list beside it becomes the single
+    paragraph `before` has there -- but only when flattening reproduces `before`
+    exactly.
+    """
+    out: list[Any] = []
+    before_index = 0
+    after_index = 0
+    while after_index < len(after):
+        para: Any = after[after_index]
+        follows: Any = after[after_index + 1] if after_index + 1 < len(after) else None
+        original: Any = before[before_index] if before_index < len(before) else None
+        if (
+            isinstance(original, dict)
+            and isinstance(para, dict)
+            and isinstance(follows, dict)
+            and original.get("t") in _PARAGRAPH_BLOCKS  # pyright: ignore[reportUnknownMemberType]
+            and para.get("t") in _PARAGRAPH_BLOCKS  # pyright: ignore[reportUnknownMemberType]
+            and any(
+                _canonical(flat) == _canonical(original.get("c"))  # pyright: ignore[reportUnknownMemberType]
+                for flat in _flatten_list_into_paragraph(para, follows)
+            )
+        ):
+            out.append(original)
+            after_index += 2
+            before_index += 1
+            continue
+        out.append(para)
+        after_index += 1
+        before_index += 1
+    return out
+
+
+def _collapse_lazy_lists(before: Any, after: Any) -> Any:
+    """Walk both trees in parallel, collapsing materialized lists wherever they align."""
+    if isinstance(before, dict) and isinstance(after, dict):
+        original: dict[str, Any] = before
+        current: dict[str, Any] = after
+        return {key: _collapse_lazy_lists(original.get(key), value) for key, value in current.items()}
+    if isinstance(before, list) and isinstance(after, list):
+        originals: list[Any] = before
+        collapsed = _collapse_lazy_lists_at_level(originals, after)
+        return [_collapse_lazy_lists(originals[index] if index < len(originals) else None, item) for index, item in enumerate(collapsed)]
+    return after
+
+
 UNBOLD_HEADING = "unbold_heading"
 """Identifier for the heading-unbolding normalization; requested by `cleanups`."""
 
 LIST_SPACING = "list_spacing"
 """Identifier for the tight/loose list normalization; requested by `list_spacing`."""
 
-_NORMALIZATIONS: list[tuple[str, str, Any]] = [
-    (UNBOLD_HEADING, "removed bold from a heading", _unbold_headings),
-    (LIST_SPACING, "changed list spacing (tight/loose)", _plain_to_para),
+SMART_QUOTES = "smart_quotes"
+"""Identifier for the quote-curling normalization; requested by `smartquotes`."""
+
+HYPHEN_JOIN = "hyphen_join"
+"""Identifier for closing up a line break that fell after a hyphen; `cleanups`."""
+
+LAZY_LIST = "lazy_list"
+"""Identifier for materializing a list out of a lazy paragraph continuation.
+
+Never requested: no flag asks for it, so it is always reported.  The author wrote
+bullets under a paragraph line and pandoc's dialect read them as prose; flowmark
+gives them the list they drew, and says so.
+"""
+
+Normalization = Callable[[Any, Any], tuple[Any, Any]]
+"""A declared normalization: rewrites the two canonicalized trees so the change it
+declares compares equal, and returns them.
+
+Taking *both* trees rather than one node is what lets an entry be **directional**.
+Most opinions are symmetric -- unbolding a heading means the same thing whichever
+side it is seen on -- and `_both` lifts a plain node transform into this shape.
+But an entry may need to accept a change in one direction while still refusing its
+reverse, and a single-node transform cannot express that: rewriting both sides the
+same way necessarily accepts the corruption that undoes the opinion.
+"""
+
+
+def _both(node_transform: Callable[[Any], Any]) -> Normalization:
+    """Lift a symmetric node transform into a `Normalization` over both trees."""
+
+    def normalize(before: Any, after: Any) -> tuple[Any, Any]:
+        return node_transform(before), node_transform(after)
+
+    return normalize
+
+
+def _normalize_quotes(before: Any, after: Any) -> tuple[Any, Any]:
+    """
+    Flatten `Quoted` spans on both sides, then re-canonicalize.
+
+    The re-canonicalization is not optional: `_flatten_quoted` emits each quote
+    mark as its own `Str`, and the side that was *already* curled carries the mark
+    inside a neighbouring `Str` (`Str "“a"`).  Only after the `Str` run is merged
+    again do the two spell the same thing.
+    """
+    return _canonical(_flatten_quoted(before)), _canonical(_flatten_quoted(after))
+
+
+_SUSPENSION_WORDS = frozenset({"and", "or", "to", "nor", "but", "through", "versus"})
+"""Mirrors `transforms.doc_cleanups._SUSPENSION_WORDS`.
+
+The two must agree: this decides what the gate will accept, that decides what the
+formatter does, and a rule the formatter applies but the gate refuses is a document
+that cannot be written.  `test_hyphen_join_scope_matches_the_cleanup` pins them.
+"""
+
+_HYPHEN_SPACE = re.compile(r"-\s+(\S)")
+
+
+def _join_hyphen_text(text: str) -> str:
+    """Close up `- x` to `-x` in one canonicalized `Str`, per #18's scope."""
+
+    def join(match: re.Match[str]) -> str:
+        following = match.group(1)
+        rest = text[match.end(1) :]
+        word = (following + rest).split()[0] if (following + rest).split() else following
+        if word.strip(".,;:!?").lower() in _SUSPENSION_WORDS:
+            return match.group(0)
+        if not (following.isdigit() or following.islower()):
+            return match.group(0)
+        return f"-{following}"
+
+    return _HYPHEN_SPACE.sub(join, text)
+
+
+def _join_hyphens(node: Any) -> Any:
+    """
+    Apply #18's join to a canonicalized tree.
+
+    Two shapes, because `_canonical` has already merged `Str`/`Space` runs:
+    the join is inside a single `Str` (`degree- 2`), or the `Str` ends with the
+    hyphen and a space and the next inline is structure (`degree- ` followed by a
+    `Math`, from `degree-` / `$4$`).
+    """
+    if isinstance(node, dict):
+        mapping: dict[str, Any] = node
+        return {key: _join_hyphens(value) for key, value in mapping.items()}
+    if not isinstance(node, list):
+        return node
+
+    items: list[Any] = node
+    out: list[Any] = []
+    for index, item in enumerate(items):
+        if isinstance(item, dict) and item.get("t") == "Str":  # pyright: ignore[reportUnknownMemberType]
+            text = str(item.get("c", ""))  # pyright: ignore[reportUnknownMemberType]
+            joined = _join_hyphen_text(text)
+            # A trailing `- ` closes up only against a following inline: on its own
+            # it is a hyphen at the end of a paragraph, which nothing joins to.
+            if joined.endswith("- ") and index + 1 < len(items):
+                joined = joined[:-1]
+            out.append({"t": "Str", "c": joined})
+            continue
+        out.append(_join_hyphens(item))
+    return out
+
+
+def _normalize_hyphen_join(before: Any, after: Any) -> tuple[Any, Any]:
+    """
+    Close up `before`'s hyphen-and-space so it matches a result that joined it.
+
+    Directional, like `LAZY_LIST` and for the same reason. Only the *unjoined* side
+    is rewritten, so the reverse -- a `degree-2` that came apart into `degree- 2` --
+    is never reconciled and still raises. That reverse is not hypothetical: it is
+    the exact damage #18 says wrapping tools inflict, and the whole reason this
+    cleanup exists.
+    """
+    return _canonical(_join_hyphens(before)), after
+
+
+def _normalize_lazy_list(before: Any, after: Any) -> tuple[Any, Any]:
+    """
+    Collapse lists `after` materialized out of `before`'s lazy continuations.
+
+    Directional on purpose, and this is the entry the `Normalization` pair shape
+    exists for.  Only `after` is rewritten, and only where flattening the list back
+    into the paragraph reproduces `before` exactly.  The reverse -- a real list the
+    formatter destroyed into prose -- has the extra structure on the `before` side,
+    where nothing rewrites it, so it still mismatches and still raises.
+    """
+    return before, _collapse_lazy_lists(before, after)
+
+
+_NORMALIZATIONS: list[tuple[str, str, Normalization]] = [
+    (UNBOLD_HEADING, "removed bold from a heading", _both(_unbold_headings)),
+    (LIST_SPACING, "changed list spacing (tight/loose)", _both(_plain_to_para)),
+    (SMART_QUOTES, "curled straight quotes", _normalize_quotes),
+    (LAZY_LIST, "made a list out of a lazy paragraph continuation", _normalize_lazy_list),
+    (HYPHEN_JOIN, "closed up a line break that fell after a hyphen", _normalize_hyphen_join),
 ]
 """Flowmark's intentional, opinionated style normalizations.
 
@@ -274,12 +607,75 @@ job -- so they are allowed.  Every *other* AST change is a bug and raises.
 Callers are told which ones applied so they can report the ones the caller did
 not ask for: unbolding a heading is unremarkable under `cleanups` and worth
 saying out loud without it.
+
+## What an entry may claim
+
+An entry declares *one* opinion the formatter holds about spelling, named by its
+identifier and described in the second field for the user-facing report.  It may
+not stand in for a family of changes, and it may not be widened to make an
+unrelated failure pass: the question an entry answers is "did flowmark do the
+specific thing this opinion describes?", never "is this difference tolerable?".
+
+## How narrowly it must be scoped
+
+An entry is admissible only if the gate is no weaker for its presence.  Concretely,
+the rewrite must not make a *corruption* of the same shape compare equal.  That is
+the whole reason `Normalization` sees both trees: an opinion that *materializes*
+structure must rewrite only the side that gained it, and only when the rewrite
+reproduces the other side exactly, so the reverse -- structure the formatter
+destroyed -- still mismatches and still raises.  A symmetric rewrite of both sides
+cannot make that distinction, and `_both` is therefore only for opinions where the
+reverse is not a corruption worth catching.
+
+## What proof it owes
+
+Every entry carries, in `tests/test_pandoc_verify.py`'s `NORMALIZATION_CONTRACT`
+table, both:
+
+- a **positive case**: a source/result pair this entry must accept, attributed to
+  this entry and no other; and
+- a **negative case**: a *nearby* source/result pair -- the same construct, the
+  same shape -- that must still raise `MeaningChangedError`.
+
+`test_every_normalization_declares_its_contract` asserts the table covers
+`_NORMALIZATIONS` exactly, so an entry cannot be added without both cases.
 """
 
 
 def describe(normalization: str) -> str:
     """Human-readable text for a normalization identifier."""
     return next(text for key, text, _ in _NORMALIZATIONS if key == normalization)
+
+
+def _first_difference(before: list[Any], after: list[Any]) -> str:
+    """
+    Locate the first block the two documents disagree about.
+
+    The whole block list used to be printed on both sides.  That is unbounded in
+    the document's size, and flowmark runs inside a `pre-commit` gate where the
+    output lands once per failing file -- one mid-size document produced a
+    2053-character warning, which buries every other finding in the run.  A reader
+    needs to know *which* block and *what changed about it*; the surrounding blocks
+    that matched are noise.
+    """
+    # `strict=False` is the point rather than an oversight: a document that gained
+    # or lost a block is exactly the case this has to describe, and the length
+    # difference is reported below once the common prefix is known to match.
+    for index, (before_block, after_block) in enumerate(zip(before, after, strict=False)):
+        if before_block == after_block:
+            continue
+        before_type, after_type = before_block.get("t", "?"), after_block.get("t", "?")
+        if before_type == after_type:
+            return f"block {index}: {before_type} content differs"
+        return f"block {index}: {before_type} -> {after_type}"
+
+    # Every block they have in common matched, so the documents differ in length:
+    # one gained or lost trailing blocks.
+    index = min(len(before), len(after))
+    counts = f"{len(after)} blocks vs {len(before)}"
+    if len(after) > len(before):
+        return f"block {index}: (absent) -> {after[index].get('t', '?')}, {counts}"
+    return f"block {index}: {before[index].get('t', '?')} -> (absent), {counts}"
 
 
 def check_meaning_preserved(source: str, result: str, label: str = "input") -> list[str]:
@@ -306,17 +702,24 @@ def check_meaning_preserved(source: str, result: str, label: str = "input") -> l
         for combo in combinations(_NORMALIZATIONS, size):
             normalized_before, normalized_after = before_canon, after_canon
             for _key, _text, normalize in combo:
-                normalized_before = normalize(normalized_before)
-                normalized_after = normalize(normalized_after)
+                normalized_before, normalized_after = normalize(normalized_before, normalized_after)
             if normalized_before == normalized_after:
                 return [key for key, _text, _normalize in combo]
 
-    before, after = _block_types(source_ast), _block_types(result_ast)
-    detail = (
-        f"blocks {before} -> {after}" if before != after else "same block types, altered content"
-    )
+    # Locate the difference against *every* normalization applied, not against the
+    # raw trees. A block that a declared opinion reconciles is not the problem, and
+    # naming it sends the reader to a block that is fine -- which costs exactly the
+    # bisection this diagnostic exists to prevent. Whatever still differs when the
+    # gate is at its most permissive is what actually blocked acceptance.
+    permissive_before, permissive_after = before_canon, after_canon
+    for _key, _text, normalize in _NORMALIZATIONS:
+        permissive_before, permissive_after = normalize(permissive_before, permissive_after)
+
+    detail = _first_difference(permissive_before, permissive_after)
     raise MeaningChangedError(
         f"Refusing to write {label}: reformatting would change what pandoc reads "
-        f"({detail}). The file is unchanged. This is a flowmark bug -- please report it "
-        f"with the input document. To skip this check and format anyway, pass --no-verify."
+        f"({detail}). The file is unchanged. "
+        f"This is a flowmark bug -- please report it with the input document. To skip this "
+        f"check and format anyway, pass --no-verify.",
+        detail=detail,
     )

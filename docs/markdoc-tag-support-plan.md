@@ -2,8 +2,7 @@
 
 ## Implementation Status
 
-**✅ Phase 1 Complete** - Template tags are now kept as atomic units during line
-wrapping.
+**✅ Phase 1 Complete** - Template tags are now kept as atomic units during line wrapping.
 
 Changes implemented:
 
@@ -11,8 +10,7 @@ Changes implemented:
 
 - Added `_generate_tag_patterns()` helper for programmatic pattern generation
 
-- Unified all tag types (HTML, Markdown links, template tags) to use
-  `MAX_TAG_WORDS = 12`
+- Unified all tag types (HTML, Markdown links, template tags) to use `MAX_TAG_WORDS = 12`
 
 - Added unit tests for template tag handling
 
@@ -24,24 +22,19 @@ Additional changes implemented:
 
 - Added HTML comment patterns (`<!-- -->`) to keep inline comments together
 
-- Added inline code span patterns (`` `code with spaces` ``) to preserve backtick
-  content
+- Added inline code span patterns (`` `code with spaces` ``) to preserve backtick content
 
-- Removed `_normalize_html_comments()` function that was forcing all comments to
-  separate lines
+- Removed `_normalize_html_comments()` function that was forcing all comments to separate lines
 
-- Marko parser now handles HTML comments naturally (inline stays inline, block stays
-  block)
+- Marko parser now handles HTML comments naturally (inline stays inline, block stays block)
 
-- Added unit tests: `test_inline_code_with_spaces`,
-  `test_inline_code_with_surrounding_punctuation`, `test_html_comments_kept_together`
+- Added unit tests: `test_inline_code_with_spaces`, `test_inline_code_with_surrounding_punctuation`, `test_html_comments_kept_together`
 
 - Added integration tests in testdoc.orig.md (Section 17: HTML Comments and Inline Code)
 
 **✅ Markdown Link Coalescing Improved**
 
-With the unified `MAX_TAG_WORDS = 12` limit, Markdown links with multi-word text are now
-kept together as atomic units.
+With the unified `MAX_TAG_WORDS = 12` limit, Markdown links with multi-word text are now kept together as atomic units.
 For example, `[Mark Suster, Upfront Ventures](url)` will not be split across lines.
 This prevents awkward line breaks within link text.
 
@@ -53,18 +46,14 @@ Remaining work (future enhancements):
 
 ## Overview
 
-This document outlines the plan to add support for template-style tags (`{% %}` and
-`{# #}`) in Flowmark’s Markdown formatter.
+This document outlines the plan to add support for template-style tags (`{% %}` and `{# #}`) in Flowmark’s Markdown formatter.
 These tags are used by:
 
-- **Markdoc** (Stripe’s documentation tool) -
-  [markdoc.dev/docs/syntax](https://markdoc.dev/docs/syntax)
+- **Markdoc** (Stripe’s documentation tool) - [markdoc.dev/docs/syntax](https://markdoc.dev/docs/syntax)
 
-- **Jinja2** (Python templating) -
-  [jinja.palletsprojects.com/templates](https://jinja.palletsprojects.com/en/stable/templates/)
+- **Jinja2** (Python templating) - [jinja.palletsprojects.com/templates](https://jinja.palletsprojects.com/en/stable/templates/)
 
-- **Nunjucks** (JavaScript templating, Mozilla) -
-  [mozilla.github.io/nunjucks/templating](https://mozilla.github.io/nunjucks/templating.html)
+- **Nunjucks** (JavaScript templating, Mozilla) - [mozilla.github.io/nunjucks/templating](https://mozilla.github.io/nunjucks/templating.html)
 
 ## Tag Syntax Summary
 
@@ -92,8 +81,7 @@ From the [Markdoc spec](https://markdoc.dev/spec):
 | `{# comment #}` | Comments | `{# TODO: fix this #}` |
 | `{{ variable }}` | Variable interpolation | `{{ user.name }}` |
 
-Common block tags: `if/elif/else/endif`, `for/endfor`, `block/endblock`,
-`macro/endmacro`, `extends`, `include`, `raw/endraw`
+Common block tags: `if/elif/else/endif`, `for/endfor`, `block/endblock`, `macro/endmacro`, `extends`, `include`, `raw/endraw`
 
 ### Key Differences
 
@@ -108,8 +96,7 @@ Common block tags: `if/elif/else/endif`, `for/endfor`, `block/endblock`,
 
 ### XML/HTML Tag Handling
 
-The current implementation in `text_wrapping.py` uses `_HtmlMdWordSplitter` with
-dynamically generated patterns via `_generate_tag_patterns()`:
+The current implementation in `text_wrapping.py` uses `_HtmlMdWordSplitter` with dynamically generated patterns via `_generate_tag_patterns()`:
 
 ```python
 MAX_TAG_WORDS = 12  # Maximum words to coalesce into a single token
@@ -132,8 +119,7 @@ class _HtmlMdWordSplitter:
         ]
 ```
 
-This keeps HTML tags, template tags, inline code, and HTML comments as atomic tokens
-during word splitting, preventing line breaks inside these constructs.
+This keeps HTML tags, template tags, inline code, and HTML comments as atomic tokens during word splitting, preventing line breaks inside these constructs.
 
 ### Current Behavior on Template Tags
 
@@ -151,8 +137,7 @@ Based on user requirements:
 
 1. **Do NOT wrap inside template tags** - `{% tag attr="value" %}` must stay as one unit
 
-2. **DO wrap markdown between tags** - Content between `{% tag %}` and `{% /tag %}`
-   should wrap
+2. **DO wrap markdown between tags** - Content between `{% tag %}` and `{% /tag %}` should wrap
 
 3. **Do NOT join lines onto template tags** - Preserve line structure around tags
 
@@ -232,8 +217,7 @@ def ends_with_tag(word: str) -> bool:
 **File: `src/flowmark/linewrapping/sentence_split_regex.py`**
 
 Template tags should not trigger sentence breaks.
-The current heuristic looks for sentence-ending punctuation, which shouldn’t match
-inside `{% %}` or `{# #}`.
+The current heuristic looks for sentence-ending punctuation, which shouldn’t match inside `{% %}` or `{# #}`.
 
 However, we should verify that:
 
@@ -243,13 +227,11 @@ However, we should verify that:
 
 - `}}` is not treated as sentence-ending
 
-The current regex `([.?!]['\"'")]?|['\"'")][.?!])` should be safe, but we should add
-test cases.
+The current regex `([.?!]['\"'")]?|['\"'")][.?!])` should be safe, but we should add test cases.
 
 ### Phase 4: Block-Level Tag Handling (Future Enhancement)
 
-For full Markdoc support, block-level tags (tags on their own lines) may need special
-handling:
+For full Markdoc support, block-level tags (tags on their own lines) may need special handling:
 
 ```markdown
 {% if $showFeature %}
@@ -262,11 +244,9 @@ This content should be wrapped normally.
 The current Marko parser integration doesn’t recognize Markdoc as special syntax.
 Options:
 
-1. **Minimal approach (recommended for now):** Treat block tags as regular paragraphs,
-   just ensure they’re not broken or joined improperly
+1. **Minimal approach (recommended for now):** Treat block tags as regular paragraphs, just ensure they’re not broken or joined improperly
 
-2. **Full integration (future):** Add Marko extension to recognize Markdoc block
-   elements
+2. **Full integration (future):** Add Marko extension to recognize Markdoc block elements
 
 ### Phase 5: Testing
 
@@ -354,8 +334,8 @@ Template tags can contain nested structures:
 {% set data = {"key": "value"} %}
 ```
 
-**Mitigation:** The regex patterns should match from `{%` to the first `%}`, which
-handles most cases. Complex nesting inside attributes is edge-case territory.
+**Mitigation:** The regex patterns should match from `{%` to the first `%}`, which handles most cases.
+Complex nesting inside attributes is edge-case territory.
 
 ### Issue 2: Multi-line Tags
 
@@ -371,8 +351,7 @@ If needed, we could add a preprocessing step, but this is likely rare enough to 
 
 ### Issue 3: Code Blocks
 
-Template tags inside fenced code blocks should be ignored (already handled since code
-blocks preserve content exactly).
+Template tags inside fenced code blocks should be ignored (already handled since code blocks preserve content exactly).
 
 ### Issue 4: Escaped Braces
 

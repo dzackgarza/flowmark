@@ -10,7 +10,7 @@ from flowmark.formats.flowmark_markdown import flowmark_markdown
 from flowmark.linewrapping.markdown_filling import fill_markdown
 
 
-def test_literal_tildes_before_numbers():
+def test_literal_tildes_before_numbers() -> None:
     """Tildes before numbers (meaning 'approximately') should be preserved as literal."""
     md = flowmark_markdown()
 
@@ -18,14 +18,14 @@ def test_literal_tildes_before_numbers():
     assert result == "Target: ~60 seconds, ~130 words total\n"
 
 
-def test_literal_tildes_not_converted_to_double():
+def test_literal_tildes_not_converted_to_double() -> None:
     """The bug: ~60 seconds, ~130 should NOT become ~~60 seconds, ~~130."""
     result = fill_markdown("Target: ~60 seconds, ~130 words total")
     assert "~~" not in result
     assert result.strip() == "Target: ~60 seconds, ~130 words total"
 
 
-def test_double_tilde_strikethrough():
+def test_double_tilde_strikethrough() -> None:
     """Standard ~~strikethrough~~ should be preserved."""
     md = flowmark_markdown()
 
@@ -33,7 +33,7 @@ def test_double_tilde_strikethrough():
     assert result == "This is ~~strikethrough~~ text\n"
 
 
-def test_single_tilde_is_subscript_not_strikethrough():
+def test_single_tilde_is_subscript_not_strikethrough() -> None:
     """Single tildes are pandoc subscript (`H~2~O`), never strikethrough (#11).
 
     GFM would allow `~text~`, but this fork targets pandoc markdown, so
@@ -46,7 +46,7 @@ def test_single_tilde_is_subscript_not_strikethrough():
     assert md("H~2~O and x^2^.\n") == "H~2~O and x^2^.\n"
 
 
-def test_multiple_strikethroughs():
+def test_multiple_strikethroughs() -> None:
     """Multiple strikethrough spans in a single line."""
     md = flowmark_markdown()
 
@@ -54,7 +54,7 @@ def test_multiple_strikethroughs():
     assert result == "~~one~~ and ~~two~~ items\n"
 
 
-def test_single_tilde_no_closer():
+def test_single_tilde_no_closer() -> None:
     """A single tilde with no matching closer should remain literal."""
     md = flowmark_markdown()
 
@@ -62,7 +62,7 @@ def test_single_tilde_no_closer():
     assert result == "About ~50% of users\n"
 
 
-def test_tildes_with_space_before_closer():
+def test_tildes_with_space_before_closer() -> None:
     """Tildes where the 'closer' is preceded by whitespace should not be strikethrough."""
     md = flowmark_markdown()
 
@@ -71,7 +71,7 @@ def test_tildes_with_space_before_closer():
     assert result == "costs ~100 to ~200\n"
 
 
-def test_tilde_space_after_opener():
+def test_tilde_space_after_opener() -> None:
     """A tilde followed by a space is not left-flanking, so no strikethrough."""
     md = flowmark_markdown()
 
@@ -79,7 +79,7 @@ def test_tilde_space_after_opener():
     assert result == "~ spaced ~\n"
 
 
-def test_tilde_space_before_closer():
+def test_tilde_space_before_closer() -> None:
     """A tilde preceded by a space is not right-flanking, so no strikethrough."""
     md = flowmark_markdown()
 
@@ -87,7 +87,7 @@ def test_tilde_space_before_closer():
     assert result == "~foo ~\n"
 
 
-def test_escaped_tildes_preserved():
+def test_escaped_tildes_preserved() -> None:
     """Backslash-escaped tildes should remain escaped."""
     md = flowmark_markdown()
 
@@ -95,11 +95,9 @@ def test_escaped_tildes_preserved():
     assert result == "Target: \\~60 seconds, \\~130 words total\n"
 
 
-def test_strikethrough_in_paragraph():
+def test_strikethrough_in_paragraph() -> None:
     """Strikethrough within a longer paragraph should be preserved during wrapping."""
-    result = fill_markdown(
-        "This paragraph has some ~~deleted text~~ in it and also mentions ~50 users."
-    )
+    result = fill_markdown("This paragraph has some ~~deleted text~~ in it and also mentions ~50 users.")
     assert "~~deleted text~~" in result
     assert "~50 users" in result
     # Make sure ~50 doesn't become ~~50
@@ -109,7 +107,7 @@ def test_strikethrough_in_paragraph():
 # --- Tilde-in-parentheses bug (GFM punctuation flanking rules) ---
 
 
-def test_tilde_before_and_inside_parens():
+def test_tilde_before_and_inside_parens() -> None:
     """~100 (~200) must NOT be parsed as strikethrough.
 
     The closing ~ in '(~200)' is preceded by '(' (punctuation) and followed
@@ -120,49 +118,49 @@ def test_tilde_before_and_inside_parens():
     assert result == "~100 (~200)\n"
 
 
-def test_tilde_before_and_inside_parens_fill():
+def test_tilde_before_and_inside_parens_fill() -> None:
     """Same bug through the full fill_markdown pipeline."""
     result = fill_markdown("~100 (~200)")
     assert "~~" not in result
     assert result.strip() == "~100 (~200)"
 
 
-def test_tilde_only_inside_parens():
+def test_tilde_only_inside_parens() -> None:
     """100 (~200) — tilde only inside parens should remain literal."""
     md = flowmark_markdown()
     result = md("100 (~200)\n")
     assert result == "100 (~200)\n"
 
 
-def test_tilde_inside_parens_with_text():
+def test_tilde_inside_parens_with_text() -> None:
     """~100 (x ~200) — tilde inside parens with intervening text stays literal."""
     md = flowmark_markdown()
     result = md("~100 (x ~200)\n")
     assert result == "~100 (x ~200)\n"
 
 
-def test_tilde_in_parens_then_outside():
+def test_tilde_in_parens_then_outside() -> None:
     """(~200) ~100 — tilde in parens then outside, both literal."""
     md = flowmark_markdown()
     result = md("(~200) ~100\n")
     assert result == "(~200) ~100\n"
 
 
-def test_tilde_before_parens_no_tilde_inside():
+def test_tilde_before_parens_no_tilde_inside() -> None:
     """~100 (200) — tilde before parens without tilde inside stays literal."""
     md = flowmark_markdown()
     result = md("~100 (200)\n")
     assert result == "~100 (200)\n"
 
 
-def test_strikethrough_inside_parens():
+def test_strikethrough_inside_parens() -> None:
     """(~~text~~) — valid double-tilde strikethrough inside parens is preserved."""
     md = flowmark_markdown()
     result = md("(~~text~~) end\n")
     assert result == "(~~text~~) end\n"
 
 
-def test_strikethrough_after_punctuation():
+def test_strikethrough_after_punctuation() -> None:
     """Strikethrough after punctuation like quotes should still work.
 
     Opening ~ after '"' (punctuation) is left-flanking because it's preceded by
@@ -174,7 +172,7 @@ def test_strikethrough_after_punctuation():
     assert result == '"~~text~~" end\n'
 
 
-def test_strikethrough_with_punctuation_content():
+def test_strikethrough_with_punctuation_content() -> None:
     """~~hello!~~ — strikethrough containing punctuation at end of content.
 
     Closing ~~ after '!' (punctuation) is right-flanking because the next
@@ -185,7 +183,7 @@ def test_strikethrough_with_punctuation_content():
     assert result == "~~hello!~~ end\n"
 
 
-def test_tilde_in_brackets():
+def test_tilde_in_brackets() -> None:
     """~100 [~200] — tilde near square brackets, same flanking logic."""
     md = flowmark_markdown()
     result = md("~100 [~200]\n")

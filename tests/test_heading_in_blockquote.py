@@ -12,7 +12,7 @@ from textwrap import dedent
 from flowmark.linewrapping.markdown_filling import fill_markdown
 
 
-def test_heading_in_blockquote_keeps_quote_intact():
+def test_heading_in_blockquote_keeps_quote_intact() -> None:
     input_doc = dedent(
         """\
         > ## Heading
@@ -25,7 +25,7 @@ def test_heading_in_blockquote_keeps_quote_intact():
     assert fill_markdown(once, semantic=True) == once, "formatting must be idempotent"
 
 
-def test_heading_in_blockquote_before_paragraph():
+def test_heading_in_blockquote_before_paragraph() -> None:
     input_doc = dedent(
         """\
         > ### Note
@@ -37,7 +37,7 @@ def test_heading_in_blockquote_before_paragraph():
     assert fill_markdown(once, semantic=True) == once, "formatting must be idempotent"
 
 
-def test_heading_in_callout_keeps_callout_intact():
+def test_heading_in_callout_keeps_callout_intact() -> None:
     input_doc = dedent(
         """\
         > [!example] Title
@@ -52,7 +52,7 @@ def test_heading_in_callout_keeps_callout_intact():
     assert fill_markdown(once, semantic=True) == once, "formatting must be idempotent"
 
 
-def test_heading_at_top_level_still_gets_blank_line():
+def test_heading_at_top_level_still_gets_blank_line() -> None:
     input_doc = dedent(
         """\
         ## Heading

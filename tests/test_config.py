@@ -75,14 +75,7 @@ def test_load_config_pyproject_toml(tmp_path: Path) -> None:
 def test_load_config_kebab_case(tmp_path: Path) -> None:
     config_file = tmp_path / "flowmark.toml"
     config_file.write_text(
-        "[formatting]\n"
-        'list-spacing = "loose"\n'
-        "\n"
-        "[file-discovery]\n"
-        'extend-exclude = ["drafts/"]\n'
-        "files-max-size = 500000\n"
-        "respect-gitignore = false\n"
-        "force-exclude = true\n"
+        '[formatting]\nlist-spacing = "loose"\n\n[file-discovery]\nextend-exclude = ["drafts/"]\nfiles-max-size = 500000\nrespect-gitignore = false\nforce-exclude = true\n'
     )
     config = load_config(config_file)
     assert config.list_spacing == "loose"
@@ -94,9 +87,7 @@ def test_load_config_kebab_case(tmp_path: Path) -> None:
 
 def test_load_config_file_discovery_section(tmp_path: Path) -> None:
     config_file = tmp_path / "flowmark.toml"
-    config_file.write_text(
-        '[file-discovery]\nextend-include = ["*.mdx", "*.markdown"]\nexclude = ["my_custom/"]\n'
-    )
+    config_file.write_text('[file-discovery]\nextend-include = ["*.mdx", "*.markdown"]\nexclude = ["my_custom/"]\n')
     config = load_config(config_file)
     assert config.extend_include == ["*.mdx", "*.markdown"]
     assert config.exclude == ["my_custom/"]
@@ -249,9 +240,7 @@ def test_load_config_malformed_toml(tmp_path: Path) -> None:
     assert config.semantic is None
 
 
-def test_parse_config_warns_unknown_keys(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_parse_config_warns_unknown_keys(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Unknown keys in config should produce a warning (fm-y9cx)."""
     config_file = tmp_path / "flowmark.toml"
     config_file.write_text("unknown_key = true\nwidth = 100\n")

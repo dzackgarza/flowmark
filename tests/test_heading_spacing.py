@@ -11,7 +11,7 @@ from flowmark.formats.flowmark_markdown import ListSpacing
 from flowmark.linewrapping.markdown_filling import fill_markdown
 
 
-def test_heading_spacing_basic():
+def test_heading_spacing_basic() -> None:
     """Test that headings have exactly one blank line after them."""
     input_doc = dedent(
         """
@@ -42,7 +42,7 @@ def test_heading_spacing_basic():
     assert normalized_doc == expected_doc
 
 
-def test_heading_spacing_before_list():
+def test_heading_spacing_before_list() -> None:
     """Test that headings have exactly one blank line before list items."""
     input_doc = dedent(
         """
@@ -69,7 +69,7 @@ def test_heading_spacing_before_list():
     assert normalized_doc == expected_doc
 
 
-def test_heading_spacing_before_quote():
+def test_heading_spacing_before_quote() -> None:
     """Test that headings have exactly one blank line before quote blocks."""
     input_doc = dedent(
         """
@@ -93,7 +93,7 @@ def test_heading_spacing_before_quote():
     assert normalized_doc == expected_doc
 
 
-def test_heading_spacing_before_code():
+def test_heading_spacing_before_code() -> None:
     """Test that headings have exactly one blank line before code blocks."""
     input_doc = dedent(
         """
@@ -121,7 +121,7 @@ def test_heading_spacing_before_code():
     assert normalized_doc == expected_doc
 
 
-def test_heading_with_hard_break():
+def test_heading_with_hard_break() -> None:
     """
     Test that headings ending with hard breaks don't add extra blank lines.
 
@@ -144,7 +144,7 @@ more_code()
     assert normalized_doc == expected_doc
 
 
-def test_heading_with_hard_break_in_list():
+def test_heading_with_hard_break_in_list() -> None:
     """Test hard breaks in headings within list items."""
     input_doc = dedent(
         r"""
@@ -169,7 +169,7 @@ def test_heading_with_hard_break_in_list():
     assert normalized_doc == expected_doc
 
 
-def test_hard_breaks_in_paragraphs():
+def test_hard_breaks_in_paragraphs() -> None:
     """Test that hard breaks in regular paragraphs are preserved without extra spacing."""
     input_doc = r"""First line\
 second line\
@@ -184,7 +184,7 @@ third line
     assert normalized_doc == expected_doc
 
 
-def test_hard_breaks_after_comments():
+def test_hard_breaks_after_comments() -> None:
     """
     Test hard breaks after comment lines are preserved correctly.
 
@@ -210,7 +210,7 @@ temp_file.close()
     assert normalized_doc == expected_doc
 
 
-def test_hard_breaks_in_list_items():
+def test_hard_breaks_in_list_items() -> None:
     """Test hard breaks within list items."""
     input_doc = dedent(
         r"""

@@ -12,11 +12,16 @@ blocked. CI has pandoc and runs them.
 
 import shutil
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
 from flowmark.pandoc_verify import (
+    _NORMALIZATIONS,  # pyright: ignore[reportPrivateUsage]
+    HYPHEN_JOIN,
+    LAZY_LIST,
     LIST_SPACING,
+    SMART_QUOTES,
     UNBOLD_HEADING,
     MeaningChangedError,
     PandocUnavailableError,
@@ -25,9 +30,7 @@ from flowmark.pandoc_verify import (
 from flowmark.reformat_api import reformat_file, reformat_text
 from flowmark.typography.ellipses import ellipses
 
-pandocless = pytest.mark.skipif(
-    shutil.which("pandoc") is None, reason="requires the pandoc binary on PATH"
-)
+pandocless = pytest.mark.skipif(shutil.which("pandoc") is None, reason="requires the pandoc binary on PATH")
 
 
 # Each pair is a reproducer and the bytes flowmark actually emitted for it before
@@ -70,7 +73,7 @@ PRE_FIX_CORRUPTIONS = [
 
 @pandocless
 @pytest.mark.parametrize(("source", "corrupted"), PRE_FIX_CORRUPTIONS)
-def test_oracle_catches_every_real_meaning_change(source: str, corrupted: str):
+def test_oracle_catches_every_real_meaning_change(source: str, corrupted: str) -> None:
     """
     The oracle must fail on output that changed meaning -- otherwise it proves
     nothing. Two of these (#5, #8) differ from their source only *within* a
@@ -81,24 +84,220 @@ def test_oracle_catches_every_real_meaning_change(source: str, corrupted: str):
         check_meaning_preserved(source, corrupted)
 
 
-@pandocless
-@pytest.mark.parametrize(
-    ("source", "result", "expected_normalization"),
-    [
-        pytest.param("# **X**\n", "# X\n", UNBOLD_HEADING, id="unbold-heading"),
-        pytest.param("- a\n- b\n", "- a\n\n- b\n", LIST_SPACING, id="tight-to-loose-list"),
-    ],
+class NormalizationContract(NamedTuple):
+    """
+    The proof one `_NORMALIZATIONS` entry owes, per the contract documented on
+    `_NORMALIZATIONS` itself.
+
+    `positive` is a source/result pair the entry must accept and be credited for.
+    `negative` is a *nearby* pair -- the same construct, the same shape -- that must
+    still raise. The negative case is the load-bearing half: it is what proves the
+    entry carved out one opinion rather than widening the gate around a whole
+    construct. A positive case alone would be satisfied by an entry that accepts
+    everything.
+    """
+
+    key: str
+    positive: tuple[str, str]
+    negative: tuple[str, str]
+    negative_reason: str
+
+
+NORMALIZATION_CONTRACT: tuple[NormalizationContract, ...] = (
+    NormalizationContract(
+        key=UNBOLD_HEADING,
+        positive=("# **X**\n", "# X\n"),
+        negative=("# **X**\n", "# *X*\n"),
+        negative_reason=("the heading's bold became emphasis rather than being dropped, so the document gained markup flowmark never claims to add"),
+    ),
+    NormalizationContract(
+        key=LIST_SPACING,
+        positive=("- a\n- b\n", "- a\n\n- b\n"),
+        negative=("- a\n- b\n", "- a\n\n- b\n\n- c\n"),
+        negative_reason="an item appeared; spacing is spelling, an extra item is not",
+    ),
+    NormalizationContract(
+        key=SMART_QUOTES,
+        positive=('He said "hi" and there.\n', "He said “hi” and there.\n"),
+        negative=('He said "hi" and there.\n', "He said hi and there.\n"),
+        negative_reason=("the quotation marks were dropped rather than curled; the entry writes the marks into the text precisely so a lost or moved quote still shows"),
+    ),
+    NormalizationContract(
+        key=LAZY_LIST,
+        positive=(
+            "Shared infrastructure:\n- a\n- b\n",
+            "Shared infrastructure:\n\n- a\n\n- b\n",
+        ),
+        negative=(
+            "Shared infrastructure:\n\n- a\n\n- b\n",
+            "Shared infrastructure: - a - b\n",
+        ),
+        negative_reason=(
+            "the exact reverse: a real list flattened into prose. The entry rewrites "
+            "only the side that gained the list, so the side that lost one is never "
+            "rewritten and never reconciles -- which is the whole reason a "
+            "normalization sees both trees instead of one node"
+        ),
+    ),
+    NormalizationContract(
+        key=HYPHEN_JOIN,
+        positive=("the degree-\n2 Coble locus\n", "the degree-2 Coble locus\n"),
+        negative=("the degree-2 Coble locus\n", "the degree- 2 Coble locus\n"),
+        negative_reason=(
+            "the exact reverse: a hyphenated word came apart. That is not a "
+            "hypothetical corruption -- it is the damage #18 says wrapping tools "
+            "inflict, and the reason the cleanup exists, so the gate must keep "
+            "catching it"
+        ),
+    ),
 )
-def test_intentional_normalizations_warn_rather_than_fail(
-    source: str, result: str, expected_normalization: str
-):
+
+
+def test_every_normalization_declares_its_contract() -> None:
+    """
+    The table above must cover `_NORMALIZATIONS` exactly.
+
+    This is what makes the contract enforceable rather than aspirational: a new
+    entry cannot be added without a positive case and a nearby negative one, and
+    an entry cannot be quietly removed while its proof lingers.
+    """
+    declared = [key for key, _text, _normalize in _NORMALIZATIONS]
+    proven = [contract.key for contract in NORMALIZATION_CONTRACT]
+    assert sorted(proven) == sorted(declared)
+    assert len(proven) == len(set(proven)), "an entry is listed twice"
+
+
+@pandocless
+@pytest.mark.parametrize("contract", NORMALIZATION_CONTRACT, ids=lambda c: f"{c.key}-accepts")
+def test_normalization_accepts_its_positive_case(contract: NormalizationContract) -> None:
     """
     Flowmark's opinionated normalizations do change pandoc's AST, so full AST
     equality is not the contract. A heading's weight belongs to the `<h1>` or
     `\\section`, not to hand-applied bold, and list spacing is standardized.
     These must pass -- and be reported, since they are real AST changes.
+
+    Attribution is asserted exactly: the entry must be credited for its own case
+    and no other entry may be, which is what keeps one carve-out from being
+    reported as another.
     """
-    assert check_meaning_preserved(source, result) == [expected_normalization]
+    source, result = contract.positive
+    assert check_meaning_preserved(source, result) == [contract.key]
+
+
+@pandocless
+@pytest.mark.parametrize("contract", NORMALIZATION_CONTRACT, ids=lambda c: f"{c.key}-still-refuses")
+def test_normalization_still_refuses_its_negative_case(contract: NormalizationContract) -> None:
+    """
+    The gate did not widen: a corruption of the same shape as the declared
+    opinion is still refused.
+    """
+    source, result = contract.negative
+    with pytest.raises(MeaningChangedError):
+        check_meaning_preserved(source, result)
+
+
+# The #16 reproducer, verbatim: three lines, no blank line before the bullets.
+# CommonMark starts a list at the `-`; pandoc's `markdown` dialect swallows it as
+# lazy continuation of the open paragraph. Ordinary "intro sentence, then bullets"
+# markdown, and unformattable today.
+LAZY_LIST_SOURCE = "Shared infrastructure:\n- Polynomial reduction backends\n- Modular reconstruction\n"
+
+
+@pandocless
+def test_paragraph_then_tight_list_is_formattable() -> None:
+    """
+    The list flowmark materializes is what the author plainly meant, so the gate
+    must accept it rather than refusing the document outright.
+
+    Following pandoc instead -- reflowing the bullets back into prose -- was
+    rejected: it destroys a list the author drew and that every CommonMark reader,
+    GitHub included, renders as a list.
+    """
+    reformat_text(LAZY_LIST_SOURCE, semantic=True, verify=True)
+
+
+@pandocless
+def test_paragraph_then_tight_list_writes_the_file(tmp_path: Path) -> None:
+    """
+    The acceptance criterion as the reporter stated it: the file is written, not
+    merely accepted in-process.
+    """
+    doc = tmp_path / "min.md"
+    doc.write_text(LAZY_LIST_SOURCE)
+
+    reformat_file(doc, output=None, inplace=True, nobackup=True, semantic=True)
+
+    written = doc.read_text()
+    assert written != LAZY_LIST_SOURCE
+    assert "\n\n- Polynomial reduction backends" in written
+
+
+def _many_block_document(count: int = 40) -> list[str]:
+    return [f"Paragraph number {i} with enough words in it to be realistic." for i in range(count)]
+
+
+@pandocless
+def test_mismatch_names_the_differing_block_rather_than_dumping_the_ast() -> None:
+    """
+    A mismatch in a mid-size document must not emit its entire block list.
+
+    flowmark is wired into a `pre-commit`/`pre-push` gate, where a kilobyte of AST
+    per failing file buries every other finding in the run. One real file produced
+    a 2053-character warning. The block index and the two types are what a reader
+    needs; the rest was noise.
+    """
+    blocks = _many_block_document()
+    corrupted = list(blocks)
+    corrupted[7] = "# " + blocks[7]
+
+    with pytest.raises(MeaningChangedError) as excinfo:
+        check_meaning_preserved("\n\n".join(blocks) + "\n", "\n\n".join(corrupted) + "\n")
+
+    message = str(excinfo.value)
+    assert "block 7" in message
+    assert "Para" in message
+    assert "Header" in message
+    assert len(message) < 400, f"message is {len(message)} characters:\n{message}"
+
+
+@pandocless
+def test_mismatch_names_the_block_that_actually_blocks_acceptance() -> None:
+    """
+    A block reconcilable by a declared normalization must not be reported as the
+    problem.
+
+    Found while formatting `tests/tryscript/fixtures/content/typography.md`: the
+    message pointed at `He said "hello" to her.`, which `smart_quotes` accepts
+    outright, while the block that genuinely defeated reconciliation was further
+    down the document. Sending a reader to a block that is fine costs exactly the
+    bisection this diagnostic exists to prevent.
+    """
+    source = '# **X**\n\nUntouched paragraph.\n\nHe said "hi" and there.\n'
+    result = "# X\n\nUntouched paragraph.\n\nHe said hi and there.\n"
+
+    with pytest.raises(MeaningChangedError) as excinfo:
+        check_meaning_preserved(source, result)
+
+    message = str(excinfo.value)
+    assert "block 2" in message, message
+    assert "block 0" not in message, "the unbolded heading is accepted, not the blocker"
+
+
+@pandocless
+def test_mismatch_names_the_block_when_only_content_differs() -> None:
+    """
+    Equal block types are the harder case: the old message could say nothing but
+    "same block types, altered content", leaving the reader to diff two documents
+    by hand. The index alone turns that into a lookup.
+    """
+    blocks = _many_block_document()
+    corrupted = list(blocks)
+    corrupted[12] = blocks[12].replace("realistic", "realistic and different")
+
+    with pytest.raises(MeaningChangedError) as excinfo:
+        check_meaning_preserved("\n\n".join(blocks) + "\n", "\n\n".join(corrupted) + "\n")
+
+    assert "block 12" in str(excinfo.value)
 
 
 @pandocless
@@ -115,14 +314,14 @@ def test_intentional_normalizations_warn_rather_than_fail(
         pytest.param("H~2~O\n", "H~~2~~O\n", id="subscript-becomes-strikeout"),
     ],
 )
-def test_changes_beyond_the_normalizations_still_fail(source: str, result: str):
+def test_changes_beyond_the_normalizations_still_fail(source: str, result: str) -> None:
     """The normalizations are carve-outs, not a general amnesty for lost markup."""
     with pytest.raises(MeaningChangedError):
         check_meaning_preserved(source, result)
 
 
 @pandocless
-def test_oracle_accepts_a_deliberate_spelling_change():
+def test_oracle_accepts_a_deliberate_spelling_change() -> None:
     """
     Flowmark rewrites an indented code block to a fenced one. Different bytes,
     same `CodeBlock` -- the oracle must not object.
@@ -131,7 +330,7 @@ def test_oracle_accepts_a_deliberate_spelling_change():
 
 
 @pandocless
-def test_oracle_accepts_rewrapped_prose():
+def test_oracle_accepts_rewrapped_prose() -> None:
     """Rewrapping is flowmark's whole job; pandoc reads the same Para either way."""
     source = "One sentence here. Another sentence there.\n"
     rewrapped = "One sentence here.\nAnother sentence there.\n"
@@ -162,7 +361,7 @@ def test_oracle_accepts_rewrapped_prose():
         "A $\\overline{ \\mathcal{M}_{1} }$ b $y_{2}$ c.\n",
     ],
 )
-def test_reformatting_preserves_meaning(source: str):
+def test_reformatting_preserves_meaning(source: str) -> None:
     """
     Every construct family in PR #4, checked against pandoc rather than against
     an expected string a human guessed at.
@@ -171,7 +370,7 @@ def test_reformatting_preserves_meaning(source: str):
 
 
 @pandocless
-def test_smartquotes_passes_verification():
+def test_smartquotes_passes_verification() -> None:
     """
     `smartquotes` is invisible to pandoc for free -- its `smart` extension folds
     straight and curly quotes alike into `Quoted`.
@@ -189,7 +388,7 @@ def test_smartquotes_passes_verification():
         "Wait...\n",
     ],
 )
-def test_ellipsis_spacing_is_not_a_meaning_change(source: str):
+def test_ellipsis_spacing_is_not_a_meaning_change(source: str) -> None:
     """
     `ellipses` respells text (`word...word` -> `word … word`) without changing
     what it means, so the oracle must stay quiet for it.
@@ -203,7 +402,7 @@ def test_ellipsis_spacing_is_not_a_meaning_change(source: str):
     reformat_text(source, verify=True, ellipses=True)
 
 
-def test_verify_is_on_by_default(monkeypatch: pytest.MonkeyPatch):
+def test_verify_is_on_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     The gate is a safety default: formatting must not proceed unverified unless
     asked.
@@ -220,20 +419,17 @@ def test_verify_is_on_by_default(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("flowmark.pandoc_verify.shutil.which", lambda _: None)
 
     with pytest.raises(PandocUnavailableError, match="pandoc"):
-        reformat_text(
-            "Sentence one is here. Sentence two follows it. Sentence three ends the\n"
-            "paragraph now, quite long indeed, wrapping past width.\n"
-        )
+        reformat_text("Sentence one is here. Sentence two follows it. Sentence three ends the\nparagraph now, quite long indeed, wrapping past width.\n")
 
 
-def test_no_verify_skips_the_gate(monkeypatch: pytest.MonkeyPatch):
+def test_no_verify_skips_the_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     """`--no-verify` must actually bypass the check, not merely be accepted."""
     monkeypatch.setattr("flowmark.pandoc_verify.shutil.which", lambda _: None)
 
     assert reformat_text("Hi.\n", verify=False) == "Hi.\n"
 
 
-def test_missing_pandoc_fails_loudly(monkeypatch: pytest.MonkeyPatch):
+def test_missing_pandoc_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     A missing binary must raise, not silently skip the check. A verification that
     quietly passes when it cannot run is worse than none. (An unchanged result is
@@ -244,15 +440,12 @@ def test_missing_pandoc_fails_loudly(monkeypatch: pytest.MonkeyPatch):
 
     with pytest.raises(PandocUnavailableError, match="pandoc"):
         reformat_text(
-            "Sentence one is here. Sentence two follows it. Sentence three ends the\n"
-            "paragraph now, quite long indeed, wrapping past width.\n",
+            "Sentence one is here. Sentence two follows it. Sentence three ends the\nparagraph now, quite long indeed, wrapping past width.\n",
             verify=True,
         )
 
 
-def test_a_destructive_change_leaves_the_file_untouched(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_a_destructive_change_leaves_the_file_untouched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """
     The whole point of the gate: a document flowmark would damage keeps its
     original bytes.

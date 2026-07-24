@@ -14,10 +14,7 @@ from flowmark import reformat_text
 # A list item containing an inline code span `assert x ... is not None` whose
 # opening and closing backticks sit on different source lines. This exact byte
 # sequence hangs flowmark's markdown line-wrapping.
-REPRO = (
-    "- **Slop patterns:** tautological checks (e.g., `assert x\n"
-    "is not None` without asserting values), testing trivial getters.\n"
-)
+REPRO = "- **Slop patterns:** tautological checks (e.g., `assert x\nis not None` without asserting values), testing trivial getters.\n"
 
 
 class _Timeout(Exception):
@@ -28,7 +25,7 @@ def _on_alarm(signum: int, frame: object) -> None:
     raise _Timeout("reformat_text did not terminate")
 
 
-def test_list_item_multiline_code_span_terminates():
+def test_list_item_multiline_code_span_terminates() -> None:
     """reformat_text must return on a list item with a multi-line inline code
     span, and must preserve the code span content (CommonMark collapses the
     interior newline to a space)."""

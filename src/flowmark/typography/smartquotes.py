@@ -23,14 +23,36 @@ QUOTE_PATTERN: Pattern[str] = re.compile(
 # move which text the document quotes.  Mirrors QUOTE_PATTERN's prefix class.
 OPENER_SHAPED_PATTERN: Pattern[str] = re.compile(r"(?:^|[\s—])(['\"])(?=\S)", re.MULTILINE)
 
-# An elision apostrophe before a digit: '90s, '20s.  A markdown reader treats a
-# lone one as an apostrophe rather than an open quote -- two of them don't even
-# pair with each other -- so curling it is meaning-neutral.  The exception is a
-# closing-capable straight quote later in the segment (one preceded by
-# non-whitespace, like the trailing quote of 'n'): the reader then pairs the
-# elision with *it* as a quotation, so the elision must stay straight.
-# Letter elisions ('til, 'em) are NOT safe: a reader takes them as open quotes.
-DIGIT_ELISION_PATTERN: Pattern[str] = re.compile(r"(^|\s)'(?=\d)", re.MULTILINE)
+# An elision apostrophe: a leading straight quote standing for omitted characters,
+# before a digit ('90s, '20s) or opening one of the words below ('til, 'em, 'tis).
+# Pandoc reads a lone one as an apostrophe rather than an open quote -- two of them
+# don't even pair with each other -- so curling it is meaning-neutral.  Verified
+# against pandoc 3.9.0.2; the probes are recorded as data in
+# `tests/test_smartquotes.py::ELISION_PROBES` so a change in pandoc's reading fails
+# there rather than silently making these conversions unsound.
+#
+# The exception is a closing-capable straight quote later in the segment (one
+# preceded by non-whitespace, like the trailing quote of 'n'): pandoc then pairs the
+# elision with *it* into a `Quoted` span, and curling would erase that span.  So the
+# elision must stay straight, and `CLOSER_CAPABLE_PATTERN` is what detects it.
+#
+# ## The paired case is a permanent refusal
+#
+# In `the '90s, rock 'n' roll` pandoc pairs the quote before `90s` with the one
+# after `n`, giving one `Quoted SingleQuote` span across the whole run.  Curling the
+# elisions erases it -- a meaning change, not a spelling one -- so flowmark leaves
+# them straight, and that is deliberate and permanent rather than pending.
+#
+# No verify normalization is added for it.  An entry narrow enough to accept this
+# while still refusing genuinely moved quote pairing would have to reproduce
+# pandoc's left-to-right pairing algorithm, at which point the gate stops being an
+# independent check on the formatter and becomes a copy of it.  See #13.
+#
+# Letter elisions are an explicit list rather than `[a-z]`.  Any lowercase letter
+# would also curl the opening quote of an unterminated quotation (`he said 'hello`),
+# turning an author's intent to quote into an apostrophe.
+_ELISION_WORDS = ("til", "em", "tis", "twas", "cause", "bout", "round", "n")
+DIGIT_ELISION_PATTERN: Pattern[str] = re.compile(r"(^|\s)'(?=\d|(?:" + "|".join(_ELISION_WORDS) + r")\b)", re.MULTILINE)
 CLOSER_CAPABLE_PATTERN: Pattern[str] = re.compile(r"\S'")
 
 
@@ -71,9 +93,7 @@ def _apply_smart_quotes_to_text(text: str) -> str:
         open_idx = match.start() + len(prefix)
         close_idx = match.end() - len(suffix) - 1
 
-        stray_before = any(
-            idx < open_idx and char == quote_char and idx not in converted for idx, char in openers
-        )
+        stray_before = any(idx < open_idx and char == quote_char and idx not in converted for idx, char in openers)
         # Don't convert quotes that contain paragraph breaks, or whose pairing
         # is ambiguous because of an earlier stray quote.
         if stray_before or is_multi_paragraph(content):
@@ -98,10 +118,25 @@ def _apply_smart_quotes_to_text(text: str) -> str:
     # 1. The only quote in the word
     # 2. Have word characters on both sides OR are possessives at end of words ending in s/S
 
+    # A possessive-shaped mark (`quotes'`) is really the *closer* of a straight
+    # single-quote pair whenever an opener-shaped straight single quote sits earlier
+    # in the segment -- the shape of a pair the double-span pass swallowed whole
+    # (`"Nested 'single quotes' inside"`), which never offered its inner span to the
+    # span pass.  Curling only the closer there half-converts the pair and moves what
+    # the document quotes, so the mark must stay straight.  Any convertible single
+    # span is already curled by this point, so a straight opener-shaped single quote
+    # still in `result` is exactly such a stray.  Mirrors the span pass's
+    # `stray_before`; a contraction (`\w'\w`) never closes a quote, so it is exempt.
+    single_opener_positions = [m.start(1) for m in OPENER_SHAPED_PATTERN.finditer(result) if m.group(1) == "'"]
+
     # Split by whitespace to process words individually
     words = re.split(r"(\s+)", result)
 
+    offset = 0
     for i, word in enumerate(words):
+        word_start = offset
+        offset += len(word)
+
         # Skip whitespace
         if word.isspace():
             continue
@@ -118,8 +153,12 @@ def _apply_smart_quotes_to_text(text: str) -> str:
                 words[i] = re.sub(r"\'", "\u2019", word)
             # Check if it's a possessive at the end of a word ending in s/S
             elif re.match(r"\w*[sS]\'$", word):
-                # Replace the single quote with apostrophe
-                words[i] = re.sub(r"\'", "\u2019", word)
+                close_pos = word_start + len(word) - 1
+                # ...unless an earlier opener-shaped single quote pairs with this
+                # mark, making it a quote closer rather than a possessive.
+                if not any(pos < close_pos for pos in single_opener_positions):
+                    # Replace the single quote with apostrophe
+                    words[i] = re.sub(r"\'", "\u2019", word)
 
     result = "".join(words)
 

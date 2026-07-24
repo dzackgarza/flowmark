@@ -12,7 +12,7 @@ DOC_PATHS = ["README.md"]
 reconfigure(emoji=not get_console().options.legacy_windows)  # No emojis on legacy windows.
 
 
-def main():
+def main() -> int:
     rprint()
 
     errcount = 0

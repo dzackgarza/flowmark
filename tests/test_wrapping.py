@@ -39,7 +39,7 @@ def test_markdown_escape_word_function() -> None:
     assert markdown_escape_word(".") == "."  # Just dot
 
 
-def test_wrap_paragraph_lines_markdown_escaping():
+def test_wrap_paragraph_lines_markdown_escaping() -> None:
     assert wrap_paragraph_lines(text="- word", width=10, is_markdown=True) == ["- word"]
 
     text = "word - word * word + word > word # word ## word 1. word 2) word"
@@ -102,7 +102,7 @@ def test_wrap_paragraph_lines_markdown_escaping():
     ]
 
 
-def test_smart_splitter():
+def test_smart_splitter() -> None:
     splitter = _HtmlMdWordSplitter()
 
     html_text = "This is <span class='test'>some text</span> and <a href='#'>this is a link</a>."
@@ -137,7 +137,7 @@ def test_smart_splitter():
     ]
 
 
-def test_wrap_text():
+def test_wrap_text() -> None:
     sample_text = (
         "This is a sample text with a [Markdown link](https://example.com)"
         " and an <a href='#'>tag</a>. It should demonstrate the functionality of "
@@ -208,7 +208,7 @@ def test_wrap_text():
     assert filled_smart_offset == filled_smart_offset_expected
 
 
-def test_wrap_width():
+def test_wrap_width() -> None:
     text = dedent(
         """
         You may also simply ask a question and the kmd assistant will help you. Press
@@ -223,7 +223,7 @@ def test_wrap_width():
     assert all(len(line) <= width for line in wrapped)
 
 
-def test_line_wrap_to_width_with_markdown_breaks():
+def test_line_wrap_to_width_with_markdown_breaks() -> None:
     from flowmark.linewrapping.line_wrappers import line_wrap_to_width
 
     # Get a markdown-aware line wrapper
@@ -241,25 +241,14 @@ def test_line_wrap_to_width_with_markdown_breaks():
 
     # Test wrapping with indentation
     indented_wrapper = line_wrap_to_width(width=40, is_markdown=True)
-    long_text = (
-        "This is a very long line that will be wrapped and it ends with a line break  \n"
-        "Next line with content that continues"
-    )
+    long_text = "This is a very long line that will be wrapped and it ends with a line break  \nNext line with content that continues"
     wrapped_long = indented_wrapper(long_text, initial_indent="  ", subsequent_indent="    ")
-    assert wrapped_long == (
-        "  This is a very long line that will be\n"
-        "    wrapped and it ends with a line\n"
-        "    break\\\n"
-        "    Next line with content that\n"
-        "    continues"
-    )
+    assert wrapped_long == ("  This is a very long line that will be\n    wrapped and it ends with a line\n    break\\\n    Next line with content that\n    continues")
 
     # Test different indentation for segments
     mixed_indent_wrapper = line_wrap_to_width(width=30, is_markdown=True)
     mixed_indent_text = "First segment  \nSecond segment\\\nThird segment"
-    wrapped_mixed_indent = mixed_indent_wrapper(
-        mixed_indent_text, initial_indent="* ", subsequent_indent="  "
-    )
+    wrapped_mixed_indent = mixed_indent_wrapper(mixed_indent_text, initial_indent="* ", subsequent_indent="  ")
     assert wrapped_mixed_indent == ("* First segment\\\n  Second segment\\\n  Third segment")
 
     # Test empty segments
@@ -273,7 +262,7 @@ def test_line_wrap_to_width_with_markdown_breaks():
     assert wrapped_single == "> Text with no breaks"
 
 
-def test_template_tag_splitter():
+def test_template_tag_splitter() -> None:
     """Test that template tags (Markdoc/Jinja/Nunjucks) are kept as atomic tokens."""
     splitter = _HtmlMdWordSplitter()
 
@@ -311,7 +300,7 @@ def test_template_tag_splitter():
     assert "{% /if %}" in result
 
 
-def test_template_tag_wrapping():
+def test_template_tag_wrapping() -> None:
     """Test that template tags don't break across lines during wrapping."""
 
     # Template tag should stay together even if it's long
@@ -335,7 +324,7 @@ def test_template_tag_wrapping():
     assert "{# TODO: fix this later #}" in full_result
 
 
-def test_mixed_html_and_template_tags():
+def test_mixed_html_and_template_tags() -> None:
     """Test that HTML tags and template tags work together."""
     splitter = _HtmlMdWordSplitter()
 
@@ -349,7 +338,7 @@ def test_mixed_html_and_template_tags():
     assert "{% endif %}" in result
 
 
-def test_long_template_tags():
+def test_long_template_tags() -> None:
     """Test that tags with many attributes (10+ words) are kept together."""
     splitter = _HtmlMdWordSplitter()
 
@@ -360,28 +349,24 @@ def test_long_template_tags():
     assert long_tag in result
 
     # 12-word template tag (at the limit)
-    very_long_tag = (
-        "{% table columns=[a, b, c] rows=[1, 2, 3] border=true striped=true hover=true %}"
-    )
+    very_long_tag = "{% table columns=[a, b, c] rows=[1, 2, 3] border=true striped=true hover=true %}"
     text = f"Before {very_long_tag} after."
     result = splitter(text)
     assert very_long_tag in result
 
 
-def test_long_html_tags():
+def test_long_html_tags() -> None:
     """Test that HTML tags with many attributes are kept together."""
     splitter = _HtmlMdWordSplitter()
 
     # Long HTML tag with many attributes
-    long_html = (
-        "<div class='container' id='main' data-value='test' style='color: red'>content</div>"
-    )
+    long_html = "<div class='container' id='main' data-value='test' style='color: red'>content</div>"
     text = f"Before {long_html} after."
     result = splitter(text)
     assert long_html in result
 
 
-def test_long_jinja_comments():
+def test_long_jinja_comments() -> None:
     """Test that long Jinja comments are kept together."""
     splitter = _HtmlMdWordSplitter()
 
@@ -392,7 +377,7 @@ def test_long_jinja_comments():
     assert long_comment in result
 
 
-def test_inline_code_with_spaces():
+def test_inline_code_with_spaces() -> None:
     """Test that inline code spans with spaces are kept together."""
     splitter = _HtmlMdWordSplitter()
 
@@ -409,7 +394,7 @@ def test_inline_code_with_spaces():
     assert code2 in result2
 
 
-def test_inline_code_with_surrounding_punctuation():
+def test_inline_code_with_surrounding_punctuation() -> None:
     """Test that inline code with surrounding punctuation stays together."""
     splitter = _HtmlMdWordSplitter()
 
@@ -424,7 +409,7 @@ def test_inline_code_with_surrounding_punctuation():
     assert "`foo bar`." in result2
 
 
-def test_html_comments_kept_together():
+def test_html_comments_kept_together() -> None:
     """Test that HTML comments are kept as atomic units."""
     splitter = _HtmlMdWordSplitter()
 
@@ -441,7 +426,7 @@ def test_html_comments_kept_together():
     assert long_comment in result2
 
 
-def test_single_word_inline_code_not_coalesced():
+def test_single_word_inline_code_not_coalesced() -> None:
     """
     Test that single-word inline code spans do NOT incorrectly coalesce with following text.
 
@@ -466,7 +451,7 @@ def test_single_word_inline_code_not_coalesced():
     assert "and" in result
 
 
-def test_multiple_single_word_inline_codes():
+def test_multiple_single_word_inline_codes() -> None:
     """
     Test text with multiple single-word inline code spans.
     """
@@ -484,7 +469,7 @@ def test_multiple_single_word_inline_codes():
     assert "and" in result
 
 
-def test_inline_code_in_table_cells():
+def test_inline_code_in_table_cells() -> None:
     """
     Test that inline code in table cell content is tokenized correctly.
 
@@ -516,7 +501,7 @@ def test_inline_code_in_table_cells():
     assert "and" in result3
 
 
-def test_newline_after_opening_tag():
+def test_newline_after_opening_tag() -> None:
     """
     Test that newlines after opening Jinja/Markdoc tags are preserved.
 
@@ -531,9 +516,7 @@ def test_newline_after_opening_tag():
     text = "{% description ref='example' %}\nThis is content after the tag."
     result = wrapper(text, "", "")
     # The newline after the tag should be preserved
-    assert "{% description ref='example' %}\n" in result or result.startswith(
-        "{% description ref='example' %}\n"
-    )
+    assert "{% description ref='example' %}\n" in result or result.startswith("{% description ref='example' %}\n")
 
     # HTML comment tag followed by newline
     text2 = "<!-- f:description ref='example' -->\nContent after HTML comment tag."
@@ -546,7 +529,7 @@ def test_newline_after_opening_tag():
     assert "{% description ref='example' %}\n" in result3
 
 
-def test_newline_before_closing_tag():
+def test_newline_before_closing_tag() -> None:
     """
     Test that newlines before closing Jinja/Markdoc tags are preserved.
 
@@ -568,7 +551,7 @@ def test_newline_before_closing_tag():
     assert "\n<!-- /f:description -->" in result2
 
 
-def test_paired_tags_not_broken():
+def test_paired_tags_not_broken() -> None:
     """
     Test that paired tags on the same line stay together during wrapping.
 
@@ -602,7 +585,7 @@ def test_paired_tags_not_broken():
     assert "{% /field %}" in full_result
 
 
-def test_nested_tags_newlines_preserved():
+def test_nested_tags_newlines_preserved() -> None:
     """
     Test that newlines between nested tags are preserved.
     """
@@ -621,7 +604,7 @@ def test_nested_tags_newlines_preserved():
     assert "\n{% /form %}" in result
 
 
-def test_backslash_in_tag_attributes():
+def test_backslash_in_tag_attributes() -> None:
     r"""
     Test that backslashes in tag attribute values are preserved.
 
@@ -643,7 +626,7 @@ def test_backslash_in_tag_attributes():
     assert r"\." in full_result
 
 
-def test_tag_with_list_items():
+def test_tag_with_list_items() -> None:
     """
     Test that tags containing lists don't merge with list items.
 
@@ -662,7 +645,7 @@ def test_tag_with_list_items():
     assert "\n{% /field %}" in result
 
 
-def test_block_heuristics_table_rows():
+def test_block_heuristics_table_rows() -> None:
     """
     Test that table rows inside tags have their newlines preserved.
 
@@ -687,7 +670,7 @@ def test_block_heuristics_table_rows():
     assert "\n{% /field %}" in result
 
 
-def test_table_rows_preserved_without_tags():
+def test_table_rows_preserved_without_tags() -> None:
     """
     Test that table rows are preserved on their own lines even without tags.
 
@@ -710,7 +693,7 @@ def test_table_rows_preserved_without_tags():
     assert "| 1 | 2 | 3 |" in result
 
 
-def test_wide_table_rows_not_wrapped():
+def test_wide_table_rows_not_wrapped() -> None:
     """
     Test that table rows wider than the wrap width are NOT broken across lines.
 
@@ -742,7 +725,7 @@ def test_wide_table_rows_not_wrapped():
     assert any(line == data_row for line in result_lines)
 
 
-def test_table_rows_with_semantic_wrapping():
+def test_table_rows_with_semantic_wrapping() -> None:
     """
     Test that table rows are preserved with semantic (sentence-based) wrapping.
     """
@@ -765,7 +748,7 @@ def test_table_rows_with_semantic_wrapping():
     assert data_row in result
 
 
-def test_table_rows_only_no_surrounding_text():
+def test_table_rows_only_no_surrounding_text() -> None:
     """
     Test that table-only content (no surrounding text, no tags) is preserved.
     """
@@ -782,7 +765,7 @@ def test_table_rows_only_no_surrounding_text():
     assert "| Cell data | More cell data |" in result
 
 
-def test_block_heuristics_list_items():
+def test_block_heuristics_list_items() -> None:
     """
     Test that list items inside tags have their newlines preserved.
 
@@ -804,7 +787,7 @@ def test_block_heuristics_list_items():
     assert "\n{% /field %}" in result
 
 
-def test_block_heuristics_only_with_tags_for_lists():
+def test_block_heuristics_only_with_tags_for_lists() -> None:
     """
     Test that list heuristics only apply when tags are present.
 
@@ -833,7 +816,7 @@ def test_block_heuristics_only_with_tags_for_lists():
     assert "\n| A | B |\n" in result
 
 
-def test_block_heuristics_mixed_content():
+def test_block_heuristics_mixed_content() -> None:
     """
     Test block heuristics with mixed content (text + block elements).
     """
@@ -842,9 +825,7 @@ def test_block_heuristics_mixed_content():
     wrapper = line_wrap_to_width(width=80, is_markdown=True)
 
     # Mixed content: text, table, more text, all inside tags
-    text = (
-        "{% field %}\nIntro text here.\n| Col1 | Col2 |\n|------|------|\nOutro text.\n{% /field %}"
-    )
+    text = "{% field %}\nIntro text here.\n| Col1 | Col2 |\n|------|------|\nOutro text.\n{% /field %}"
     result = wrapper(text, "", "")
 
     # Opening tag preserved
@@ -856,7 +837,7 @@ def test_block_heuristics_mixed_content():
     assert "\n{% /field %}" in result
 
 
-def test_block_heuristics_blank_line_normalization():
+def test_block_heuristics_blank_line_normalization() -> None:
     """
     Test that block content between tags gets exactly one blank line at boundaries.
 
@@ -881,7 +862,7 @@ def test_block_heuristics_blank_line_normalization():
     assert "\n\n{% /field %}" in result, f"Expected blank line before closing tag, got: {result}"
 
 
-def test_block_heuristics_table_blank_lines():
+def test_block_heuristics_table_blank_lines() -> None:
     """
     Test blank line normalization specifically for tables.
     """
@@ -898,7 +879,7 @@ def test_block_heuristics_table_blank_lines():
     assert "\n\n{% /field %}" in result
 
 
-def test_block_heuristics_preserves_existing_blank_lines():
+def test_block_heuristics_preserves_existing_blank_lines() -> None:
     """
     Test that if there are already blank lines, we don't add extras.
     """
@@ -926,7 +907,7 @@ def test_block_heuristics_preserves_existing_blank_lines():
     assert max_consecutive_empty <= 1, f"Too many consecutive blank lines: {result}"
 
 
-def test_self_closing_jinja_tags():
+def test_self_closing_jinja_tags() -> None:
     """
     Test self-closing Jinja tags (tags without a separate closing tag).
 
@@ -961,7 +942,7 @@ def test_self_closing_jinja_tags():
     assert "{% include 'partial.html' %}" in tokens
 
 
-def test_self_closing_html_comment_tags():
+def test_self_closing_html_comment_tags() -> None:
     """
     Test self-closing HTML comment tags (comments without a closing counterpart).
 
@@ -995,7 +976,7 @@ def test_self_closing_html_comment_tags():
     assert "<!-- ref: section 3 -->" in tokens
 
 
-def test_self_closing_jinja_variable_tags():
+def test_self_closing_jinja_variable_tags() -> None:
     """
     Test Jinja variable tags {{ ... }} which are always self-closing.
 
@@ -1022,7 +1003,7 @@ def test_self_closing_jinja_variable_tags():
     assert "{{ name }}," in tokens or "{{ name }}" in tokens
 
 
-def test_self_closing_jinja_comment_tags():
+def test_self_closing_jinja_comment_tags() -> None:
     """
     Test Jinja comment tags {# ... #} which are always self-closing.
 
@@ -1044,7 +1025,7 @@ def test_self_closing_jinja_comment_tags():
     assert "{# in bytes #}" in tokens
 
 
-def test_adjacent_jinja_tags_no_space():
+def test_adjacent_jinja_tags_no_space() -> None:
     """
     Test that adjacent Jinja tags stay adjacent (no space inserted).
 
@@ -1060,9 +1041,7 @@ def test_adjacent_jinja_tags_no_space():
     # Test normalize/denormalize directly
     original = "{% field kind='string' %}{% /field %}"
     normalized = normalize_adjacent_tags(original)
-    assert normalized == "{% field kind='string' %} {% /field %}", (
-        f"Expected space, got: {normalized}"
-    )
+    assert normalized == "{% field kind='string' %} {% /field %}", f"Expected space, got: {normalized}"
     denormalized = denormalize_adjacent_tags(normalized)
     assert denormalized == original, f"Expected {original}, got: {denormalized}"
 
@@ -1077,7 +1056,7 @@ def test_adjacent_jinja_tags_no_space():
     assert result2 == original, f"line_wrap_by_sentence: Expected {original}, got: {result2}"
 
 
-def test_adjacent_html_comment_tags_no_space():
+def test_adjacent_html_comment_tags_no_space() -> None:
     """
     Test that adjacent HTML comment tags stay adjacent (no space inserted).
 
@@ -1092,9 +1071,7 @@ def test_adjacent_html_comment_tags_no_space():
     # Test normalize/denormalize directly
     original = '<!-- f:field kind="string" id="name" --><!-- /f:field -->'
     normalized = normalize_adjacent_tags(original)
-    assert " <!-- /f:field -->" in normalized, (
-        f"Expected space after normalization, got: {normalized}"
-    )
+    assert " <!-- /f:field -->" in normalized, f"Expected space after normalization, got: {normalized}"
     denormalized = denormalize_adjacent_tags(normalized)
     assert denormalized == original, f"Expected {original}, got: {denormalized}"
 
@@ -1109,7 +1086,7 @@ def test_adjacent_html_comment_tags_no_space():
     assert result2 == original, f"line_wrap_by_sentence: Expected {original}, got: {result2}"
 
 
-def test_adjacent_jinja_variable_tags_no_space():
+def test_adjacent_jinja_variable_tags_no_space() -> None:
     """
     Test that adjacent Jinja variable tags stay adjacent.
     """
@@ -1130,7 +1107,7 @@ def test_adjacent_jinja_variable_tags_no_space():
     assert result == original, f"Expected {original}, got: {result}"
 
 
-def test_adjacent_jinja_comment_tags_no_space():
+def test_adjacent_jinja_comment_tags_no_space() -> None:
     """
     Test that adjacent Jinja comment tags stay adjacent.
     """
@@ -1151,7 +1128,7 @@ def test_adjacent_jinja_comment_tags_no_space():
     assert result == original, f"Expected {original}, got: {result}"
 
 
-def test_adjacent_tags_full_pipeline():
+def test_adjacent_tags_full_pipeline() -> None:
     """
     Test adjacent tags through the full Markdown processing pipeline.
 
@@ -1162,16 +1139,12 @@ def test_adjacent_tags_full_pipeline():
     # Jinja tags
     jinja_input = "{% field kind='string' %}{% /field %}"
     jinja_result = fill_markdown(jinja_input, semantic=True)
-    assert jinja_result.strip() == jinja_input, (
-        f"Jinja: Expected {jinja_input}, got: {jinja_result.strip()}"
-    )
+    assert jinja_result.strip() == jinja_input, f"Jinja: Expected {jinja_input}, got: {jinja_result.strip()}"
 
     # HTML comment tags
     html_input = '<!-- f:field kind="string" id="name" --><!-- /f:field -->'
     html_result = fill_markdown(html_input, semantic=True)
-    assert html_result.strip() == html_input, (
-        f"HTML: Expected {html_input}, got: {html_result.strip()}"
-    )
+    assert html_result.strip() == html_input, f"HTML: Expected {html_input}, got: {html_result.strip()}"
 
     # With surrounding text
     mixed_input = "Before {% field %}{% /field %} after."
@@ -1179,7 +1152,7 @@ def test_adjacent_tags_full_pipeline():
     assert "{% field %}{% /field %}" in mixed_result, f"Mixed: Space inserted in: {mixed_result}"
 
 
-def test_paragraph_text_no_extra_blank_lines():
+def test_paragraph_text_no_extra_blank_lines() -> None:
     """
     Test that paragraph text between tags does NOT get extra blank lines.
 
@@ -1195,22 +1168,18 @@ def test_paragraph_text_no_extra_blank_lines():
     result = wrapper(text, "", "")
 
     # Should NOT have double newlines before the closing tag
-    assert "\n\n{% /description %}" not in result, (
-        f"Unexpected blank line before closing tag: {result}"
-    )
+    assert "\n\n{% /description %}" not in result, f"Unexpected blank line before closing tag: {result}"
     # The closing tag should still be on its own line
     assert "\n{% /description %}" in result
 
     # HTML comment version
     text2 = "<!-- f:note -->\nThis is text content.\n<!-- /f:note -->"
     result2 = wrapper(text2, "", "")
-    assert "\n\n<!-- /f:note -->" not in result2, (
-        f"Unexpected blank line before closing tag: {result2}"
-    )
+    assert "\n\n<!-- /f:note -->" not in result2, f"Unexpected blank line before closing tag: {result2}"
     assert "\n<!-- /f:note -->" in result2
 
 
-def test_list_content_gets_blank_lines():
+def test_list_content_gets_blank_lines() -> None:
     """
     Test that list content between tags DOES get blank lines.
 
@@ -1232,7 +1201,7 @@ def test_list_content_gets_blank_lines():
     assert "\n\n{% /field %}" in result, f"Expected blank line before closing tag: {result}"
 
 
-def test_table_content_gets_blank_lines():
+def test_table_content_gets_blank_lines() -> None:
     """
     Test that table content between tags DOES get blank lines.
 
@@ -1253,7 +1222,7 @@ def test_table_content_gets_blank_lines():
     assert "\n\n{% /field %}" in result, f"Expected blank line before closing tag: {result}"
 
 
-def test_mixed_content_blank_lines_correct():
+def test_mixed_content_blank_lines_correct() -> None:
     """
     Test that mixed content (text followed by list) gets correct blank lines.
 
@@ -1272,7 +1241,7 @@ def test_mixed_content_blank_lines_correct():
     assert "\n\n{% /field %}" in result, f"Expected blank line before closing tag: {result}"
 
 
-def test_closing_tag_spacing_function():
+def test_closing_tag_spacing_function() -> None:
     """
     Test the _fix_closing_tag_spacing function directly.
 
@@ -1319,7 +1288,7 @@ def test_closing_tag_spacing_function():
     assert result7 == "- Item\n\n<!-- /tag -->", f"Expected blank line: {result7}"
 
 
-def test_various_tag_types_with_tables():
+def test_various_tag_types_with_tables() -> None:
     """
     Test tables with various tag types (Jinja, HTML comments, variables).
 
@@ -1348,7 +1317,7 @@ def test_various_tag_types_with_tables():
     assert "{{ header }}\n\n" in var_result
 
 
-def test_paragraph_only_content_various_tags():
+def test_paragraph_only_content_various_tags() -> None:
     """
     Test paragraph-only content with various tag types.
 

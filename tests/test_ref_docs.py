@@ -6,7 +6,7 @@ from flowmark.linewrapping.markdown_filling import fill_markdown
 testdoc_dir = Path("tests/testdocs")
 
 
-def test_reference_doc_formats():
+def test_reference_doc_formats() -> None:
     """
     Test that the reference document is formatted correctly with both plain and semantic formats.
     """
