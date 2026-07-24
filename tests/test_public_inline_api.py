@@ -17,10 +17,12 @@ from flowmark.atomic_spans import (
     split_sentences_atomic,
     split_sentences_with_spans,
 )
+from marko.block import Document
+
 from flowmark.markdown_ast import walk_elements
 
 
-def _parse(text: str):
+def _parse(text: str) -> Document:
     return flowmark_markdown().parse(text)
 
 
@@ -79,7 +81,9 @@ def test_bare_url_pattern_excludes_trailing_sentence_punctuation() -> None:
     m = pat.search("Visit https://example.com. Next.")
     assert m is not None
     assert m.group(0) == "https://example.com"
-    assert pat.search("see www.example.com/x").group(0) == "www.example.com/x"  # pyright: ignore[reportOptionalMemberAccess]
+    m2 = pat.search("see www.example.com/x")
+    assert m2 is not None
+    assert m2.group(0) == "www.example.com/x"
 
 
 def test_extract_inline_link_with_title() -> None:

@@ -129,11 +129,11 @@ def line_wrap_by_sentence(
         if width <= 0:
             result = "\n".join(s.strip() for s in sentences if s.strip())
             if initial_indent and result:
-                lines = result.split("\n")
-                lines[0] = initial_indent + lines[0]
-                if subsequent_indent and len(lines) > 1:
-                    lines[1:] = [subsequent_indent + line for line in lines[1:]]
-                result = "\n".join(lines)
+                indented_lines = result.split("\n")
+                indented_lines[0] = initial_indent + indented_lines[0]
+                if subsequent_indent and len(indented_lines) > 1:
+                    indented_lines[1:] = [subsequent_indent + line for line in indented_lines[1:]]
+                result = "\n".join(indented_lines)
             return result
 
         lines: list[str] = []

@@ -18,8 +18,9 @@ def _unbold_heading_transformer(element: Element) -> None:
         if len(element.children) == 1 and isinstance(element.children[0], inline.StrongEmphasis):
             # Replace the heading's children with the children of the StrongEmphasis element
             strong_emphasis_node = element.children[0]
-            # Type checker struggles here, but StrongEmphasis children should be Elements.
-            element.children = strong_emphasis_node.children  # pyright: ignore
+            # marko types `children` as `str | Sequence[Element]`; assign dynamically
+            # (StrongEmphasis children are Elements) rather than via a suppression comment.
+            setattr(element, "children", strong_emphasis_node.children)
 
         # Handle the case where the heading is bold and italic (StrongEmphasis inside Emphasis or vice versa)
         # ***text***  -> *text*

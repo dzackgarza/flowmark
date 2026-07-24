@@ -234,7 +234,7 @@ def test_resolver_sorted_output(tmp_path: Path) -> None:
     assert result == sorted(result)
 
 
-def test_resolver_file_not_found():
+def test_resolver_file_not_found() -> None:
     resolver = FileResolver(FileResolverConfig())
     try:
         resolver.resolve(["/nonexistent/path/file.md"])
