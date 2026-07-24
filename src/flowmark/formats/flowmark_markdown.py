@@ -239,7 +239,9 @@ class CustomFencedCode(block.FencedCode):
         lines: list[str] = []
         parse_info: ExtendedParseInfo = source.context.code_info
         while not source.exhausted:
-            line = source.next_line()
+            # marko types next_line() as non-Optional, but it returns None at
+            # end of input, so this defensive check is real, not dead code.
+            line: str | None = source.next_line()
             if line is None:  # pyright: ignore[reportUnnecessaryComparison]
                 break
             source.consume()
@@ -279,7 +281,7 @@ class CustomDisplayMath(block.BlockElement):
     opener: str
     prefix: str
 
-    def __init__(self, match: tuple[str, str]) -> None:
+    def __init__(self, match: re.Match[str]) -> None:
         self.opener = match[0]
         self.prefix = match[1]
         self.children = [inline.RawText(match[2], False)]
@@ -305,7 +307,9 @@ class CustomDisplayMath(block.BlockElement):
 
         lines: list[str] = []
         while not source.exhausted:
-            line = source.next_line()
+            # marko types next_line() as non-Optional, but it returns None at
+            # end of input, so this defensive check is real, not dead code.
+            line: str | None = source.next_line()
             if line is None:
                 break
             source.consume()
@@ -492,7 +496,9 @@ class CustomFencedDiv(block.BlockElement):
         code_fence: str | None = None
 
         while not source.exhausted:
-            line = source.next_line()
+            # marko types next_line() as non-Optional, but it returns None at
+            # end of input, so this defensive check is real, not dead code.
+            line: str | None = source.next_line()
             if line is None:
                 break
             source.consume()
@@ -591,7 +597,9 @@ class CustomLatexEnvironment(block.BlockElement):
 
         lines: list[str] = []
         while not source.exhausted:
-            line = source.next_line()
+            # marko types next_line() as non-Optional, but it returns None at
+            # end of input, so this defensive check is real, not dead code.
+            line: str | None = source.next_line()
             if line is None:
                 break
             source.consume()
@@ -662,7 +670,9 @@ class CustomDefinitionList(block.BlockElement):
     def parse(cls, source: Source) -> str:
         lines: list[str] = []
         while not source.exhausted:
-            line = source.next_line()
+            # marko types next_line() as non-Optional, but it returns None at
+            # end of input, so this defensive check is real, not dead code.
+            line: str | None = source.next_line()
             if line is None:
                 break
             if line.strip():
@@ -907,7 +917,9 @@ class MarkdownNormalizer(Renderer):
         return "".join(result)
 
     def render_list_item(self, element: block.ListItem) -> str:
-        result = ""
+        # Explicitly str-typed: render_children (inherited from marko) returns Any,
+        # so without this annotation the accumulated result widens to Any.
+        result: str = ""
         # For loose lists, add a blank line between items.
         # For tight lists, don't add blank lines.
         if not self._current_list_tight:
@@ -1319,7 +1331,9 @@ class MarkdownNormalizer(Renderer):
 
     def render_table_cell(self, element: gfm_elements.TableCell) -> str:
         """Render a cell within a GFM table row."""
-        return self.render_children(element).replace("|", "\\|")
+        # render_children (inherited from marko) returns Any; pin it to str.
+        rendered: str = self.render_children(element)
+        return rendered.replace("|", "\\|")
 
     def render_url(self, element: gfm_elements.Url) -> str:
         """For GFM autolink URLs, just output the URL directly."""
@@ -1344,8 +1358,10 @@ class MarkdownNormalizer(Renderer):
         # Reset the skip flag since we're not rendering a blank line
         self._skip_next_blank_line = False
 
-        # First render the alert header (Alert has alert_type attribute)
-        alert_type: str = element.alert_type  # pyright: ignore
+        # First render the alert header. `element` is typed block.Quote because
+        # marko's stubs omit the gfm Alert subclass; at runtime it is an Alert with
+        # an alert_type attribute, read dynamically to stay within marko's types.
+        alert_type: str = getattr(element, "alert_type")
         alert_header = f"> [!{alert_type}]\n"
 
         with self.container("> ", "> "):

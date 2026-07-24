@@ -93,8 +93,8 @@ packages = ["src/flowmark"]
 
 # ---- Settings ----
 
-# NOTE: ruff configuration is owned by global QC (~/ai-review-ci); a local
-# [tool.ruff] section is forbidden by the ai-review-ci Python preflight and was
+# NOTE: ruff configuration is owned by global QC (~/ai-review-ci). A local ruff
+# tool-config section is forbidden by the ai-review-ci Python preflight and was
 # removed when this repo adopted global QC delegation.
 
 [tool.basedpyright]
