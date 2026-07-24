@@ -11,7 +11,7 @@ positives too often with code or other syntax.
 FIRST_SENTENCE = "End of sentence must be two letters or more, with the last letter lowercase, followed by a period, exclamation point, question mark."
 
 
-def test_split_sentences():
+def test_split_sentences() -> None:
     assert split_sentences_regex("test!") == ["test!"]
     assert split_sentences_regex("test! random words") == ["test! random words"]
 
@@ -21,7 +21,7 @@ def test_split_sentences():
     assert split_sentences[0] == FIRST_SENTENCE
 
 
-def test_first_sentence():
+def test_first_sentence() -> None:
     assert first_sentence(LONG_TEXT) == FIRST_SENTENCE
 
     assert first_sentence("") == ""
@@ -30,7 +30,7 @@ def test_first_sentence():
     assert first_sentence(" hello\n") == "hello"
 
 
-def test_abbreviations_not_sentence_ends():
+def test_abbreviations_not_sentence_ends() -> None:
     """Common title/abbreviation tokens (Dr., Mr., Mrs., ...) end in a lowercase
     letter + period and so match the sentence-end regex, but they are not real
     sentence boundaries. Regression: `He met with Mr. Jones` was split after

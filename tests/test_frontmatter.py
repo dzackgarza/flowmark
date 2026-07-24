@@ -2,7 +2,7 @@ from flowmark.formats.frontmatter import has_frontmatter, split_frontmatter
 from flowmark.linewrapping.markdown_filling import fill_markdown
 
 
-def test_split_frontmatter():
+def test_split_frontmatter() -> None:
     # Test with empty string
     frontmatter, content = split_frontmatter("")
     assert frontmatter == ""
@@ -33,14 +33,14 @@ def test_split_frontmatter():
     assert content == ""
 
 
-def test_has_frontmatter():
+def test_has_frontmatter() -> None:
     assert has_frontmatter("") is False
     assert has_frontmatter("# No frontmatter") is False
     assert has_frontmatter("---\ntitle: Test\n---\n\nContent") is True
     assert has_frontmatter("\n\n---\ntitle: Test\n---\n") is True
 
 
-def test_markdown_with_frontmatter():
+def test_markdown_with_frontmatter() -> None:
     # Test that frontmatter is preserved when formatting markdown
     input_doc = "---\ntitle: Test Document\ndate: 2023-01-01\nauthor: Test Author\n---\n\n# Heading\n\nThis is sentence one. This is sentence two."
 

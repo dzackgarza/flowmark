@@ -1,7 +1,7 @@
 from flowmark.typography.ellipses import ellipses
 
 
-def test_ellipses():
+def test_ellipses() -> None:
     # Basic conversions, adding space only if needed next to a word character
     assert ellipses("word...") == "word …"
     assert ellipses("word ...") == "word …"

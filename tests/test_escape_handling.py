@@ -3,7 +3,7 @@
 from flowmark.formats.flowmark_markdown import ListSpacing, flowmark_markdown
 
 
-def test_escape_in_heading():
+def test_escape_in_heading() -> None:
     """Escapes in headings should be removed - they're never needed."""
     md = flowmark_markdown()
 
@@ -16,7 +16,7 @@ def test_escape_in_heading():
     assert result == "### Item 1. and 2. in title\n\n"
 
 
-def test_escape_at_paragraph_start():
+def test_escape_at_paragraph_start() -> None:
     """Escape at paragraph start should be preserved to prevent list interpretation."""
     md = flowmark_markdown()
 
@@ -29,7 +29,7 @@ def test_escape_at_paragraph_start():
     assert result == "10\\. Not a list either\n"
 
 
-def test_escape_in_paragraph_middle():
+def test_escape_in_paragraph_middle() -> None:
     """Escapes in middle of paragraph should be removed."""
     md = flowmark_markdown()
 
@@ -42,7 +42,7 @@ def test_escape_in_paragraph_middle():
     assert result == "End with number 1.\n"
 
 
-def test_escape_in_list_item():
+def test_escape_in_list_item() -> None:
     """Test escape handling in list items."""
     md = flowmark_markdown()
 
@@ -55,7 +55,7 @@ def test_escape_in_list_item():
     assert result == "- 1\\. At start of item\n"
 
 
-def test_escape_in_quote():
+def test_escape_in_quote() -> None:
     """Test escape handling in block quotes."""
     md = flowmark_markdown()
 
@@ -69,7 +69,7 @@ def test_escape_in_quote():
     assert result == "> 1\\. Quote start\n"
 
 
-def test_escape_in_table():
+def test_escape_in_table() -> None:
     """Escapes in table cells should be removed."""
     md = flowmark_markdown()
 
@@ -85,7 +85,7 @@ def test_escape_in_table():
     assert result == expected
 
 
-def test_actual_list_no_escape():
+def test_actual_list_no_escape() -> None:
     """Real lists without escapes should remain unchanged."""
     md = flowmark_markdown(list_spacing=ListSpacing.loose)
 
@@ -93,7 +93,7 @@ def test_actual_list_no_escape():
     assert result == "1. First item\n\n2. Second item\n"
 
 
-def test_mixed_escapes():
+def test_mixed_escapes() -> None:
     """Test document with mixed escape scenarios."""
     md = flowmark_markdown(list_spacing=ListSpacing.loose)
 
@@ -126,7 +126,7 @@ Paragraph with 1. in middle.
     assert result == expected
 
 
-def test_other_escaped_chars():
+def test_other_escaped_chars() -> None:
     r"""
     Test that other escaped characters are preserved (only periods are handled specially).
 
@@ -164,7 +164,7 @@ def test_other_escaped_chars():
     assert result == "Text with \\` backtick\n"
 
 
-def test_escaped_chars_in_headings():
+def test_escaped_chars_in_headings() -> None:
     """
     Test that non-period escaped characters in headings are preserved.
 
@@ -187,7 +187,7 @@ def test_escaped_chars_in_headings():
     assert result == "## Test \\- Heading\n\n"
 
 
-def test_escaped_chars_at_line_start():
+def test_escaped_chars_at_line_start() -> None:
     """
     Test that escaped characters at line start are preserved.
 
@@ -211,7 +211,7 @@ def test_escaped_chars_at_line_start():
     assert result == "\\# Not a heading\n"
 
 
-def test_mixed_escapes_comprehensive():
+def test_mixed_escapes_comprehensive() -> None:
     """
     Comprehensive test showing our escape handling policy:
     - Periods: smart handling (remove when unnecessary)

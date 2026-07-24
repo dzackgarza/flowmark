@@ -17,21 +17,21 @@ from flowmark.linewrapping.markdown_filling import fill_markdown
 # --- Tests for preserve mode (default) ---
 
 
-def test_tight_list_preserved():
+def test_tight_list_preserved() -> None:
     """Tight lists stay tight in preserve mode."""
     input_doc = "- one\n- two\n- three\n"
     output = fill_markdown(input_doc, list_spacing=ListSpacing.preserve)
     assert output == "- one\n- two\n- three\n"
 
 
-def test_loose_list_preserved():
+def test_loose_list_preserved() -> None:
     """Loose lists stay loose in preserve mode."""
     input_doc = "- one\n\n- two\n\n- three\n"
     output = fill_markdown(input_doc, list_spacing=ListSpacing.preserve)
     assert output == "- one\n\n- two\n\n- three\n"
 
 
-def test_loose_is_default():
+def test_loose_is_default() -> None:
     """Loose is the default: list spacing is normalized, not left to the document."""
     input_tight = "- one\n- two\n- three\n"
     input_loose = "- one\n\n- two\n\n- three\n"
@@ -42,7 +42,7 @@ def test_loose_is_default():
     assert fill_markdown(input_loose) == "- one\n\n- two\n\n- three\n"
 
 
-def test_numbered_list_preserve():
+def test_numbered_list_preserve() -> None:
     """Numbered lists preserve their tightness."""
     input_tight = "1. one\n2. two\n3. three\n"
     input_loose = "1. one\n\n2. two\n\n3. three\n"
@@ -54,21 +54,21 @@ def test_numbered_list_preserve():
 # --- Tests for loose mode ---
 
 
-def test_tight_list_to_loose():
+def test_tight_list_to_loose() -> None:
     """Tight lists become loose in loose mode."""
     input_doc = "- one\n- two\n- three\n"
     output = fill_markdown(input_doc, list_spacing=ListSpacing.loose)
     assert output == "- one\n\n- two\n\n- three\n"
 
 
-def test_loose_list_stays_loose():
+def test_loose_list_stays_loose() -> None:
     """Loose lists stay loose in loose mode."""
     input_doc = "- one\n\n- two\n\n- three\n"
     output = fill_markdown(input_doc, list_spacing=ListSpacing.loose)
     assert output == "- one\n\n- two\n\n- three\n"
 
 
-def test_numbered_list_to_loose():
+def test_numbered_list_to_loose() -> None:
     """Numbered lists become loose in loose mode."""
     input_doc = "1. one\n2. two\n3. three\n"
     output = fill_markdown(input_doc, list_spacing=ListSpacing.loose)
@@ -78,21 +78,21 @@ def test_numbered_list_to_loose():
 # --- Tests for tight mode ---
 
 
-def test_loose_list_to_tight():
+def test_loose_list_to_tight() -> None:
     """Loose lists become tight in tight mode."""
     input_doc = "- one\n\n- two\n\n- three\n"
     output = fill_markdown(input_doc, list_spacing=ListSpacing.tight)
     assert output == "- one\n- two\n- three\n"
 
 
-def test_tight_list_stays_tight():
+def test_tight_list_stays_tight() -> None:
     """Tight lists stay tight in tight mode."""
     input_doc = "- one\n- two\n- three\n"
     output = fill_markdown(input_doc, list_spacing=ListSpacing.tight)
     assert output == "- one\n- two\n- three\n"
 
 
-def test_multi_para_stays_loose_in_tight_mode():
+def test_multi_para_stays_loose_in_tight_mode() -> None:
     """Multi-paragraph items stay loose even in tight mode (CommonMark requirement)."""
     input_doc = (
         dedent(
@@ -114,7 +114,7 @@ def test_multi_para_stays_loose_in_tight_mode():
 # --- Tests for nested lists ---
 
 
-def test_nested_lists_independent_preserve():
+def test_nested_lists_independent_preserve() -> None:
     """Each nested list independently preserves its tightness."""
     input_doc = (
         dedent(
@@ -144,7 +144,7 @@ def test_nested_lists_independent_preserve():
     assert output == expected
 
 
-def test_nested_lists_loose_outer_tight_inner():
+def test_nested_lists_loose_outer_tight_inner() -> None:
     """Loose outer list with tight inner list."""
     input_doc = (
         dedent(
@@ -181,7 +181,7 @@ def test_nested_lists_loose_outer_tight_inner():
 # --- Tests for complex content (code blocks, quotes) ---
 
 
-def test_list_items_with_code_blocks_preserve():
+def test_list_items_with_code_blocks_preserve() -> None:
     """List items with code blocks preserve tightness in preserve mode."""
     input_doc = (
         dedent(
@@ -218,7 +218,7 @@ def test_list_items_with_code_blocks_preserve():
     assert normalized_doc == expected_doc
 
 
-def test_list_items_with_code_blocks_loose():
+def test_list_items_with_code_blocks_loose() -> None:
     """List items with code blocks get proper spacing in loose mode."""
     input_doc = (
         dedent(
@@ -254,7 +254,7 @@ def test_list_items_with_code_blocks_loose():
     assert normalized_doc == expected_doc
 
 
-def test_list_items_with_quote_blocks():
+def test_list_items_with_quote_blocks() -> None:
     """Test that list items with quote blocks get proper spacing."""
     input_doc = (
         dedent(
@@ -292,7 +292,7 @@ def test_list_items_with_quote_blocks():
 # --- Tests for spacing normalization with loose mode ---
 
 
-def test_input_spacing_normalization_loose():
+def test_input_spacing_normalization_loose() -> None:
     """Test that various input spacings normalize to loose output in loose mode."""
     # One newline between items (tight markdown)
     input_tight = "- First item\n- Second item\n- Third item\n"
@@ -311,7 +311,7 @@ def test_input_spacing_normalization_loose():
     assert fill_markdown(input_extra, list_spacing=ListSpacing.loose) == expected_output
 
 
-def test_input_spacing_normalization_tight():
+def test_input_spacing_normalization_tight() -> None:
     """Test that various input spacings normalize to tight output in tight mode."""
     # One newline between items (tight markdown)
     input_tight = "- First item\n- Second item\n- Third item\n"
@@ -330,7 +330,7 @@ def test_input_spacing_normalization_tight():
     assert fill_markdown(input_extra, list_spacing=ListSpacing.tight) == expected_output
 
 
-def test_complex_content_with_loose_mode():
+def test_complex_content_with_loose_mode() -> None:
     """Test that complex content gets proper spacing in loose mode."""
     input_doc = (
         dedent(
@@ -367,7 +367,7 @@ def test_complex_content_with_loose_mode():
     assert fill_markdown(input_doc, semantic=True, list_spacing=ListSpacing.loose) == expected_output
 
 
-def test_multi_paragraph_spacing_loose_mode():
+def test_multi_paragraph_spacing_loose_mode() -> None:
     """Test that multi-paragraph items get consistent spacing in loose mode."""
     input_doc = (
         dedent(

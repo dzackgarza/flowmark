@@ -39,7 +39,7 @@ AMBIGUOUS = dedent(
 NEEDS_FORMAT = "A paragraph with an accidentally   wide gap.  Another sentence here.\n"
 
 
-def test_batch_skips_refused_file_and_formats_the_rest(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+def test_batch_skips_refused_file_and_formats_the_rest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     bad = tmp_path / "bad.md"
     good = tmp_path / "good.md"
     bad.write_text(AMBIGUOUS)
@@ -56,7 +56,7 @@ def test_batch_skips_refused_file_and_formats_the_rest(tmp_path: Path, capsys: p
     assert "1 file left unformatted" in err, "batch must summarize skips"
 
 
-def test_single_file_call_still_raises(tmp_path: Path):
+def test_single_file_call_still_raises(tmp_path: Path) -> None:
     bad = tmp_path / "bad.md"
     bad.write_text(AMBIGUOUS)
     with pytest.raises(MeaningChangedError):

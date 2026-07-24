@@ -223,7 +223,7 @@ Complex should be possible.*” —Alan Kay </p>
 ).lstrip()
 
 
-def test_normalize_markdown():
+def test_normalize_markdown() -> None:
     parsed = marko.parse(_original_doc)
     print("---Parsed")
     print(parsed)
@@ -238,7 +238,7 @@ def test_normalize_markdown():
     assert normalized_doc == _expected_doc
 
 
-def test_multi_paragraph_list_items():
+def test_multi_paragraph_list_items() -> None:
     # Test that multi-paragraph list items get proper spacing between them.
     input_doc = dedent(
         """
@@ -279,7 +279,7 @@ def test_multi_paragraph_list_items():
     assert normalized_doc == expected_doc
 
 
-def test_wide_table_adjacent_to_paragraph():
+def test_wide_table_adjacent_to_paragraph() -> None:
     """
     Test that a wide table row immediately following paragraph text (no blank line)
     is preserved on a single line by fill_markdown.
@@ -312,7 +312,7 @@ def test_wide_table_adjacent_to_paragraph():
         assert len(table_lines) == 3, f"Expected 3 table lines, got {len(table_lines)} in {semantic=}"
 
 
-def test_standalone_wide_table():
+def test_standalone_wide_table() -> None:
     """
     Test that a standalone wide table (properly parsed by GFM) continues to work.
     This is a regression guard — tables that GFM recognizes should not be affected.

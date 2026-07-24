@@ -14,7 +14,7 @@ from textwrap import dedent
 from flowmark.linewrapping.markdown_filling import fill_markdown
 
 
-def test_basic_note_alert():
+def test_basic_note_alert() -> None:
     """Test that NOTE alerts are preserved correctly."""
     input_doc = dedent(
         """
@@ -37,7 +37,7 @@ def test_basic_note_alert():
     assert normalized_doc == expected_doc
 
 
-def test_obsidian_callout_title_stays_on_header_line():
+def test_obsidian_callout_title_stays_on_header_line() -> None:
     """Obsidian callout title text must not collapse together with the body."""
     input_doc = dedent(
         """
@@ -61,7 +61,7 @@ def test_obsidian_callout_title_stays_on_header_line():
     assert normalized_doc == expected_doc
 
 
-def test_all_valid_alert_types():
+def test_all_valid_alert_types() -> None:
     """Test all five valid GitHub alert types are preserved."""
     alert_types = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]
 
@@ -77,7 +77,7 @@ def test_all_valid_alert_types():
         assert normalized_doc.startswith(">"), f"Quote formatting lost for {alert_type}"
 
 
-def test_lowercase_alert_normalized_to_uppercase():
+def test_lowercase_alert_normalized_to_uppercase() -> None:
     """Test that lowercase alert types are normalized to uppercase."""
     input_doc = dedent(
         """
@@ -95,7 +95,7 @@ def test_lowercase_alert_normalized_to_uppercase():
     assert "normalized" in normalized_doc
 
 
-def test_misspelled_alert_preserves_quote():
+def test_misspelled_alert_preserves_quote() -> None:
     """
     CRITICAL: Misspelled alert types must NOT cause quote formatting to be stripped.
     They should fall back to regular quote handling.
@@ -118,7 +118,7 @@ def test_misspelled_alert_preserves_quote():
         assert "Content here" in normalized_doc, f"Body content lost for {misspelled_type}"
 
 
-def test_unknown_alert_types_preserve_quote():
+def test_unknown_alert_types_preserve_quote() -> None:
     """
     CRITICAL: Unknown/custom alert types must NOT cause quote formatting to be stripped.
     """
@@ -143,7 +143,7 @@ def test_unknown_alert_types_preserve_quote():
             assert content in normalized_doc, f"Content '{content}' was lost"
 
 
-def test_empty_alert_type_preserves_quote():
+def test_empty_alert_type_preserves_quote() -> None:
     """Empty alert brackets should not cause quote formatting to be stripped."""
     input_doc = "> [!]\n> Some content"
     normalized_doc = fill_markdown(input_doc, semantic=True)
@@ -152,7 +152,7 @@ def test_empty_alert_type_preserves_quote():
     assert "Some content" in normalized_doc
 
 
-def test_malformed_alert_preserves_quote():
+def test_malformed_alert_preserves_quote() -> None:
     """Malformed alert syntax should not cause quote formatting to be stripped."""
     test_cases = [
         "> [NOTE]\n> Missing exclamation mark",
@@ -167,7 +167,7 @@ def test_malformed_alert_preserves_quote():
         assert normalized_doc.startswith(">"), f"Quote formatting lost for: {input_doc[:30]}"
 
 
-def test_alert_with_multiline_content():
+def test_alert_with_multiline_content() -> None:
     """Test alerts with multiple lines of content."""
     input_doc = dedent(
         """
@@ -186,7 +186,7 @@ def test_alert_with_multiline_content():
     assert "content" in normalized_doc
 
 
-def test_alert_with_multiple_paragraphs():
+def test_alert_with_multiple_paragraphs() -> None:
     """Test alerts with multiple paragraphs separated by blank quote lines."""
     input_doc = dedent(
         """
@@ -204,7 +204,7 @@ def test_alert_with_multiple_paragraphs():
     assert normalized_doc == expected_doc
 
 
-def test_alert_with_code_block():
+def test_alert_with_code_block() -> None:
     """Test alerts containing fenced code blocks."""
     input_doc = dedent(
         """
@@ -224,7 +224,7 @@ def test_alert_with_code_block():
     assert "dangerous_operation()" in normalized_doc
 
 
-def test_alert_with_list():
+def test_alert_with_list() -> None:
     """Test alerts containing bullet lists."""
     input_doc = dedent(
         """
@@ -243,7 +243,7 @@ def test_alert_with_list():
     assert "Second item" in normalized_doc
 
 
-def test_multiple_alerts_in_document():
+def test_multiple_alerts_in_document() -> None:
     """Test multiple alerts in the same document."""
     input_doc = dedent(
         """
@@ -266,7 +266,7 @@ def test_multiple_alerts_in_document():
     assert "Some text between" in normalized_doc
 
 
-def test_alert_after_heading():
+def test_alert_after_heading() -> None:
     """Test alert immediately after a heading."""
     input_doc = dedent(
         """
@@ -284,7 +284,7 @@ def test_alert_after_heading():
     assert "Important note" in normalized_doc
 
 
-def test_regular_quote_still_works():
+def test_regular_quote_still_works() -> None:
     """Ensure regular quotes without alert syntax still work correctly."""
     input_doc = dedent(
         """
@@ -299,7 +299,7 @@ def test_regular_quote_still_works():
     assert "regular quote" in normalized_doc
 
 
-def test_quote_with_link_like_content():
+def test_quote_with_link_like_content() -> None:
     """Test quote with content that looks like but isn't an alert."""
     input_doc = dedent(
         """

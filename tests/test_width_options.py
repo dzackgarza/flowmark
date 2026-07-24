@@ -1,7 +1,7 @@
 from flowmark.reformat_api import reformat_text
 
 
-def test_normal_width_wrapping():
+def test_normal_width_wrapping() -> None:
     """Test that normal width values work as expected."""
     text = "This is a long line that should definitely be wrapped at narrow widths but fits on one line at wide widths."
 
@@ -16,7 +16,7 @@ def test_normal_width_wrapping():
     assert len(lines_200) == 1, "Text should fit on one line at width 200"
 
 
-def test_zero_width_disables_wrapping():
+def test_zero_width_disables_wrapping() -> None:
     """Test that width=0 disables wrapping entirely."""
     text = "This is a very long line that would normally be wrapped at any reasonable width setting but should remain as a single line when wrapping is disabled."
 
@@ -27,7 +27,7 @@ def test_zero_width_disables_wrapping():
     assert result.strip() == text, "Text should be unchanged except for whitespace normalization"
 
 
-def test_negative_width_disables_wrapping():
+def test_negative_width_disables_wrapping() -> None:
     """Test that negative width values disable wrapping entirely."""
     text = "This is a very long line that would normally be wrapped at any reasonable width setting but should remain as a single line when wrapping is disabled."
 
@@ -38,7 +38,7 @@ def test_negative_width_disables_wrapping():
     assert result.strip() == text, "Text should be unchanged except for whitespace normalization"
 
 
-def test_width_zero_with_semantic():
+def test_width_zero_with_semantic() -> None:
     """Test that width=0 works correctly with semantic mode."""
     text = "This is sentence one. This is sentence two. This is sentence three."
 
@@ -48,7 +48,7 @@ def test_width_zero_with_semantic():
     assert len(lines) == 1, "Width 0 with semantic should still keep text on one line"
 
 
-def test_width_zero_with_markdown():
+def test_width_zero_with_markdown() -> None:
     """Test that width=0 works correctly with markdown mode."""
     text = "This is a long paragraph that would normally be wrapped but should remain on one line when width is 0."
 
@@ -60,7 +60,7 @@ def test_width_zero_with_markdown():
     assert len(lines) == 1, "Width 0 with markdown should keep paragraph on one line"
 
 
-def test_width_zero_with_markdown_semantic():
+def test_width_zero_with_markdown_semantic() -> None:
     """Test that width=0 + semantic splits sentences without column-width wrapping."""
     text = "This is sentence one. This is sentence two. This is sentence three."
 
@@ -74,7 +74,7 @@ def test_width_zero_with_markdown_semantic():
     assert lines[2] == "This is sentence three."
 
 
-def test_existing_behavior_unchanged():
+def test_existing_behavior_unchanged() -> None:
     """Test that existing default behavior is unchanged."""
     text = "This is a test line that should be wrapped at the default width of 88 characters."
 

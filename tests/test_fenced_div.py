@@ -15,7 +15,7 @@ from flowmark.formats.flowmark_markdown import flowmark_markdown
 from flowmark.linewrapping.markdown_filling import fill_markdown
 
 
-def test_fenced_div_braced_attrs_round_trip():
+def test_fenced_div_braced_attrs_round_trip() -> None:
     """A canonical braced attribute block is preserved verbatim."""
     md = flowmark_markdown()
 
@@ -24,7 +24,7 @@ def test_fenced_div_braced_attrs_round_trip():
     assert md(source) == source
 
 
-def test_fenced_div_brace_in_quoted_value_stays_on_opening_fence():
+def test_fenced_div_brace_in_quoted_value_stays_on_opening_fence() -> None:
     """
     A ``}`` inside a quoted attribute value must not terminate the attribute
     block.  Regression: the attribute regex used ``\\{[^}]*\\}``, which stopped
@@ -38,7 +38,7 @@ def test_fenced_div_brace_in_quoted_value_stays_on_opening_fence():
     assert md(source) == source
 
 
-def test_fenced_div_brace_mid_quoted_value_stays_on_opening_fence():
+def test_fenced_div_brace_mid_quoted_value_stays_on_opening_fence() -> None:
     """A ``}`` in the middle of a quoted value must not split the fence line."""
     md = flowmark_markdown()
 
@@ -47,7 +47,7 @@ def test_fenced_div_brace_mid_quoted_value_stays_on_opening_fence():
     assert md(source) == source
 
 
-def test_fenced_div_escaped_quotes_in_value_stay_on_opening_fence():
+def test_fenced_div_escaped_quotes_in_value_stay_on_opening_fence() -> None:
     """A quoted value may contain escaped quotes around a brace."""
     md = flowmark_markdown()
 
@@ -56,7 +56,7 @@ def test_fenced_div_escaped_quotes_in_value_stay_on_opening_fence():
     assert md(source) == source
 
 
-def test_fenced_div_bare_class_round_trip():
+def test_fenced_div_bare_class_round_trip() -> None:
     """
     ``::: proof`` is pandoc's bare-class shorthand for ``::: {.proof}``.
     Regression: the bare word was treated as trailing content and emitted as
@@ -69,7 +69,7 @@ def test_fenced_div_bare_class_round_trip():
     assert md(source) == source
 
 
-def test_fenced_div_long_fence_round_trip():
+def test_fenced_div_long_fence_round_trip() -> None:
     """Pandoc allows any opening fence of three or more colons."""
     md = flowmark_markdown()
 
@@ -78,7 +78,7 @@ def test_fenced_div_long_fence_round_trip():
     assert md(source) == source
 
 
-def test_fenced_div_long_fence_with_short_closer_round_trip():
+def test_fenced_div_long_fence_with_short_closer_round_trip() -> None:
     """Pandoc accepts a closing fence shorter than the opening fence."""
     md = flowmark_markdown()
 
@@ -87,7 +87,7 @@ def test_fenced_div_long_fence_with_short_closer_round_trip():
     assert md(source) == source
 
 
-def test_fenced_div_no_attrs_round_trip():
+def test_fenced_div_no_attrs_round_trip() -> None:
     """A bare ``:::`` fence with no attribute spec is preserved."""
     md = flowmark_markdown()
 
@@ -96,7 +96,7 @@ def test_fenced_div_no_attrs_round_trip():
     assert md(source) == source
 
 
-def test_fenced_div_attr_block_without_space_is_normalized():
+def test_fenced_div_attr_block_without_space_is_normalized() -> None:
     """
     ``:::{.foo}`` is normalized to pandoc's canonical ``::: {.foo}`` spacing.
     This is a rendering choice, not a parse change: both forms carry the same
@@ -107,7 +107,7 @@ def test_fenced_div_attr_block_without_space_is_normalized():
     assert md(":::{.foo}\nBody.\n:::\n") == "::: {.foo}\nBody.\n:::\n"
 
 
-def test_fenced_div_opening_fence_never_leaks_into_the_body():
+def test_fenced_div_opening_fence_never_leaks_into_the_body() -> None:
     """
     Nothing on the opening fence line may appear as body content.
 
@@ -140,7 +140,7 @@ def test_fenced_div_opening_fence_never_leaks_into_the_body():
 DIV_PARAGRAPH = "The first sentence states a fact. The second sentence states another fact entirely.\n"
 
 
-def test_fenced_div_body_reflows_like_any_other_markdown():
+def test_fenced_div_body_reflows_like_any_other_markdown() -> None:
     """
     The #20 reproducer pair: the same paragraph must reflow the same way whether
     or not it is wrapped in a div.
@@ -152,7 +152,7 @@ def test_fenced_div_body_reflows_like_any_other_markdown():
     assert wrapped == f"::: {{.problem}}\n{bare}:::\n"
 
 
-def test_fenced_div_body_keeps_block_structure():
+def test_fenced_div_body_keeps_block_structure() -> None:
     """
     A div body may hold any block a document may hold. Each must survive as
     itself -- a list stays a list, a fenced code block keeps its fence and its

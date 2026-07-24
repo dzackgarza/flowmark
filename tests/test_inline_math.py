@@ -5,7 +5,7 @@ from flowmark.linewrapping.markdown_filling import fill_markdown
 from flowmark.reformat_api import reformat_text
 
 
-def test_inline_math_preserves_latex_subscripts_verbatim():
+def test_inline_math_preserves_latex_subscripts_verbatim() -> None:
     """Inline math must not parse LaTeX underscores as Markdown emphasis."""
     md = flowmark_markdown()
 
@@ -22,7 +22,7 @@ def test_inline_math_preserves_latex_subscripts_verbatim():
     assert result == source
 
 
-def test_same_line_double_dollar_math_preserves_latex_subscripts_verbatim():
+def test_same_line_double_dollar_math_preserves_latex_subscripts_verbatim() -> None:
     """Same-line $$...$$ math must not parse LaTeX underscores as Markdown emphasis."""
     md = flowmark_markdown()
 
@@ -48,7 +48,7 @@ def test_same_line_double_dollar_math_preserves_latex_subscripts_verbatim():
 MATH_WRAP_SOURCE = "word word word word word word word word word word word word word and $H^1(X,\\mathcal O_X)=0$ plus more trailing words here to force a wrap decision.\n"
 
 
-def test_wrapping_never_breaks_inside_inline_math():
+def test_wrapping_never_breaks_inside_inline_math() -> None:
     """The #17 reproducer, at the default width."""
     result = fill_markdown(MATH_WRAP_SOURCE, dedent_input=False)
 
@@ -57,7 +57,7 @@ def test_wrapping_never_breaks_inside_inline_math():
         assert line.count("$") % 2 == 0, f"a math span straddles a line break: {line!r}"
 
 
-def test_wrapping_takes_a_short_line_rather_than_splitting_math():
+def test_wrapping_takes_a_short_line_rather_than_splitting_math() -> None:
     """
     Moving the whole span down is the correct trade, even when it leaves the
     previous line well short of the width. #17 notes flowmark already does the
@@ -70,7 +70,7 @@ def test_wrapping_takes_a_short_line_rather_than_splitting_math():
     assert "$" not in first_line, first_line
 
 
-def test_verify_accepts_the_math_reproducer_at_the_default_width():
+def test_verify_accepts_the_math_reproducer_at_the_default_width() -> None:
     """
     The user-facing consequence: the document formats with the gate on, rather
     than being unformattable.

@@ -12,7 +12,7 @@ from textwrap import dedent
 from flowmark.linewrapping.markdown_filling import fill_markdown
 
 
-def test_display_math_no_blank_line_before():
+def test_display_math_no_blank_line_before() -> None:
     """
     \\[...\\] without a blank line before it must still be recognized as
     a display math block.  The \\[ line must NOT get a hard-break backslash
@@ -37,7 +37,7 @@ def test_display_math_no_blank_line_before():
     assert "\n\\[\n" in result, f"\\[ should appear on its own line, got:\n{repr(result)}"
 
 
-def test_display_math_preserves_content_verbatim():
+def test_display_math_preserves_content_verbatim() -> None:
     """Content within \\[...\\] must be preserved as-is, not line-wrapped."""
     input_doc = dedent(
         """\
@@ -59,7 +59,7 @@ def test_display_math_preserves_content_verbatim():
     assert "c & d" in result, f"display math content with & must be preserved, got:\n{repr(result)}"
 
 
-def test_display_math_with_blank_line_before():
+def test_display_math_with_blank_line_before() -> None:
     """\\[...\\] with a blank line before it: standard block display math."""
     input_doc = dedent(
         """\
@@ -80,7 +80,7 @@ def test_display_math_with_blank_line_before():
     assert "\n\\]\n" in result
 
 
-def test_dollar_display_math():
+def test_dollar_display_math() -> None:
     """$$...$$ must also be recognized as display math block."""
     input_doc = dedent(
         """\

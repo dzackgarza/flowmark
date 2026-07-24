@@ -28,7 +28,7 @@ pandocless = pytest.mark.skipif(shutil.which("pandoc") is None, reason="requires
 AMBIGUOUS_TABLE = "| col | status | ref |\n|---|---|---|\n| $|-2K_{\\widetilde V}|=\\{C\\}$ generically | established | @sec:anti-bicanonical |\n"
 
 
-def test_preflight_finds_a_bar_inside_inline_math_in_a_table_row():
+def test_preflight_finds_a_bar_inside_inline_math_in_a_table_row() -> None:
     findings = preflight(AMBIGUOUS_TABLE)
 
     assert findings, "the reporter's row must be found"
@@ -36,21 +36,21 @@ def test_preflight_finds_a_bar_inside_inline_math_in_a_table_row():
     assert "|" in findings[0].message
 
 
-def test_preflight_finds_a_row_whose_cell_count_disagrees():
+def test_preflight_finds_a_row_whose_cell_count_disagrees() -> None:
     findings = preflight("| a | b |\n|---|---|\n| one | two | three |\n")
 
     assert [f.line for f in findings] == [3]
 
 
-def test_preflight_finds_unterminated_math():
+def test_preflight_finds_unterminated_math() -> None:
     assert [f.line for f in preflight("A paragraph with $x + y and no closer.\n")] == [1]
 
 
-def test_preflight_finds_an_unbalanced_fence():
+def test_preflight_finds_an_unbalanced_fence() -> None:
     assert [f.line for f in preflight("Intro.\n\n```python\nx = 1\n")] == [3]
 
 
-def test_preflight_is_quiet_on_clean_input():
+def test_preflight_is_quiet_on_clean_input() -> None:
     """
     High precision is the whole point. A check that fires on ordinary documents
     would relabel every real flowmark bug as "your input is ambiguous", which is
@@ -66,7 +66,7 @@ def test_preflight_is_quiet_on_clean_input():
 
 
 @pandocless
-def test_verify_failure_on_ambiguous_input_does_not_blame_flowmark():
+def test_verify_failure_on_ambiguous_input_does_not_blame_flowmark() -> None:
     """
     The #17 part 3 ask: when verification fails *and* preflight finds a suspect
     construct, say the input is ambiguous and name it, rather than asserting a
@@ -83,7 +83,7 @@ def test_verify_failure_on_ambiguous_input_does_not_blame_flowmark():
 
 def test_verify_failure_on_clean_input_keeps_the_original_message(
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """
     When preflight finds nothing to blame, a genuine verify failure keeps its
     original "flowmark bug" wording rather than being relabelled as the user's

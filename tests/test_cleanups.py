@@ -99,7 +99,7 @@ HYPHEN_JOIN_SITES = [
 
 
 @pytest.mark.parametrize(("source", "wanted"), HYPHEN_JOIN_SITES)
-def test_hyphen_join_drops_the_space_at_a_line_break(source: str, wanted: str):
+def test_hyphen_join_drops_the_space_at_a_line_break(source: str, wanted: str) -> None:
     """
     Every site in #18's table produces its "wanted" column.
 
@@ -118,14 +118,14 @@ SUSPENSION_WORDS = ["and", "or", "to", "nor", "but", "through", "versus"]
 
 
 @pytest.mark.parametrize("word", SUSPENSION_WORDS)
-def test_suspended_hyphenation_is_never_joined(word: str):
+def test_suspended_hyphenation_is_never_joined(word: str) -> None:
     """One test per member of the suspension scope."""
     result = fill_markdown(f"the pre-\n{word} post-stable models\n", cleanups=True, dedent_input=False)
 
     assert f"pre- {word}" in result, result
 
 
-def test_an_authored_space_after_a_hyphen_is_left_alone():
+def test_an_authored_space_after_a_hyphen_is_left_alone() -> None:
     """
     The rule fires only at a line join. A `degree- 2` the author typed on one
     line is the author's, and reflowing must not silently rewrite it.
@@ -135,14 +135,14 @@ def test_an_authored_space_after_a_hyphen_is_left_alone():
     assert "degree- 2" in result, result
 
 
-def test_hyphen_join_requires_cleanups():
+def test_hyphen_join_requires_cleanups() -> None:
     """Without `-c` the faithful `SoftBreak` spacing stands."""
     result = fill_markdown("the degree-\n2 Coble locus\n", cleanups=False, dedent_input=False)
 
     assert "degree- 2" in result, result
 
 
-def test_hyphen_join_passes_verification():
+def test_hyphen_join_passes_verification() -> None:
     """
     The join deliberately changes the AST (`Str "degree-", Space, Str "2"` becomes
     `Str "degree-2"`), so it needs a declared normalization rather than the gate
@@ -151,7 +151,7 @@ def test_hyphen_join_passes_verification():
     reformat_text("the degree-\n2 Coble locus and more words\n", cleanups=True, verify=True)
 
 
-def test_hyphen_join_scope_matches_the_cleanup():
+def test_hyphen_join_scope_matches_the_cleanup() -> None:
     """
     The gate and the formatter must agree on the suspension scope.
 
@@ -165,7 +165,7 @@ def test_hyphen_join_scope_matches_the_cleanup():
 
 
 @pytest.mark.parametrize("word", SUSPENSION_WORDS)
-def test_gate_refuses_a_joined_suspension(word: str):
+def test_gate_refuses_a_joined_suspension(word: str) -> None:
     """
     The other half of the suspension rule. The cleanup never joins `pre- and`, and
     if something else did, the gate must still catch it: joining a suspended
@@ -175,7 +175,7 @@ def test_gate_refuses_a_joined_suspension(word: str):
         check_meaning_preserved(f"the pre-\n{word} post-stable models\n", f"the pre-{word} post-stable models\n")
 
 
-def test_hyphen_join_reports_how_many(capsys: pytest.CaptureFixture[str]):
+def test_hyphen_join_reports_how_many(capsys: pytest.CaptureFixture[str]) -> None:
     """
     #18 asks for a count rather than silence, because the scope is heuristic and
     will not be right every time. Saying how many is what lets a reader check them.

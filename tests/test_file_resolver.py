@@ -16,22 +16,22 @@ from flowmark.file_resolver.gitignore import (
 )
 
 
-def test_config_effective_include():
+def test_config_effective_include() -> None:
     config = FileResolverConfig(extend_include=["*.markdown", "*.mdx"])
     assert config.effective_include == ["*.md", "*.markdown", "*.mdx"]
 
 
-def test_config_effective_include_custom_base():
+def test_config_effective_include_custom_base() -> None:
     config = FileResolverConfig(include=["*.txt"], extend_include=["*.rst"])
     assert config.effective_include == ["*.txt", "*.rst"]
 
 
-def test_config_effective_exclude_replaced():
+def test_config_effective_exclude_replaced() -> None:
     config = FileResolverConfig(exclude=["custom_dir/"])
     assert config.effective_exclude == ["custom_dir/"]
 
 
-def test_config_effective_exclude_extended():
+def test_config_effective_exclude_extended() -> None:
     config = FileResolverConfig(extend_exclude=["extra_dir/"])
     effective = config.effective_exclude
     assert "extra_dir/" in effective
@@ -39,7 +39,7 @@ def test_config_effective_exclude_extended():
         assert pattern in effective
 
 
-def test_resolver_single_file(tmp_path: Path):
+def test_resolver_single_file(tmp_path: Path) -> None:
     readme = tmp_path / "README.md"
     readme.write_text("# Hello")
 
@@ -48,7 +48,7 @@ def test_resolver_single_file(tmp_path: Path):
     assert result == [readme]
 
 
-def test_resolver_directory_recursion(tmp_path: Path):
+def test_resolver_directory_recursion(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("# Root")
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -62,7 +62,7 @@ def test_resolver_directory_recursion(tmp_path: Path):
     assert names == ["README.md", "api.md", "guide.md"]
 
 
-def test_resolver_excludes_default_dirs(tmp_path: Path):
+def test_resolver_excludes_default_dirs(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("# Root")
     nm = tmp_path / "node_modules" / "pkg"
     nm.mkdir(parents=True)
@@ -77,7 +77,7 @@ def test_resolver_excludes_default_dirs(tmp_path: Path):
     assert result[0].name == "README.md"
 
 
-def test_resolver_respects_gitignore(tmp_path: Path):
+def test_resolver_respects_gitignore(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("# Root")
     (tmp_path / ".gitignore").write_text("build/\n")
     build = tmp_path / "build"
@@ -90,7 +90,7 @@ def test_resolver_respects_gitignore(tmp_path: Path):
     assert result[0].name == "README.md"
 
 
-def test_resolver_no_respect_gitignore(tmp_path: Path):
+def test_resolver_no_respect_gitignore(tmp_path: Path) -> None:
     (tmp_path / "good.md").write_text("# Good")
     (tmp_path / ".gitignore").write_text("ignored/\n")
     ignored = tmp_path / "ignored"
@@ -103,7 +103,7 @@ def test_resolver_no_respect_gitignore(tmp_path: Path):
     assert names == ["found.md", "good.md"]
 
 
-def test_resolver_force_exclude_filters_explicit_files(tmp_path: Path):
+def test_resolver_force_exclude_filters_explicit_files(tmp_path: Path) -> None:
     nm = tmp_path / "node_modules"
     nm.mkdir()
     excluded_file = nm / "README.md"
@@ -114,7 +114,7 @@ def test_resolver_force_exclude_filters_explicit_files(tmp_path: Path):
     assert result == []
 
 
-def test_resolver_explicit_files_bypass_exclusions_by_default(tmp_path: Path):
+def test_resolver_explicit_files_bypass_exclusions_by_default(tmp_path: Path) -> None:
     nm = tmp_path / "node_modules"
     nm.mkdir()
     excluded_file = nm / "README.md"
@@ -125,7 +125,7 @@ def test_resolver_explicit_files_bypass_exclusions_by_default(tmp_path: Path):
     assert result == [excluded_file]
 
 
-def test_resolver_extend_include(tmp_path: Path):
+def test_resolver_extend_include(tmp_path: Path) -> None:
     (tmp_path / "readme.md").write_text("# MD")
     (tmp_path / "page.mdx").write_text("# MDX")
     (tmp_path / "code.py").write_text("# Not included")
@@ -136,7 +136,7 @@ def test_resolver_extend_include(tmp_path: Path):
     assert names == ["page.mdx", "readme.md"]
 
 
-def test_resolver_exclude_replaces_defaults(tmp_path: Path):
+def test_resolver_exclude_replaces_defaults(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("# Root")
     # node_modules would normally be excluded by defaults
     nm = tmp_path / "node_modules"
@@ -158,7 +158,7 @@ def test_resolver_exclude_replaces_defaults(tmp_path: Path):
     assert not any("custom_dir" in p for p in paths)
 
 
-def test_resolver_extend_exclude(tmp_path: Path):
+def test_resolver_extend_exclude(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("# Root")
     drafts = tmp_path / "drafts"
     drafts.mkdir()
@@ -170,7 +170,7 @@ def test_resolver_extend_exclude(tmp_path: Path):
     assert result[0].name == "README.md"
 
 
-def test_resolver_files_max_size(tmp_path: Path):
+def test_resolver_files_max_size(tmp_path: Path) -> None:
     small = tmp_path / "small.md"
     small.write_text("# Small")
     large = tmp_path / "large.md"
@@ -182,7 +182,7 @@ def test_resolver_files_max_size(tmp_path: Path):
     assert result[0].name == "small.md"
 
 
-def test_resolver_files_max_size_zero_disables(tmp_path: Path):
+def test_resolver_files_max_size_zero_disables(tmp_path: Path) -> None:
     large = tmp_path / "large.md"
     large.write_text("x" * 2_000_000)
 
@@ -191,7 +191,7 @@ def test_resolver_files_max_size_zero_disables(tmp_path: Path):
     assert len(result) == 1
 
 
-def test_resolver_glob_pattern(tmp_path: Path):
+def test_resolver_glob_pattern(tmp_path: Path) -> None:
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "a.md").write_text("# A")
@@ -204,7 +204,7 @@ def test_resolver_glob_pattern(tmp_path: Path):
     assert names == ["a.md", "b.md"]
 
 
-def test_resolver_mixed_inputs(tmp_path: Path):
+def test_resolver_mixed_inputs(tmp_path: Path) -> None:
     (tmp_path / "explicit.md").write_text("# Explicit")
     subdir = tmp_path / "sub"
     subdir.mkdir()
@@ -216,7 +216,7 @@ def test_resolver_mixed_inputs(tmp_path: Path):
     assert names == ["explicit.md", "found.md"]
 
 
-def test_resolver_deduplication(tmp_path: Path):
+def test_resolver_deduplication(tmp_path: Path) -> None:
     f = tmp_path / "README.md"
     f.write_text("# Hello")
 
@@ -225,7 +225,7 @@ def test_resolver_deduplication(tmp_path: Path):
     assert len(result) == 1
 
 
-def test_resolver_sorted_output(tmp_path: Path):
+def test_resolver_sorted_output(tmp_path: Path) -> None:
     for name in ["c.md", "a.md", "b.md"]:
         (tmp_path / name).write_text(f"# {name}")
 
@@ -243,7 +243,7 @@ def test_resolver_file_not_found():
         pass
 
 
-def test_resolver_flowmarkignore(tmp_path: Path):
+def test_resolver_flowmarkignore(tmp_path: Path) -> None:
     (tmp_path / "keep.md").write_text("# Keep")
     drafts = tmp_path / "drafts"
     drafts.mkdir()
@@ -256,7 +256,7 @@ def test_resolver_flowmarkignore(tmp_path: Path):
     assert result[0].name == "keep.md"
 
 
-def test_resolver_nested_gitignore(tmp_path: Path):
+def test_resolver_nested_gitignore(tmp_path: Path) -> None:
     """Gitignore in subdirectory should apply to that subtree."""
     (tmp_path / "root.md").write_text("# Root")
     sub = tmp_path / "sub"
@@ -273,7 +273,7 @@ def test_resolver_nested_gitignore(tmp_path: Path):
     assert names == ["keep.md", "root.md"]
 
 
-def test_resolver_nested_gitignore_combines_parent_rules(tmp_path: Path):
+def test_resolver_nested_gitignore_combines_parent_rules(tmp_path: Path) -> None:
     """Parent .gitignore rules should still apply in subdirectories (fm-8lf6)."""
     (tmp_path / ".gitignore").write_text("*.log\n")
     sub = tmp_path / "sub"
@@ -292,7 +292,7 @@ def test_resolver_nested_gitignore_combines_parent_rules(tmp_path: Path):
     assert names == ["keep.md"]
 
 
-def test_resolver_gitignore_file_patterns(tmp_path: Path):
+def test_resolver_gitignore_file_patterns(tmp_path: Path) -> None:
     """Gitignore should exclude files matching patterns, not just directories (fm-911m)."""
     (tmp_path / "README.md").write_text("# Readme")
     (tmp_path / "draft.md").write_text("# Draft")
@@ -304,7 +304,7 @@ def test_resolver_gitignore_file_patterns(tmp_path: Path):
     assert names == ["README.md"]
 
 
-def test_resolver_gitignore_wildcard_file_pattern(tmp_path: Path):
+def test_resolver_gitignore_wildcard_file_pattern(tmp_path: Path) -> None:
     """Gitignore wildcard patterns should match files (fm-qeeg)."""
     (tmp_path / "keep.md").write_text("# Keep")
     (tmp_path / "temp.md").write_text("# Temp")
@@ -316,13 +316,13 @@ def test_resolver_gitignore_wildcard_file_pattern(tmp_path: Path):
     assert result[0].name == "keep.md"
 
 
-def test_read_ignore_file_missing(tmp_path: Path):
+def test_read_ignore_file_missing(tmp_path: Path) -> None:
     """_read_ignore_file returns None for missing files (fm-39fo / fm-pek5)."""
     result = _read_ignore_file(tmp_path / "nonexistent")
     assert result is None
 
 
-def test_read_ignore_file_unreadable(tmp_path: Path):
+def test_read_ignore_file_unreadable(tmp_path: Path) -> None:
     """_read_ignore_file returns None for unreadable files (fm-39fo / fm-pek5)."""
     if os.getuid() == 0:
         # Root can read any file regardless of permissions; test the OSError
@@ -340,7 +340,7 @@ def test_read_ignore_file_unreadable(tmp_path: Path):
         ignore_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
 
-def test_read_ignore_file_non_utf8(tmp_path: Path):
+def test_read_ignore_file_non_utf8(tmp_path: Path) -> None:
     """_read_ignore_file returns None for non-UTF-8 files (fm-8to0)."""
     ignore_file = tmp_path / ".gitignore"
     ignore_file.write_bytes(b"\x80\x81\x82\xff\xfe")
@@ -348,7 +348,7 @@ def test_read_ignore_file_non_utf8(tmp_path: Path):
     assert result is None
 
 
-def test_resolver_tool_ignore_per_walk_root(tmp_path: Path):
+def test_resolver_tool_ignore_per_walk_root(tmp_path: Path) -> None:
     """Tool ignore should be loaded per walk root, not cached from first (fm-jl1d)."""
     # Create two separate directory trees with different .flowmarkignore files
     dir_a = tmp_path / "a"
@@ -373,7 +373,7 @@ def test_resolver_tool_ignore_per_walk_root(tmp_path: Path):
     assert names == ["keep.md", "keep.md"]
 
 
-def test_resolver_flowmarkignore_positive_assertion(tmp_path: Path):
+def test_resolver_flowmarkignore_positive_assertion(tmp_path: Path) -> None:
     """Flowmarkignore test with positive assertion on kept files (fm-pvxa)."""
     (tmp_path / "keep.md").write_text("# Keep")
     (tmp_path / "also_keep.md").write_text("# Also Keep")

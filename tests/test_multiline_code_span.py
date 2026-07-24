@@ -25,7 +25,7 @@ def _on_alarm(signum: int, frame: object) -> None:
     raise _Timeout("reformat_text did not terminate")
 
 
-def test_list_item_multiline_code_span_terminates():
+def test_list_item_multiline_code_span_terminates() -> None:
     """reformat_text must return on a list item with a multi-line inline code
     span, and must preserve the code span content (CommonMark collapses the
     interior newline to a space)."""
