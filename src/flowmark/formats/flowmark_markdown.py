@@ -453,6 +453,7 @@ class CustomFencedDiv(block.BlockElement):
     attrs: str  # the raw attribute spec: ``{...}``, a bare class, or ``""``
     closer: str  # the closing colon run as written (may be shorter than ``fence``)
     prefix: str
+    footnotes: dict[str, footnote.FootnoteDef]  # definitions made inside this div
 
     def __init__(self) -> None:  # pyright: ignore[reportMissingSuperCall]
         self.fence = ":::"
@@ -460,6 +461,13 @@ class CustomFencedDiv(block.BlockElement):
         self.closer = ":::"
         self.prefix = ""
         self.children = []
+        # The body parses through its own `Source` rooted at this div (see
+        # `parse` below), so this div is what `marko.ext.footnote.FootnoteDef.parse`
+        # writes into when it registers a definition as
+        # `source.root.footnotes[label]`. `marko.ext.footnote.Document` carries
+        # the same mapping for the same reason; without it a footnote definition
+        # inside a div raises `AttributeError` and aborts the run (#34).
+        self.footnotes = {}
 
     @override
     @classmethod
