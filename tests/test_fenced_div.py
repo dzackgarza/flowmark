@@ -163,3 +163,20 @@ def test_fenced_div_body_keeps_block_structure() -> None:
     source = "::: {.theorem}\nIntro paragraph.\n\n- first item\n\n- second item\n\n```python\nx  =  1\n```\n\n$$\na  +  b\n$$\n\n::: {.proof}\nInner body.\n:::\n:::\n"
 
     assert md(source) == source
+
+
+def test_fenced_div_body_may_define_a_footnote() -> None:
+    """
+    A footnote *definition* inside a div must round-trip (#34).
+
+    The div body is parsed through its own ``Source`` rooted at the div, so the
+    div is what ``marko.ext.footnote.FootnoteDef.parse`` registers into via
+    ``source.root.footnotes[label]``. A reference alone never hits that path;
+    the definition does, and without the mapping the whole run aborts with
+    ``AttributeError`` instead of formatting the file.
+    """
+    md = flowmark_markdown()
+
+    source = "::: {.solution}\nThe argument is due to Oskar.[^credit]\n\n[^credit]: With thanks.\n:::\n"
+
+    assert md(source) == source
