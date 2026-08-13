@@ -358,14 +358,11 @@ class CustomInlineMath(inline.InlineElement):
 
     priority = 7
     parse_children = False
+    # The whole ``$...$`` span is preserved verbatim, delimiters included, so
+    # marko's own ``__init__`` storing ``match.group(0)`` in ``children`` is
+    # exactly what rendering needs.
+    parse_group = 0
     pattern = re.compile(r"(?<!\\)(?<!\$)(\${1,2})(?!\$)((?:\\.|[^\n\\$])+?)(?<!\\)\1(?!\$)")
-
-    delimiter: str
-    content: str
-
-    def __init__(self, match: re.Match[str]) -> None:
-        self.delimiter = match.group(1)
-        self.content = match.group(2)
 
     @override
     @classmethod
@@ -398,11 +395,6 @@ class CustomRawInlineTex(inline.InlineElement):
     # The whole match is the construct; there is no inner group to descend into.
     parse_group = 0
     pattern = re.compile(r"\\[a-zA-Z]+(?:\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})+")
-
-    content: str
-
-    def __init__(self, match: re.Match[str]) -> None:
-        self.content = match.group(0)
 
     @override
     @classmethod
@@ -1028,12 +1020,12 @@ class MarkdownNormalizer(Renderer):
         return "\n".join(lines) + "\n"
 
     def render_inline_math(self, element: CustomInlineMath) -> str:
-        text = f"{element.delimiter}{element.content}{element.delimiter}"
+        text = cast(str, element.children)
         self._current_inline_text += text
         return text
 
     def render_raw_inline_tex(self, element: CustomRawInlineTex) -> str:
-        text = element.content
+        text = cast(str, element.children)
         self._current_inline_text += text
         return text
 
