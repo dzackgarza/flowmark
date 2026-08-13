@@ -107,12 +107,7 @@ def _is_unicode_punctuation(c: str) -> bool:
     Includes characters in Unicode categories Pc, Pd, Pe, Pf, Pi, Po, Ps,
     plus ASCII symbols (U+0021-U+002F, U+003A-U+0040, U+005B-U+0060, U+007B-U+007E).
     """
-    return unicodedata.category(c).startswith("P") or (
-        "\u0021" <= c <= "\u002f"
-        or "\u003a" <= c <= "\u0040"
-        or "\u005b" <= c <= "\u0060"
-        or "\u007b" <= c <= "\u007e"
-    )
+    return unicodedata.category(c).startswith("P") or ("\u0021" <= c <= "\u002f" or "\u003a" <= c <= "\u0040" or "\u005b" <= c <= "\u0060" or "\u007b" <= c <= "\u007e")
 
 
 class CustomStrikethrough(gfm_elements.Strikethrough):
@@ -179,10 +174,7 @@ class CustomStrikethrough(gfm_elements.Strikethrough):
                 # Followed by punctuation — only left-flanking if preceded by
                 # whitespace, punctuation, or start of string
                 char_before_open = text[open_start - 1] if open_start > 0 else None
-                if char_before_open is not None and not (
-                    char_before_open.isspace()
-                    or _is_unicode_punctuation(char_before_open)
-                ):
+                if char_before_open is not None and not (char_before_open.isspace() or _is_unicode_punctuation(char_before_open)):
                     continue
 
             # Right-flanking check for closing delimiter (punctuation rule)
@@ -191,10 +183,7 @@ class CustomStrikethrough(gfm_elements.Strikethrough):
                 # Preceded by punctuation — only right-flanking if followed by
                 # whitespace, punctuation, or end of string
                 char_after_close = text[close_end] if close_end < len(text) else None
-                if char_after_close is not None and not (
-                    char_after_close.isspace()
-                    or _is_unicode_punctuation(char_after_close)
-                ):
+                if char_after_close is not None and not (char_after_close.isspace() or _is_unicode_punctuation(char_after_close)):
                     continue
 
             yield match
@@ -244,9 +233,7 @@ class CustomFencedCode(block.FencedCode):
         # Store extended info including fence_char and fence_len
         fence_char = leading[0]
         fence_len = len(leading)
-        source.context.code_info = ExtendedParseInfo(
-            prefix, leading, lang, extra, fence_char, fence_len
-        )
+        source.context.code_info = ExtendedParseInfo(prefix, leading, lang, extra, fence_char, fence_len)
         return m
 
     @override
@@ -383,9 +370,7 @@ class CustomInlineMath(inline.InlineElement):
     parse_group: int = 0
     # The union annotation mirrors marko's `InlineElement.pattern`; attribute
     # overrides may not narrow it.
-    pattern: re.Pattern[str] | str = re.compile(
-        r"(?<!\\)(?<!\$)(\${1,2})(?!\$)((?:\\.|[^\n\\$])+?)(?<!\\)\1(?!\$)"
-    )
+    pattern: re.Pattern[str] | str = re.compile(r"(?<!\\)(?<!\$)(\${1,2})(?!\$)((?:\\.|[^\n\\$])+?)(?<!\\)\1(?!\$)")
 
     @override
     @classmethod
@@ -419,9 +404,7 @@ class CustomRawInlineTex(inline.InlineElement):
     parse_group: int = 0
     # The union annotation mirrors marko's `InlineElement.pattern`; attribute
     # overrides may not narrow it.
-    pattern: re.Pattern[str] | str = re.compile(
-        r"\\[a-zA-Z]+(?:\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})+"
-    )
+    pattern: re.Pattern[str] | str = re.compile(r"\\[a-zA-Z]+(?:\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})+")
 
     @override
     @classmethod
@@ -466,9 +449,7 @@ class CustomFencedDiv(block.BlockElement):
     # of the line no other meaning anyway. [^\n\S]* matches horizontal whitespace
     # only (same pattern used by CustomFencedCode for its info line) so the opening
     # fence never captures content from the next line.
-    pattern: re.Pattern[str] = re.compile(
-        r"( {,3})(:{3,})[^\n\S]*(.*?)[^\n\S]*$", re.MULTILINE
-    )
+    pattern: re.Pattern[str] = re.compile(r"( {,3})(:{3,})[^\n\S]*(.*?)[^\n\S]*$", re.MULTILINE)
 
     children: Sequence[Element]
     fence: str  # the opening colon run, e.g. ``":::"``
@@ -534,16 +515,9 @@ class CustomFencedDiv(block.BlockElement):
             if code_fence is not None:
                 # Only a fence of the same character and at least the same length,
                 # with nothing after it, closes the block (CommonMark 4.5).
-                if (
-                    code_match
-                    and code_match.group(1)[0] == code_fence[0]
-                    and len(code_match.group(1)) >= len(code_fence)
-                    and not code_match.group(2).strip()
-                ):
+                if code_match and code_match.group(1)[0] == code_fence[0] and len(code_match.group(1)) >= len(code_fence) and not code_match.group(2).strip():
                     code_fence = None
-            elif code_match and not (
-                code_match.group(1)[0] == "`" and "`" in code_match.group(2)
-            ):
+            elif code_match and not (code_match.group(1)[0] == "`" and "`" in code_match.group(2)):
                 # A backtick fence's info string may not contain a backtick, which
                 # is what keeps an inline code span from opening a block here.
                 code_fence = code_match.group(1)
@@ -600,9 +574,7 @@ class CustomLatexEnvironment(block.BlockElement):
 
     priority: int = 7
     parse_children: bool = True
-    pattern: re.Pattern[str] = re.compile(
-        r"( {,3})\\begin\{([^}]+)\}[^\n\S]*$", re.MULTILINE
-    )
+    pattern: re.Pattern[str] = re.compile(r"( {,3})\\begin\{([^}]+)\}[^\n\S]*$", re.MULTILINE)
 
     children: Sequence[Element]
     env_name: str
@@ -691,9 +663,7 @@ class CustomDefinitionList(block.BlockElement):
     pattern: re.Pattern[str] = re.compile(rf"{_TERM}\n(?:[ \t]*\n)?(?={_MARKER})")
     # Matches only the blank line; everything after lives in the lookahead so
     # `consume()` advances past the blank alone.
-    _BLANK_THEN_CONTINUATION: re.Pattern[str] = re.compile(
-        rf"[ \t]*\n(?={_MARKER}| {{4}}|{_TERM}\n(?:[ \t]*\n)?{_MARKER})"
-    )
+    _BLANK_THEN_CONTINUATION: re.Pattern[str] = re.compile(rf"[ \t]*\n(?={_MARKER}| {{4}}|{_TERM}\n(?:[ \t]*\n)?{_MARKER})")
 
     children: Sequence[Element]
 
@@ -743,9 +713,7 @@ class CustomFootnoteDef(footnote.FootnoteDef):
     is parsed as an unrelated code block.
     """
 
-    pattern: re.Pattern[str] = re.compile(
-        r" {,3}\[\^([^\]]+)\]:[^\n\S]*(?=\S| {4}|\n|$)"
-    )
+    pattern: re.Pattern[str] = re.compile(r" {,3}\[\^([^\]]+)\]:[^\n\S]*(?=\S| {4}|\n|$)")
 
     @override
     @classmethod
@@ -837,25 +805,17 @@ class MarkdownNormalizer(Renderer):
     https://github.com/frostming/marko/blob/master/marko/ext/gfm/renderer.py
     """
 
-    def __init__(
-        self, line_wrapper: LineWrapper, list_spacing: ListSpacing = ListSpacing.loose
-    ) -> None:
+    def __init__(self, line_wrapper: LineWrapper, list_spacing: ListSpacing = ListSpacing.loose) -> None:
         super().__init__()
-        self._prefix: str = (
-            ""  # The prefix on the first line, with a bullet, such as `  - `.
-        )
+        self._prefix: str = ""  # The prefix on the first line, with a bullet, such as `  - `.
         self._second_prefix: str = ""  # The prefix on subsequent lines, such as `    `.
         self._suppress_item_break: bool = True
         self._line_wrapper: LineWrapper = line_wrapper
         self._skip_next_blank_line: bool = False  # Skip blank line following heading
-        self._current_inline_text: str = (
-            ""  # Track accumulated inline text for escape context
-        )
+        self._current_inline_text: str = ""  # Track accumulated inline text for escape context
         self._in_heading: bool = False  # Track if we're rendering a heading
         self._list_spacing: ListSpacing = list_spacing
-        self._current_list_tight: bool = (
-            False  # Whether current list should render tight
-        )
+        self._current_list_tight: bool = False  # Whether current list should render tight
 
     @override
     def __enter__(self) -> MarkdownNormalizer:
@@ -996,9 +956,7 @@ class MarkdownNormalizer(Renderer):
         self._suppress_item_break = False
         return f"{result}\n"
 
-    def _render_code(
-        self, element: block.CodeBlock | block.FencedCode | CustomFencedCode
-    ) -> str:
+    def _render_code(self, element: block.CodeBlock | block.FencedCode | CustomFencedCode) -> str:
         # Reset the skip flag since we're not rendering a blank line
         self._skip_next_blank_line = False
 
@@ -1174,9 +1132,7 @@ class MarkdownNormalizer(Renderer):
                 blank_line = f"{self._second_prefix}\n"
             else:
                 blank_line = "\n"
-            result = (
-                f"{self._prefix}{'#' * element.level} {children_content}\n{blank_line}"
-            )
+            result = f"{self._prefix}{'#' * element.level} {children_content}\n{blank_line}"
             self._prefix = self._second_prefix
             # Skip the next blank line since we already added one
             self._skip_next_blank_line = True
@@ -1225,11 +1181,7 @@ class MarkdownNormalizer(Renderer):
         link_title = _normalize_title_quotes(element.title) if element.title else None
         assert self.root_node
         label = next(
-            (
-                k
-                for k, v in self.root_node.link_ref_defs.items()
-                if v == (element.dest, link_title)
-            ),
+            (k for k, v in self.root_node.link_ref_defs.items() if v == (element.dest, link_title)),
             None,
         )
         if label is not None:
@@ -1341,9 +1293,7 @@ class MarkdownNormalizer(Renderer):
         # When the body starts on the line below the label (pandoc allows the
         # label alone on its line), the label's trailing space would be left
         # dangling at end of line.
-        content = re.sub(
-            r"^(\[\^[^\]]+\]:)[^\n\S]+$", r"\1", content, count=1, flags=re.MULTILINE
-        )
+        content = re.sub(r"^(\[\^[^\]]+\]:)[^\n\S]+$", r"\1", content, count=1, flags=re.MULTILINE)
 
         # Set up state for the *next* block element using the restored outer secondary prefix.
         self._prefix = self._second_prefix
@@ -1433,16 +1383,12 @@ class MarkdownNormalizer(Renderer):
         return f"{alert_header}{result}\n"
 
 
-DEFAULT_SEMANTIC_LINE_WRAPPER = line_wrap_by_sentence(
-    width=DEFAULT_WRAP_WIDTH, is_markdown=True
-)
+DEFAULT_SEMANTIC_LINE_WRAPPER = line_wrap_by_sentence(width=DEFAULT_WRAP_WIDTH, is_markdown=True)
 """
 Default line wrapper for semantic line wrapping.
 """
 
-DEFAULT_FIXED_LINE_WRAPPER = line_wrap_to_width(
-    width=DEFAULT_WRAP_WIDTH, is_markdown=True
-)
+DEFAULT_FIXED_LINE_WRAPPER = line_wrap_to_width(width=DEFAULT_WRAP_WIDTH, is_markdown=True)
 """
 Default line wrapper for fixed-width line wrapping.
 """
@@ -1478,18 +1424,12 @@ def flowmark_markdown(
             for e in GFM.elements:
                 if e is gfm_elements.Strikethrough:
                     e = CustomStrikethrough
-                assert (
-                    e not in custom_parser.block_elements
-                    and e not in custom_parser.inline_elements
-                )
+                assert e not in custom_parser.block_elements and e not in custom_parser.inline_elements
                 custom_parser.add_element(e)
             # Add GFM footnote support.
             footnote_ext = footnote.make_extension()
             for e in footnote_ext.elements:
-                assert (
-                    e not in custom_parser.block_elements
-                    and e not in custom_parser.inline_elements
-                )
+                assert e not in custom_parser.block_elements and e not in custom_parser.inline_elements
                 custom_parser.add_element(e)
             # Accept pandoc's label-alone-on-its-line definition form.
             custom_parser.block_elements["FootnoteDef"] = CustomFootnoteDef

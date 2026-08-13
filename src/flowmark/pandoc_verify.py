@@ -62,9 +62,7 @@ from typing import cast
 
 from flowmark.formats.frontmatter import split_frontmatter
 
-PandocJson = (
-    str | int | float | bool | None | list["PandocJson"] | dict[str, "PandocJson"]
-)
+PandocJson = str | int | float | bool | None | list["PandocJson"] | dict[str, "PandocJson"]
 """One node of pandoc's JSON AST, exactly as `json.loads` produces it."""
 
 PANDOC_FORMAT = "markdown"
@@ -109,9 +107,7 @@ class MeaningChangedError(ValueError):
 def _pandoc_exe() -> str:
     pandoc_exe = shutil.which("pandoc")
     if pandoc_exe is None:
-        raise PandocUnavailableError(
-            "Verification requires the `pandoc` binary on PATH. Install pandoc (https://pandoc.org/installing.html) or drop --verify."
-        )
+        raise PandocUnavailableError("Verification requires the `pandoc` binary on PATH. Install pandoc (https://pandoc.org/installing.html) or drop --verify.")
     return pandoc_exe
 
 
@@ -125,9 +121,7 @@ def _spawn_pandoc(pandoc_exe: str) -> subprocess.Popen[str]:
     )
 
 
-def _collect_blocks(
-    proc: subprocess.Popen[str], markdown_text: str
-) -> list[PandocJson]:
+def _collect_blocks(proc: subprocess.Popen[str], markdown_text: str) -> list[PandocJson]:
     # YAML frontmatter is document metadata, not body. The formatter (via the same
     # split_frontmatter) preserves it verbatim, so it can never be the source of a
     # meaning change; and it is frequently lax YAML that pandoc's metadata reader
@@ -152,9 +146,7 @@ def pandoc_ast(markdown_text: str) -> list[PandocJson]:
     return _collect_blocks(_spawn_pandoc(_pandoc_exe()), markdown_text)
 
 
-def _pandoc_ast_pair(
-    source: str, result: str
-) -> tuple[list[PandocJson], list[PandocJson]]:
+def _pandoc_ast_pair(source: str, result: str) -> tuple[list[PandocJson], list[PandocJson]]:
     """
     Parse both documents with two concurrent pandoc processes.
 
@@ -353,27 +345,17 @@ def _list_items_and_markers(
 
     if kind == "OrderedList" and isinstance(content, list) and len(content) == 2:
         attrs, ordered_items = content
-        if (
-            not isinstance(attrs, list)
-            or len(attrs) != 3
-            or not isinstance(ordered_items, list)
-        ):
+        if not isinstance(attrs, list) or len(attrs) != 3 or not isinstance(ordered_items, list):
             return [], []
         start, delim = attrs[0], attrs[2]
         first = start if isinstance(start, int) else 1
-        suffix = (
-            ")" if isinstance(delim, dict) and delim.get("t") == "OneParen" else "."
-        )
-        return ordered_items, [
-            [f"{first + offset}{suffix}" for offset in range(len(ordered_items))]
-        ]
+        suffix = ")" if isinstance(delim, dict) and delim.get("t") == "OneParen" else "."
+        return ordered_items, [[f"{first + offset}{suffix}" for offset in range(len(ordered_items))]]
 
     return [], []
 
 
-def _flatten_list_into_paragraph(
-    para: dict[str, PandocJson], list_block: dict[str, PandocJson]
-) -> list[list[PandocJson]]:
+def _flatten_list_into_paragraph(para: dict[str, PandocJson], list_block: dict[str, PandocJson]) -> list[list[PandocJson]]:
     """
     Spell `para` followed by `list_block` back out as one paragraph's inlines, once
     per candidate marker set.
@@ -399,10 +381,7 @@ def _flatten_list_into_paragraph(
             flat.append({"t": "Space"})
             flat.append({"t": "Str", "c": marker})
             for inner in item:
-                if (
-                    not isinstance(inner, dict)
-                    or inner.get("t") not in _PARAGRAPH_BLOCKS
-                ):
+                if not isinstance(inner, dict) or inner.get("t") not in _PARAGRAPH_BLOCKS:
                     usable = False
                     break
                 inner_inlines = inner.get("c")
@@ -418,9 +397,7 @@ def _flatten_list_into_paragraph(
     return candidates
 
 
-def _collapse_lazy_lists_at_level(
-    before: list[PandocJson], after: list[PandocJson]
-) -> list[PandocJson]:
+def _collapse_lazy_lists_at_level(before: list[PandocJson], after: list[PandocJson]) -> list[PandocJson]:
     """
     Rewrite `after` so a paragraph that grew a list beside it becomes the single
     paragraph `before` has there -- but only when flattening reproduces `before`
@@ -439,10 +416,7 @@ def _collapse_lazy_lists_at_level(
             and isinstance(follows, dict)
             and original.get("t") in _PARAGRAPH_BLOCKS
             and para.get("t") in _PARAGRAPH_BLOCKS
-            and any(
-                _canonical(flat) == _canonical(original.get("c"))
-                for flat in _flatten_list_into_paragraph(para, follows)
-            )
+            and any(_canonical(flat) == _canonical(original.get("c")) for flat in _flatten_list_into_paragraph(para, follows))
         ):
             out.append(original)
             after_index += 2
@@ -457,16 +431,10 @@ def _collapse_lazy_lists_at_level(
 def _collapse_lazy_lists(before: PandocJson, after: PandocJson) -> PandocJson:
     """Walk both trees in parallel, collapsing materialized lists wherever they align."""
     if isinstance(before, dict) and isinstance(after, dict):
-        return {
-            key: _collapse_lazy_lists(before.get(key), value)
-            for key, value in after.items()
-        }
+        return {key: _collapse_lazy_lists(before.get(key), value) for key, value in after.items()}
     if isinstance(before, list) and isinstance(after, list):
         collapsed = _collapse_lazy_lists_at_level(before, after)
-        return [
-            _collapse_lazy_lists(before[index] if index < len(before) else None, item)
-            for index, item in enumerate(collapsed)
-        ]
+        return [_collapse_lazy_lists(before[index] if index < len(before) else None, item) for index, item in enumerate(collapsed)]
     return after
 
 
@@ -506,17 +474,13 @@ same way necessarily accepts the corruption that undoes the opinion.
 def _both(node_transform: Callable[[PandocJson], PandocJson]) -> Normalization:
     """Lift a symmetric node transform into a `Normalization` over both trees."""
 
-    def normalize(
-        before: PandocJson, after: PandocJson
-    ) -> tuple[PandocJson, PandocJson]:
+    def normalize(before: PandocJson, after: PandocJson) -> tuple[PandocJson, PandocJson]:
         return node_transform(before), node_transform(after)
 
     return normalize
 
 
-def _normalize_quotes(
-    before: PandocJson, after: PandocJson
-) -> tuple[PandocJson, PandocJson]:
+def _normalize_quotes(before: PandocJson, after: PandocJson) -> tuple[PandocJson, PandocJson]:
     """
     Flatten `Quoted` spans on both sides, then re-canonicalize.
 
@@ -545,9 +509,7 @@ def _join_hyphen_text(text: str) -> str:
     def join(match: re.Match[str]) -> str:
         following = match.group(1)
         rest = text[match.end(1) :]
-        word = (
-            (following + rest).split()[0] if (following + rest).split() else following
-        )
+        word = (following + rest).split()[0] if (following + rest).split() else following
         if word.strip(".,;:!?").lower() in _SUSPENSION_WORDS:
             return match.group(0)
         if not (following.isdigit() or following.islower()):
@@ -586,9 +548,7 @@ def _join_hyphens(node: PandocJson) -> PandocJson:
     return out
 
 
-def _normalize_hyphen_join(
-    before: PandocJson, after: PandocJson
-) -> tuple[PandocJson, PandocJson]:
+def _normalize_hyphen_join(before: PandocJson, after: PandocJson) -> tuple[PandocJson, PandocJson]:
     """
     Close up `before`'s hyphen-and-space so it matches a result that joined it.
 
@@ -601,9 +561,7 @@ def _normalize_hyphen_join(
     return _canonical(_join_hyphens(before)), after
 
 
-def _normalize_lazy_list(
-    before: PandocJson, after: PandocJson
-) -> tuple[PandocJson, PandocJson]:
+def _normalize_lazy_list(before: PandocJson, after: PandocJson) -> tuple[PandocJson, PandocJson]:
     """
     Collapse lists `after` materialized out of `before`'s lazy continuations.
 
@@ -699,9 +657,7 @@ def _first_difference(before: list[PandocJson], after: list[PandocJson]) -> str:
     # `strict=False` is the point rather than an oversight: a document that gained
     # or lost a block is exactly the case this has to describe, and the length
     # difference is reported below once the common prefix is known to match.
-    for index, (before_block, after_block) in enumerate(
-        zip(before, after, strict=False)
-    ):
+    for index, (before_block, after_block) in enumerate(zip(before, after, strict=False)):
         if before_block == after_block:
             continue
         before_type, after_type = _block_type(before_block), _block_type(after_block)
@@ -718,9 +674,7 @@ def _first_difference(before: list[PandocJson], after: list[PandocJson]) -> str:
     return f"block {index}: {_block_type(before[index])} -> (absent), {counts}"
 
 
-def check_meaning_preserved(
-    source: str, result: str, label: str = "input"
-) -> list[str]:
+def check_meaning_preserved(source: str, result: str, label: str = "input") -> list[str]:
     """
     Check that `result` means what `source` did, allowing flowmark's intentional
     style normalizations.
@@ -744,9 +698,7 @@ def check_meaning_preserved(
         for combo in combinations(_NORMALIZATIONS, size):
             normalized_before, normalized_after = before_canon, after_canon
             for _key, _text, normalize in combo:
-                normalized_before, normalized_after = normalize(
-                    normalized_before, normalized_after
-                )
+                normalized_before, normalized_after = normalize(normalized_before, normalized_after)
             if normalized_before == normalized_after:
                 return [key for key, _text, _normalize in combo]
 
@@ -757,9 +709,7 @@ def check_meaning_preserved(
     # gate is at its most permissive is what actually blocked acceptance.
     permissive_before, permissive_after = before_canon, after_canon
     for _key, _text, normalize in _NORMALIZATIONS:
-        permissive_before, permissive_after = normalize(
-            permissive_before, permissive_after
-        )
+        permissive_before, permissive_after = normalize(permissive_before, permissive_after)
 
     # Canonicalizing or normalizing a block list always yields a block list.
     detail = _first_difference(

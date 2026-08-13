@@ -18,9 +18,7 @@ from flowmark.pandoc_verify import MeaningChangedError
 from flowmark.preflight import preflight
 from flowmark.reformat_api import reformat_text
 
-pandocless = pytest.mark.skipif(
-    shutil.which("pandoc") is None, reason="requires the pandoc binary on PATH"
-)
+pandocless = pytest.mark.skipif(shutil.which("pandoc") is None, reason="requires the pandoc binary on PATH")
 
 
 # The reporter's actual line from #17: an unescaped `|` from a linear system inside
@@ -45,9 +43,7 @@ def test_preflight_finds_a_row_whose_cell_count_disagrees() -> None:
 
 
 def test_preflight_finds_unterminated_math() -> None:
-    assert [f.line for f in preflight("A paragraph with $x + y and no closer.\n")] == [
-        1
-    ]
+    assert [f.line for f in preflight("A paragraph with $x + y and no closer.\n")] == [1]
 
 
 def test_preflight_finds_an_unbalanced_fence() -> None:
@@ -77,9 +73,7 @@ def test_verify_failure_on_ambiguous_input_does_not_blame_flowmark() -> None:
     defect no report can fix.
     """
     with pytest.raises(MeaningChangedError) as excinfo:
-        reformat_text(
-            AMBIGUOUS_TABLE, semantic=True, verify=True, verify_label="doc.md"
-        )
+        reformat_text(AMBIGUOUS_TABLE, semantic=True, verify=True, verify_label="doc.md")
 
     message = str(excinfo.value)
     assert "flowmark bug" not in message, message
