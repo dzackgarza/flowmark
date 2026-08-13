@@ -4,7 +4,7 @@ import re
 import unicodedata
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
-from enum import Enum
+from enum import StrEnum
 from typing import Any, NamedTuple, cast, override
 
 from marko import Markdown, Renderer, block, inline
@@ -24,7 +24,7 @@ from flowmark.linewrapping.protocols import LineWrapper
 from flowmark.linewrapping.text_filling import DEFAULT_WRAP_WIDTH
 
 
-class ListSpacing(str, Enum):
+class ListSpacing(StrEnum):
     """
     Controls how list item spacing is handled during Markdown normalization.
 
