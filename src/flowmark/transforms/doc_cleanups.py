@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import cast
 
 from marko import block, inline
 from marko.block import Document
@@ -15,7 +15,9 @@ def _unbold_heading_transformer(element: Element) -> None:
     """
     if isinstance(element, block.Heading):
         # Check if the heading consists *only* of a single StrongEmphasis element
-        if len(element.children) == 1 and isinstance(element.children[0], inline.StrongEmphasis):
+        if len(element.children) == 1 and isinstance(
+            element.children[0], inline.StrongEmphasis
+        ):
             # Replace the heading's children with the children of the StrongEmphasis element
             strong_emphasis_node = element.children[0]
             # marko types `children` as `str | Sequence[Element]`; assign dynamically
@@ -24,9 +26,13 @@ def _unbold_heading_transformer(element: Element) -> None:
 
         # Handle the case where the heading is bold and italic (StrongEmphasis inside Emphasis or vice versa)
         # ***text***  -> *text*
-        elif len(element.children) == 1 and isinstance(element.children[0], inline.Emphasis):
+        elif len(element.children) == 1 and isinstance(
+            element.children[0], inline.Emphasis
+        ):
             emphasis_node = element.children[0]
-            if len(emphasis_node.children) == 1 and isinstance(emphasis_node.children[0], inline.StrongEmphasis):
+            if len(emphasis_node.children) == 1 and isinstance(
+                emphasis_node.children[0], inline.StrongEmphasis
+            ):
                 strong_node = emphasis_node.children[0]
                 emphasis_node.children = strong_node.children
 
@@ -59,7 +65,7 @@ def _leading_text(element: Element) -> str:
     if isinstance(children, str):
         return children
     if isinstance(children, list) and children:
-        return _leading_text(children[0])  # pyright: ignore[reportUnknownArgumentType]
+        return _leading_text(cast("list[Element]", children)[0])
     return getattr(element, "delimiter", "") or ""
 
 
@@ -69,7 +75,7 @@ def _trailing_text(element: Element) -> str:
     if isinstance(children, str):
         return children
     if isinstance(children, list) and children:
-        return _trailing_text(children[-1])  # pyright: ignore[reportUnknownArgumentType]
+        return _trailing_text(cast("list[Element]", children)[-1])
     return ""
 
 
@@ -107,11 +113,16 @@ def _join_hyphen_breaks(element: Element) -> int:
     if not isinstance(children, list):
         return 0
 
-    kept: list[Any] = []
-    items: list[Any] = children
+    kept: list[Element] = []
+    items = cast("list[Element]", children)
     for index, child in enumerate(items):
         is_soft_break = isinstance(child, inline.LineBreak) and child.soft
-        if is_soft_break and kept and index + 1 < len(items) and _joins_across_break(kept[-1], items[index + 1]):
+        if (
+            is_soft_break
+            and kept
+            and index + 1 < len(items)
+            and _joins_across_break(kept[-1], items[index + 1])
+        ):
             joined += 1
             continue
         kept.append(child)
@@ -121,8 +132,7 @@ def _join_hyphen_breaks(element: Element) -> int:
     # read above -- rather than via a checker-suppression comment.
     setattr(element, "children", kept)
     for child in kept:
-        if isinstance(child, Element):
-            joined += _join_hyphen_breaks(child)
+        joined += _join_hyphen_breaks(child)
     return joined
 
 

@@ -58,9 +58,14 @@ import shutil
 import subprocess
 from collections.abc import Callable
 from itertools import combinations
-from typing import Any
+from typing import cast
 
 from flowmark.formats.frontmatter import split_frontmatter
+
+PandocJson = (
+    str | int | float | bool | None | list["PandocJson"] | dict[str, "PandocJson"]
+)
+"""One node of pandoc's JSON AST, exactly as `json.loads` produces it."""
 
 PANDOC_FORMAT = "markdown"
 """Pandoc's own markdown dialect -- the one these documents are written in.
@@ -104,7 +109,9 @@ class MeaningChangedError(ValueError):
 def _pandoc_exe() -> str:
     pandoc_exe = shutil.which("pandoc")
     if pandoc_exe is None:
-        raise PandocUnavailableError("Verification requires the `pandoc` binary on PATH. Install pandoc (https://pandoc.org/installing.html) or drop --verify.")
+        raise PandocUnavailableError(
+            "Verification requires the `pandoc` binary on PATH. Install pandoc (https://pandoc.org/installing.html) or drop --verify."
+        )
     return pandoc_exe
 
 
@@ -118,7 +125,9 @@ def _spawn_pandoc(pandoc_exe: str) -> subprocess.Popen[str]:
     )
 
 
-def _collect_blocks(proc: subprocess.Popen[str], markdown_text: str) -> list[Any]:
+def _collect_blocks(
+    proc: subprocess.Popen[str], markdown_text: str
+) -> list[PandocJson]:
     # YAML frontmatter is document metadata, not body. The formatter (via the same
     # split_frontmatter) preserves it verbatim, so it can never be the source of a
     # meaning change; and it is frequently lax YAML that pandoc's metadata reader
@@ -128,11 +137,11 @@ def _collect_blocks(proc: subprocess.Popen[str], markdown_text: str) -> list[Any
     stdout, stderr = proc.communicate(content)
     if proc.returncode != 0:
         raise PandocParseError(f"pandoc could not parse the document: {stderr.strip()}")
-    blocks: list[Any] = json.loads(stdout)["blocks"]
+    blocks: list[PandocJson] = json.loads(stdout)["blocks"]
     return blocks
 
 
-def pandoc_ast(markdown_text: str) -> list[Any]:
+def pandoc_ast(markdown_text: str) -> list[PandocJson]:
     """
     Return pandoc's parsed block list for `markdown_text`.
 
@@ -143,7 +152,9 @@ def pandoc_ast(markdown_text: str) -> list[Any]:
     return _collect_blocks(_spawn_pandoc(_pandoc_exe()), markdown_text)
 
 
-def _pandoc_ast_pair(source: str, result: str) -> tuple[list[Any], list[Any]]:
+def _pandoc_ast_pair(
+    source: str, result: str
+) -> tuple[list[PandocJson], list[PandocJson]]:
     """
     Parse both documents with two concurrent pandoc processes.
 
@@ -177,7 +188,7 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s*…\s*", "…", re.sub(r"\s+", " ", text))
 
 
-def _canonical(node: Any) -> Any:
+def _canonical(node: PandocJson) -> PandocJson:
     """
     Rewrite `node` so that inline whitespace differences compare equal.
 
@@ -186,13 +197,11 @@ def _canonical(node: Any) -> Any:
     changed element type, a changed nesting, or changed words.
     """
     if isinstance(node, dict):
-        mapping: dict[str, Any] = node
-        return {key: _canonical(value) for key, value in mapping.items()}
+        return {key: _canonical(value) for key, value in node.items()}
     if not isinstance(node, list):
         return node
 
-    items: list[Any] = node
-    out: list[Any] = []
+    out: list[PandocJson] = []
     buffer: list[str] = []
 
     def flush() -> None:
@@ -203,15 +212,14 @@ def _canonical(node: Any) -> Any:
         if text:
             out.append({"t": "Str", "c": text})
 
-    for item in items:
+    for item in node:
         if isinstance(item, dict):
-            element: dict[str, Any] = item
-            kind = element.get("t")
+            kind = item.get("t")
             if kind in _SPACE_INLINES:
                 buffer.append(" ")
                 continue
             if kind == "Str":
-                buffer.append(str(element.get("c", "")))
+                buffer.append(str(item.get("c", "")))
                 continue
         flush()
         out.append(_canonical(item))
@@ -219,7 +227,7 @@ def _canonical(node: Any) -> Any:
     return out
 
 
-def _unbold_headings(node: Any) -> Any:
+def _unbold_headings(node: PandocJson) -> PandocJson:
     """
     Unwrap a heading whose entire content is bold, on both sides of a comparison.
 
@@ -229,25 +237,22 @@ def _unbold_headings(node: Any) -> Any:
     not a loss -- but it *is* an AST change, so it is reported as one.
     """
     if isinstance(node, dict):
-        mapping: dict[str, Any] = node
-        out = {key: _unbold_headings(value) for key, value in mapping.items()}
+        out = {key: _unbold_headings(value) for key, value in node.items()}
         if out.get("t") == "Header":
-            content: Any = out.get("c")
-            if isinstance(content, list) and len(content) == 3:  # pyright: ignore[reportUnknownArgumentType]
-                parts: list[Any] = content
-                inlines = parts[2]
-                if isinstance(inlines, list) and len(inlines) == 1:  # pyright: ignore[reportUnknownArgumentType]
-                    only: Any = inlines[0]
-                    if isinstance(only, dict) and only.get("t") == "Strong":  # pyright: ignore[reportUnknownMemberType]
-                        out["c"] = [parts[0], parts[1], only.get("c")]  # pyright: ignore[reportUnknownMemberType]
+            content = out.get("c")
+            if isinstance(content, list) and len(content) == 3:
+                inlines = content[2]
+                if isinstance(inlines, list) and len(inlines) == 1:
+                    only = inlines[0]
+                    if isinstance(only, dict) and only.get("t") == "Strong":
+                        out["c"] = [content[0], content[1], only.get("c")]
         return out
     if isinstance(node, list):
-        items: list[Any] = node
-        return [_unbold_headings(item) for item in items]
+        return [_unbold_headings(item) for item in node]
     return node
 
 
-def _plain_to_para(node: Any) -> Any:
+def _plain_to_para(node: PandocJson) -> PandocJson:
     """
     Treat `Plain` and `Para` as one, on both sides of a comparison.
 
@@ -256,21 +261,19 @@ def _plain_to_para(node: Any) -> Any:
     headings: a deliberate normalization that shows up as an AST change.
     """
     if isinstance(node, dict):
-        mapping: dict[str, Any] = node
-        out = {key: _plain_to_para(value) for key, value in mapping.items()}
+        out = {key: _plain_to_para(value) for key, value in node.items()}
         if out.get("t") == "Plain":
             out["t"] = "Para"
         return out
     if isinstance(node, list):
-        items: list[Any] = node
-        return [_plain_to_para(item) for item in items]
+        return [_plain_to_para(item) for item in node]
     return node
 
 
 _QUOTE_MARKS = {"DoubleQuote": ("“", "”"), "SingleQuote": ("‘", "’")}
 
 
-def _flatten_quoted(node: Any) -> Any:
+def _flatten_quoted(node: PandocJson) -> PandocJson:
     """
     Replace a `Quoted` span with its curled spelling, on both sides of a comparison.
 
@@ -286,13 +289,15 @@ def _flatten_quoted(node: Any) -> Any:
     lands its marks somewhere else in the text and still mismatches.
     """
     if isinstance(node, dict):
-        mapping: dict[str, Any] = node
-        return {key: _flatten_quoted(value) for key, value in mapping.items()}
+        return {key: _flatten_quoted(value) for key, value in node.items()}
     if not isinstance(node, list):
         return node
+    return _flatten_quoted_list(node)
 
-    items: list[Any] = node
-    out: list[Any] = []
+
+def _flatten_quoted_list(items: list[PandocJson]) -> list[PandocJson]:
+    """The inline-run half of `_flatten_quoted`, split out to keep the list type."""
+    out: list[PandocJson] = []
     for item in items:
         quoted = _as_quoted(item)
         if quoted is None:
@@ -300,24 +305,23 @@ def _flatten_quoted(node: Any) -> Any:
             continue
         (open_mark, close_mark), inner = quoted
         out.append({"t": "Str", "c": open_mark})
-        out.extend(_flatten_quoted(inner))
+        out.extend(_flatten_quoted_list(inner))
         out.append({"t": "Str", "c": close_mark})
     return out
 
 
-def _as_quoted(item: Any) -> tuple[tuple[str, str], Any] | None:
+def _as_quoted(item: PandocJson) -> tuple[tuple[str, str], list[PandocJson]] | None:
     """Return `((open, close), inlines)` if `item` is a `Quoted` span, else None."""
-    if not isinstance(item, dict) or item.get("t") != "Quoted":  # pyright: ignore[reportUnknownMemberType]
+    if not isinstance(item, dict) or item.get("t") != "Quoted":
         return None
-    content: Any = item.get("c")  # pyright: ignore[reportUnknownMemberType]
-    if not isinstance(content, list) or len(content) != 2:  # pyright: ignore[reportUnknownArgumentType]
+    content = item.get("c")
+    if not isinstance(content, list) or len(content) != 2:
         return None
-    parts: list[Any] = content
-    kind: Any = parts[0]
-    if not isinstance(kind, dict):
+    kind, inlines = content
+    if not isinstance(kind, dict) or not isinstance(inlines, list):
         return None
-    marks = _QUOTE_MARKS.get(str(kind.get("t")))  # pyright: ignore[reportUnknownMemberType]
-    return None if marks is None else (marks, parts[1])
+    marks = _QUOTE_MARKS.get(str(kind.get("t")))
+    return None if marks is None else (marks, inlines)
 
 
 _BULLET_MARKERS = ("-", "*", "+")
@@ -331,7 +335,9 @@ match exactly either way, so a wrong guess simply fails to reconcile.
 _PARAGRAPH_BLOCKS = frozenset({"Para", "Plain"})
 
 
-def _list_items_and_markers(list_block: dict[str, Any]) -> tuple[list[Any], list[list[str]]]:
+def _list_items_and_markers(
+    list_block: dict[str, PandocJson],
+) -> tuple[list[PandocJson], list[list[str]]]:
     """
     The items of `list_block`, and the candidate marker spellings for them.
 
@@ -340,30 +346,34 @@ def _list_items_and_markers(list_block: dict[str, Any]) -> tuple[list[Any], list
     A block that is not a list yields no items and no candidates.
     """
     kind = list_block.get("t")
-    content: Any = list_block.get("c")
+    content = list_block.get("c")
 
     if kind == "BulletList" and isinstance(content, list):
-        items: list[Any] = content
-        return items, [[marker] * len(items) for marker in _BULLET_MARKERS]
+        return content, [[marker] * len(content) for marker in _BULLET_MARKERS]
 
-    if kind == "OrderedList" and isinstance(content, list) and len(content) == 2:  # pyright: ignore[reportUnknownArgumentType]
-        parts: list[Any] = content
-        attrs: Any = parts[0]
-        ordered_items: Any = parts[1]
-        if not isinstance(attrs, list) or len(attrs) != 3 or not isinstance(ordered_items, list):  # pyright: ignore[reportUnknownArgumentType]
+    if kind == "OrderedList" and isinstance(content, list) and len(content) == 2:
+        attrs, ordered_items = content
+        if (
+            not isinstance(attrs, list)
+            or len(attrs) != 3
+            or not isinstance(ordered_items, list)
+        ):
             return [], []
-        triple: list[Any] = attrs
-        start: Any = triple[0]
-        delim: Any = triple[2]
+        start, delim = attrs[0], attrs[2]
         first = start if isinstance(start, int) else 1
-        suffix = ")" if isinstance(delim, dict) and delim.get("t") == "OneParen" else "."  # pyright: ignore[reportUnknownMemberType]
-        listed: list[Any] = ordered_items
-        return listed, [[f"{first + offset}{suffix}" for offset in range(len(listed))]]
+        suffix = (
+            ")" if isinstance(delim, dict) and delim.get("t") == "OneParen" else "."
+        )
+        return ordered_items, [
+            [f"{first + offset}{suffix}" for offset in range(len(ordered_items))]
+        ]
 
     return [], []
 
 
-def _flatten_list_into_paragraph(para: dict[str, Any], list_block: dict[str, Any]) -> list[Any]:
+def _flatten_list_into_paragraph(
+    para: dict[str, PandocJson], list_block: dict[str, PandocJson]
+) -> list[list[PandocJson]]:
     """
     Spell `para` followed by `list_block` back out as one paragraph's inlines, once
     per candidate marker set.
@@ -373,32 +383,34 @@ def _flatten_list_into_paragraph(para: dict[str, Any], list_block: dict[str, Any
     a single `Para`/`Plain` are refused: a lazy continuation cannot produce nested
     blocks, so a list that has them was not made this way.
     """
-    para_inlines: Any = para.get("c")
+    para_inlines = para.get("c")
     if not isinstance(para_inlines, list):
         return []
 
     items, marker_candidates = _list_items_and_markers(list_block)
-    candidates: list[Any] = []
+    candidates: list[list[PandocJson]] = []
     for markers in marker_candidates:
-        flat: list[Any] = list(para_inlines)  # pyright: ignore[reportUnknownArgumentType]
+        flat: list[PandocJson] = list(para_inlines)
         usable = True
         for marker, item in zip(markers, items, strict=False):
             if not isinstance(item, list):
                 usable = False
                 break
-            blocks: list[Any] = item
             flat.append({"t": "Space"})
             flat.append({"t": "Str", "c": marker})
-            for inner in blocks:
-                if not isinstance(inner, dict) or inner.get("t") not in _PARAGRAPH_BLOCKS:  # pyright: ignore[reportUnknownMemberType]
+            for inner in item:
+                if (
+                    not isinstance(inner, dict)
+                    or inner.get("t") not in _PARAGRAPH_BLOCKS
+                ):
                     usable = False
                     break
-                inner_inlines: Any = inner.get("c")  # pyright: ignore[reportUnknownMemberType]
+                inner_inlines = inner.get("c")
                 if not isinstance(inner_inlines, list):
                     usable = False
                     break
                 flat.append({"t": "Space"})
-                flat.extend(inner_inlines)  # pyright: ignore[reportUnknownArgumentType]
+                flat.extend(inner_inlines)
             if not usable:
                 break
         if usable:
@@ -406,27 +418,29 @@ def _flatten_list_into_paragraph(para: dict[str, Any], list_block: dict[str, Any
     return candidates
 
 
-def _collapse_lazy_lists_at_level(before: list[Any], after: list[Any]) -> list[Any]:
+def _collapse_lazy_lists_at_level(
+    before: list[PandocJson], after: list[PandocJson]
+) -> list[PandocJson]:
     """
     Rewrite `after` so a paragraph that grew a list beside it becomes the single
     paragraph `before` has there -- but only when flattening reproduces `before`
     exactly.
     """
-    out: list[Any] = []
+    out: list[PandocJson] = []
     before_index = 0
     after_index = 0
     while after_index < len(after):
-        para: Any = after[after_index]
-        follows: Any = after[after_index + 1] if after_index + 1 < len(after) else None
-        original: Any = before[before_index] if before_index < len(before) else None
+        para = after[after_index]
+        follows = after[after_index + 1] if after_index + 1 < len(after) else None
+        original = before[before_index] if before_index < len(before) else None
         if (
             isinstance(original, dict)
             and isinstance(para, dict)
             and isinstance(follows, dict)
-            and original.get("t") in _PARAGRAPH_BLOCKS  # pyright: ignore[reportUnknownMemberType]
-            and para.get("t") in _PARAGRAPH_BLOCKS  # pyright: ignore[reportUnknownMemberType]
+            and original.get("t") in _PARAGRAPH_BLOCKS
+            and para.get("t") in _PARAGRAPH_BLOCKS
             and any(
-                _canonical(flat) == _canonical(original.get("c"))  # pyright: ignore[reportUnknownMemberType]
+                _canonical(flat) == _canonical(original.get("c"))
                 for flat in _flatten_list_into_paragraph(para, follows)
             )
         ):
@@ -440,16 +454,19 @@ def _collapse_lazy_lists_at_level(before: list[Any], after: list[Any]) -> list[A
     return out
 
 
-def _collapse_lazy_lists(before: Any, after: Any) -> Any:
+def _collapse_lazy_lists(before: PandocJson, after: PandocJson) -> PandocJson:
     """Walk both trees in parallel, collapsing materialized lists wherever they align."""
     if isinstance(before, dict) and isinstance(after, dict):
-        original: dict[str, Any] = before
-        current: dict[str, Any] = after
-        return {key: _collapse_lazy_lists(original.get(key), value) for key, value in current.items()}
+        return {
+            key: _collapse_lazy_lists(before.get(key), value)
+            for key, value in after.items()
+        }
     if isinstance(before, list) and isinstance(after, list):
-        originals: list[Any] = before
-        collapsed = _collapse_lazy_lists_at_level(originals, after)
-        return [_collapse_lazy_lists(originals[index] if index < len(originals) else None, item) for index, item in enumerate(collapsed)]
+        collapsed = _collapse_lazy_lists_at_level(before, after)
+        return [
+            _collapse_lazy_lists(before[index] if index < len(before) else None, item)
+            for index, item in enumerate(collapsed)
+        ]
     return after
 
 
@@ -473,7 +490,7 @@ bullets under a paragraph line and pandoc's dialect read them as prose; flowmark
 gives them the list they drew, and says so.
 """
 
-Normalization = Callable[[Any, Any], tuple[Any, Any]]
+Normalization = Callable[[PandocJson, PandocJson], tuple[PandocJson, PandocJson]]
 """A declared normalization: rewrites the two canonicalized trees so the change it
 declares compares equal, and returns them.
 
@@ -486,16 +503,20 @@ same way necessarily accepts the corruption that undoes the opinion.
 """
 
 
-def _both(node_transform: Callable[[Any], Any]) -> Normalization:
+def _both(node_transform: Callable[[PandocJson], PandocJson]) -> Normalization:
     """Lift a symmetric node transform into a `Normalization` over both trees."""
 
-    def normalize(before: Any, after: Any) -> tuple[Any, Any]:
+    def normalize(
+        before: PandocJson, after: PandocJson
+    ) -> tuple[PandocJson, PandocJson]:
         return node_transform(before), node_transform(after)
 
     return normalize
 
 
-def _normalize_quotes(before: Any, after: Any) -> tuple[Any, Any]:
+def _normalize_quotes(
+    before: PandocJson, after: PandocJson
+) -> tuple[PandocJson, PandocJson]:
     """
     Flatten `Quoted` spans on both sides, then re-canonicalize.
 
@@ -524,7 +545,9 @@ def _join_hyphen_text(text: str) -> str:
     def join(match: re.Match[str]) -> str:
         following = match.group(1)
         rest = text[match.end(1) :]
-        word = (following + rest).split()[0] if (following + rest).split() else following
+        word = (
+            (following + rest).split()[0] if (following + rest).split() else following
+        )
         if word.strip(".,;:!?").lower() in _SUSPENSION_WORDS:
             return match.group(0)
         if not (following.isdigit() or following.islower()):
@@ -534,7 +557,7 @@ def _join_hyphen_text(text: str) -> str:
     return _HYPHEN_SPACE.sub(join, text)
 
 
-def _join_hyphens(node: Any) -> Any:
+def _join_hyphens(node: PandocJson) -> PandocJson:
     """
     Apply #18's join to a canonicalized tree.
 
@@ -544,20 +567,18 @@ def _join_hyphens(node: Any) -> Any:
     `Math`, from `degree-` / `$4$`).
     """
     if isinstance(node, dict):
-        mapping: dict[str, Any] = node
-        return {key: _join_hyphens(value) for key, value in mapping.items()}
+        return {key: _join_hyphens(value) for key, value in node.items()}
     if not isinstance(node, list):
         return node
 
-    items: list[Any] = node
-    out: list[Any] = []
-    for index, item in enumerate(items):
-        if isinstance(item, dict) and item.get("t") == "Str":  # pyright: ignore[reportUnknownMemberType]
-            text = str(item.get("c", ""))  # pyright: ignore[reportUnknownMemberType]
+    out: list[PandocJson] = []
+    for index, item in enumerate(node):
+        if isinstance(item, dict) and item.get("t") == "Str":
+            text = str(item.get("c", ""))
             joined = _join_hyphen_text(text)
             # A trailing `- ` closes up only against a following inline: on its own
             # it is a hyphen at the end of a paragraph, which nothing joins to.
-            if joined.endswith("- ") and index + 1 < len(items):
+            if joined.endswith("- ") and index + 1 < len(node):
                 joined = joined[:-1]
             out.append({"t": "Str", "c": joined})
             continue
@@ -565,7 +586,9 @@ def _join_hyphens(node: Any) -> Any:
     return out
 
 
-def _normalize_hyphen_join(before: Any, after: Any) -> tuple[Any, Any]:
+def _normalize_hyphen_join(
+    before: PandocJson, after: PandocJson
+) -> tuple[PandocJson, PandocJson]:
     """
     Close up `before`'s hyphen-and-space so it matches a result that joined it.
 
@@ -578,7 +601,9 @@ def _normalize_hyphen_join(before: Any, after: Any) -> tuple[Any, Any]:
     return _canonical(_join_hyphens(before)), after
 
 
-def _normalize_lazy_list(before: Any, after: Any) -> tuple[Any, Any]:
+def _normalize_lazy_list(
+    before: PandocJson, after: PandocJson
+) -> tuple[PandocJson, PandocJson]:
     """
     Collapse lists `after` materialized out of `before`'s lazy continuations.
 
@@ -595,8 +620,16 @@ _NORMALIZATIONS: list[tuple[str, str, Normalization]] = [
     (UNBOLD_HEADING, "removed bold from a heading", _both(_unbold_headings)),
     (LIST_SPACING, "changed list spacing (tight/loose)", _both(_plain_to_para)),
     (SMART_QUOTES, "curled straight quotes", _normalize_quotes),
-    (LAZY_LIST, "made a list out of a lazy paragraph continuation", _normalize_lazy_list),
-    (HYPHEN_JOIN, "closed up a line break that fell after a hyphen", _normalize_hyphen_join),
+    (
+        LAZY_LIST,
+        "made a list out of a lazy paragraph continuation",
+        _normalize_lazy_list,
+    ),
+    (
+        HYPHEN_JOIN,
+        "closed up a line break that fell after a hyphen",
+        _normalize_hyphen_join,
+    ),
 ]
 """Flowmark's intentional, opinionated style normalizations.
 
@@ -647,7 +680,12 @@ def describe(normalization: str) -> str:
     return next(text for key, text, _ in _NORMALIZATIONS if key == normalization)
 
 
-def _first_difference(before: list[Any], after: list[Any]) -> str:
+def _block_type(block: PandocJson) -> str:
+    """The `t` tag of an AST block, for the difference report."""
+    return str(block.get("t", "?")) if isinstance(block, dict) else "?"
+
+
+def _first_difference(before: list[PandocJson], after: list[PandocJson]) -> str:
     """
     Locate the first block the two documents disagree about.
 
@@ -661,10 +699,12 @@ def _first_difference(before: list[Any], after: list[Any]) -> str:
     # `strict=False` is the point rather than an oversight: a document that gained
     # or lost a block is exactly the case this has to describe, and the length
     # difference is reported below once the common prefix is known to match.
-    for index, (before_block, after_block) in enumerate(zip(before, after, strict=False)):
+    for index, (before_block, after_block) in enumerate(
+        zip(before, after, strict=False)
+    ):
         if before_block == after_block:
             continue
-        before_type, after_type = before_block.get("t", "?"), after_block.get("t", "?")
+        before_type, after_type = _block_type(before_block), _block_type(after_block)
         if before_type == after_type:
             return f"block {index}: {before_type} content differs"
         return f"block {index}: {before_type} -> {after_type}"
@@ -674,11 +714,13 @@ def _first_difference(before: list[Any], after: list[Any]) -> str:
     index = min(len(before), len(after))
     counts = f"{len(after)} blocks vs {len(before)}"
     if len(after) > len(before):
-        return f"block {index}: (absent) -> {after[index].get('t', '?')}, {counts}"
-    return f"block {index}: {before[index].get('t', '?')} -> (absent), {counts}"
+        return f"block {index}: (absent) -> {_block_type(after[index])}, {counts}"
+    return f"block {index}: {_block_type(before[index])} -> (absent), {counts}"
 
 
-def check_meaning_preserved(source: str, result: str, label: str = "input") -> list[str]:
+def check_meaning_preserved(
+    source: str, result: str, label: str = "input"
+) -> list[str]:
     """
     Check that `result` means what `source` did, allowing flowmark's intentional
     style normalizations.
@@ -702,7 +744,9 @@ def check_meaning_preserved(source: str, result: str, label: str = "input") -> l
         for combo in combinations(_NORMALIZATIONS, size):
             normalized_before, normalized_after = before_canon, after_canon
             for _key, _text, normalize in combo:
-                normalized_before, normalized_after = normalize(normalized_before, normalized_after)
+                normalized_before, normalized_after = normalize(
+                    normalized_before, normalized_after
+                )
             if normalized_before == normalized_after:
                 return [key for key, _text, _normalize in combo]
 
@@ -713,9 +757,15 @@ def check_meaning_preserved(source: str, result: str, label: str = "input") -> l
     # gate is at its most permissive is what actually blocked acceptance.
     permissive_before, permissive_after = before_canon, after_canon
     for _key, _text, normalize in _NORMALIZATIONS:
-        permissive_before, permissive_after = normalize(permissive_before, permissive_after)
+        permissive_before, permissive_after = normalize(
+            permissive_before, permissive_after
+        )
 
-    detail = _first_difference(permissive_before, permissive_after)
+    # Canonicalizing or normalizing a block list always yields a block list.
+    detail = _first_difference(
+        cast("list[PandocJson]", permissive_before),
+        cast("list[PandocJson]", permissive_after),
+    )
     raise MeaningChangedError(
         f"Refusing to write {label}: reformatting would change what pandoc reads "
         f"({detail}). The file is unchanged. "

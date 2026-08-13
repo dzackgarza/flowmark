@@ -8,6 +8,7 @@ ai-review-ci/skills/quality-control/SKILL.md and minimized to two lines.
 """
 
 import signal
+from types import FrameType
 
 from flowmark import reformat_text
 
@@ -21,7 +22,7 @@ class _Timeout(Exception):
     pass
 
 
-def _on_alarm(signum: int, frame: object) -> None:
+def _on_alarm(_signum: int, _frame: FrameType | None) -> None:
     raise _Timeout("reformat_text did not terminate")
 
 
