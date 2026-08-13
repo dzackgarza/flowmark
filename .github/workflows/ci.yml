@@ -70,6 +70,16 @@ jobs:
       - name: Run linting
         run: uv run python devtools/lint.py
 
+      - name: Install pandoc (pinned)
+        # The verify oracle asks pandoc what documents mean, and the recorded
+        # probe contracts in tests/test_smartquotes.py are pinned to this exact
+        # release. ubuntu-latest does not ship pandoc.
+        run: |
+          curl -sSL -o /tmp/pandoc.tgz https://github.com/jgm/pandoc/releases/download/3.9.0.2/pandoc-3.9.0.2-linux-amd64.tar.gz
+          tar xzf /tmp/pandoc.tgz -C /tmp
+          sudo install -m755 /tmp/pandoc-3.9.0.2/bin/pandoc /usr/local/bin/pandoc
+          pandoc --version | head -1
+
       - name: Run tests
         run: uv run pytest
 
