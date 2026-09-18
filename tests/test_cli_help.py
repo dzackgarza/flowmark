@@ -36,7 +36,9 @@ def test_help_includes_agent_guidance(capsys: pytest.CaptureFixture[str]) -> Non
     out = _render_help(capsys)
     assert "Agent usage:" in out
     assert "flowmark --skill" in out
-    assert "Agents should run `flowmark --skill` for full Flowmark usage guidance." in out
+    assert (
+        "Agents should run `flowmark --skill` for full Flowmark usage guidance." in out
+    )
     assert "Use `flowmark --docs` for full documentation." in out
 
 

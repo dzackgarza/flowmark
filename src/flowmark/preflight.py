@@ -156,7 +156,9 @@ def _math_findings(lines: list[str], fenced: frozenset[int]) -> list[Finding]:
             continue
         if re.fullmatch(r"[^$]*\$\d[^$]*", bare):
             continue  # a single price, not an opened span
-        findings.append(Finding(offset + 1, "unterminated `$` math delimiter on this line"))
+        findings.append(
+            Finding(offset + 1, "unterminated `$` math delimiter on this line")
+        )
     if display_open:
         findings.append(Finding(len(lines), "unterminated `$$` display math"))
     return findings
@@ -174,7 +176,11 @@ def _fenced_line_numbers(lines: list[str]) -> frozenset[int]:
                 inside.add(offset)
             continue
         inside.add(offset)
-        if match and match.group(1)[0] == fence[0] and len(match.group(1)) >= len(fence):
+        if (
+            match
+            and match.group(1)[0] == fence[0]
+            and len(match.group(1)) >= len(fence)
+        ):
             fence = ""
     return frozenset(inside)
 

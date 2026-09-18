@@ -25,7 +25,9 @@ def test_markdown_escape_word_function() -> None:
 
     # Cases that should NOT be escaped
     assert markdown_escape_word("word") == "word"
-    assert markdown_escape_word("-word") == "-word"  # Starts with char, but not just char
+    assert (
+        markdown_escape_word("-word") == "-word"
+    )  # Starts with char, but not just char
     assert markdown_escape_word("word-") == "word-"  # Ends with char
     assert markdown_escape_word("#word") == "#word"
     assert markdown_escape_word("word#") == "word#"
@@ -236,20 +238,30 @@ def test_line_wrap_to_width_with_markdown_breaks() -> None:
 
     # Test backslash line breaks
     text_with_backslash = "This line ends with backslash\\\nThis is a new line"
-    wrapped_backslash = wrapper(text_with_backslash, initial_indent="", subsequent_indent="")
+    wrapped_backslash = wrapper(
+        text_with_backslash, initial_indent="", subsequent_indent=""
+    )
     assert wrapped_backslash == "This line ends with backslash\\\nThis is a new line"
 
     # Test wrapping with indentation
     indented_wrapper = line_wrap_to_width(width=40, is_markdown=True)
     long_text = "This is a very long line that will be wrapped and it ends with a line break  \nNext line with content that continues"
-    wrapped_long = indented_wrapper(long_text, initial_indent="  ", subsequent_indent="    ")
-    assert wrapped_long == ("  This is a very long line that will be\n    wrapped and it ends with a line\n    break\\\n    Next line with content that\n    continues")
+    wrapped_long = indented_wrapper(
+        long_text, initial_indent="  ", subsequent_indent="    "
+    )
+    assert wrapped_long == (
+        "  This is a very long line that will be\n    wrapped and it ends with a line\n    break\\\n    Next line with content that\n    continues"
+    )
 
     # Test different indentation for segments
     mixed_indent_wrapper = line_wrap_to_width(width=30, is_markdown=True)
     mixed_indent_text = "First segment  \nSecond segment\\\nThird segment"
-    wrapped_mixed_indent = mixed_indent_wrapper(mixed_indent_text, initial_indent="* ", subsequent_indent="  ")
-    assert wrapped_mixed_indent == ("* First segment\\\n  Second segment\\\n  Third segment")
+    wrapped_mixed_indent = mixed_indent_wrapper(
+        mixed_indent_text, initial_indent="* ", subsequent_indent="  "
+    )
+    assert wrapped_mixed_indent == (
+        "* First segment\\\n  Second segment\\\n  Third segment"
+    )
 
     # Test empty segments
     empty_segment_text = "Before  \n\\\nAfter"
@@ -258,7 +270,9 @@ def test_line_wrap_to_width_with_markdown_breaks() -> None:
 
     # Test single segment (no line breaks)
     single_segment = "Text with no breaks"
-    wrapped_single = wrapper(single_segment, initial_indent="> ", subsequent_indent="  ")
+    wrapped_single = wrapper(
+        single_segment, initial_indent="> ", subsequent_indent="  "
+    )
     assert wrapped_single == "> Text with no breaks"
 
 
@@ -328,7 +342,9 @@ def test_mixed_html_and_template_tags() -> None:
     """Test that HTML tags and template tags work together."""
     splitter = _HtmlMdWordSplitter()
 
-    mixed = "Text <span class='x'>html</span> and {% if $y %} template {% endif %} here."
+    mixed = (
+        "Text <span class='x'>html</span> and {% if $y %} template {% endif %} here."
+    )
     result = splitter(mixed)
 
     # HTML should be coalesced
@@ -445,7 +461,9 @@ def test_single_word_inline_code_not_coalesced() -> None:
     # Find the token containing the inline code
     code_token = next(r for r in result if "`getRequiredEnv()`" in r)
     # It should be EXACTLY the inline code, not merged with other words
-    assert code_token == "`getRequiredEnv()`", f"Expected exact match, got {code_token!r}"
+    assert code_token == "`getRequiredEnv()`", (
+        f"Expected exact match, got {code_token!r}"
+    )
 
     # "and" should be a separate word
     assert "and" in result
@@ -507,7 +525,10 @@ def test_newline_after_opening_tag() -> None:
 
     When a tag is followed by a newline, the content should start on a new line.
     """
-    from flowmark.linewrapping.line_wrappers import line_wrap_by_sentence, line_wrap_to_width
+    from flowmark.linewrapping.line_wrappers import (
+        line_wrap_by_sentence,
+        line_wrap_to_width,
+    )
 
     # Test with line_wrap_to_width
     wrapper = line_wrap_to_width(width=80, is_markdown=True)
@@ -516,7 +537,9 @@ def test_newline_after_opening_tag() -> None:
     text = "{% description ref='example' %}\nThis is content after the tag."
     result = wrapper(text, "", "")
     # The newline after the tag should be preserved
-    assert "{% description ref='example' %}\n" in result or result.startswith("{% description ref='example' %}\n")
+    assert "{% description ref='example' %}\n" in result or result.startswith(
+        "{% description ref='example' %}\n"
+    )
 
     # HTML comment tag followed by newline
     text2 = "<!-- f:description ref='example' -->\nContent after HTML comment tag."
@@ -856,10 +879,14 @@ def test_block_heuristics_blank_line_normalization() -> None:
     result = wrapper(text, "", "")
 
     # Verify blank line after opening tag (two newlines = blank line)
-    assert "{% field %}\n\n" in result, f"Expected blank line after opening tag, got: {result}"
+    assert "{% field %}\n\n" in result, (
+        f"Expected blank line after opening tag, got: {result}"
+    )
 
     # Verify blank line before closing tag
-    assert "\n\n{% /field %}" in result, f"Expected blank line before closing tag, got: {result}"
+    assert "\n\n{% /field %}" in result, (
+        f"Expected blank line before closing tag, got: {result}"
+    )
 
 
 def test_block_heuristics_table_blank_lines() -> None:
@@ -1032,7 +1059,10 @@ def test_adjacent_jinja_tags_no_space() -> None:
     When tags like %}{% are adjacent, normalization adds a space for tokenization,
     but denormalization must remove it in the final output.
     """
-    from flowmark.linewrapping.line_wrappers import line_wrap_by_sentence, line_wrap_to_width
+    from flowmark.linewrapping.line_wrappers import (
+        line_wrap_by_sentence,
+        line_wrap_to_width,
+    )
     from flowmark.linewrapping.tag_handling import (
         denormalize_adjacent_tags,
         normalize_adjacent_tags,
@@ -1041,19 +1071,25 @@ def test_adjacent_jinja_tags_no_space() -> None:
     # Test normalize/denormalize directly
     original = "{% field kind='string' %}{% /field %}"
     normalized = normalize_adjacent_tags(original)
-    assert normalized == "{% field kind='string' %} {% /field %}", f"Expected space, got: {normalized}"
+    assert normalized == "{% field kind='string' %} {% /field %}", (
+        f"Expected space, got: {normalized}"
+    )
     denormalized = denormalize_adjacent_tags(normalized)
     assert denormalized == original, f"Expected {original}, got: {denormalized}"
 
     # Test with line_wrap_to_width (uses wrap_paragraph)
     wrapper1 = line_wrap_to_width(width=80, is_markdown=True)
     result1 = wrapper1(original, "", "")
-    assert result1 == original, f"line_wrap_to_width: Expected {original}, got: {result1}"
+    assert result1 == original, (
+        f"line_wrap_to_width: Expected {original}, got: {result1}"
+    )
 
     # Test with line_wrap_by_sentence (uses wrap_paragraph_lines)
     wrapper2 = line_wrap_by_sentence(width=80, is_markdown=True)
     result2 = wrapper2(original, "", "")
-    assert result2 == original, f"line_wrap_by_sentence: Expected {original}, got: {result2}"
+    assert result2 == original, (
+        f"line_wrap_by_sentence: Expected {original}, got: {result2}"
+    )
 
 
 def test_adjacent_html_comment_tags_no_space() -> None:
@@ -1062,7 +1098,10 @@ def test_adjacent_html_comment_tags_no_space() -> None:
 
     This is critical for Markform-style HTML comment syntax.
     """
-    from flowmark.linewrapping.line_wrappers import line_wrap_by_sentence, line_wrap_to_width
+    from flowmark.linewrapping.line_wrappers import (
+        line_wrap_by_sentence,
+        line_wrap_to_width,
+    )
     from flowmark.linewrapping.tag_handling import (
         denormalize_adjacent_tags,
         normalize_adjacent_tags,
@@ -1071,19 +1110,25 @@ def test_adjacent_html_comment_tags_no_space() -> None:
     # Test normalize/denormalize directly
     original = '<!-- f:field kind="string" id="name" --><!-- /f:field -->'
     normalized = normalize_adjacent_tags(original)
-    assert " <!-- /f:field -->" in normalized, f"Expected space after normalization, got: {normalized}"
+    assert " <!-- /f:field -->" in normalized, (
+        f"Expected space after normalization, got: {normalized}"
+    )
     denormalized = denormalize_adjacent_tags(normalized)
     assert denormalized == original, f"Expected {original}, got: {denormalized}"
 
     # Test with line_wrap_to_width
     wrapper1 = line_wrap_to_width(width=80, is_markdown=True)
     result1 = wrapper1(original, "", "")
-    assert result1 == original, f"line_wrap_to_width: Expected {original}, got: {result1}"
+    assert result1 == original, (
+        f"line_wrap_to_width: Expected {original}, got: {result1}"
+    )
 
     # Test with line_wrap_by_sentence
     wrapper2 = line_wrap_by_sentence(width=80, is_markdown=True)
     result2 = wrapper2(original, "", "")
-    assert result2 == original, f"line_wrap_by_sentence: Expected {original}, got: {result2}"
+    assert result2 == original, (
+        f"line_wrap_by_sentence: Expected {original}, got: {result2}"
+    )
 
 
 def test_adjacent_jinja_variable_tags_no_space() -> None:
@@ -1119,7 +1164,9 @@ def test_adjacent_jinja_comment_tags_no_space() -> None:
 
     original = "{# first #}{# second #}"
     normalized = normalize_adjacent_tags(original)
-    assert normalized == "{# first #} {# second #}", f"Expected space, got: {normalized}"
+    assert normalized == "{# first #} {# second #}", (
+        f"Expected space, got: {normalized}"
+    )
     denormalized = denormalize_adjacent_tags(normalized)
     assert denormalized == original, f"Expected {original}, got: {denormalized}"
 
@@ -1139,17 +1186,23 @@ def test_adjacent_tags_full_pipeline() -> None:
     # Jinja tags
     jinja_input = "{% field kind='string' %}{% /field %}"
     jinja_result = fill_markdown(jinja_input, semantic=True)
-    assert jinja_result.strip() == jinja_input, f"Jinja: Expected {jinja_input}, got: {jinja_result.strip()}"
+    assert jinja_result.strip() == jinja_input, (
+        f"Jinja: Expected {jinja_input}, got: {jinja_result.strip()}"
+    )
 
     # HTML comment tags
     html_input = '<!-- f:field kind="string" id="name" --><!-- /f:field -->'
     html_result = fill_markdown(html_input, semantic=True)
-    assert html_result.strip() == html_input, f"HTML: Expected {html_input}, got: {html_result.strip()}"
+    assert html_result.strip() == html_input, (
+        f"HTML: Expected {html_input}, got: {html_result.strip()}"
+    )
 
     # With surrounding text
     mixed_input = "Before {% field %}{% /field %} after."
     mixed_result = fill_markdown(mixed_input, semantic=True)
-    assert "{% field %}{% /field %}" in mixed_result, f"Mixed: Space inserted in: {mixed_result}"
+    assert "{% field %}{% /field %}" in mixed_result, (
+        f"Mixed: Space inserted in: {mixed_result}"
+    )
 
 
 def test_paragraph_text_no_extra_blank_lines() -> None:
@@ -1168,14 +1221,18 @@ def test_paragraph_text_no_extra_blank_lines() -> None:
     result = wrapper(text, "", "")
 
     # Should NOT have double newlines before the closing tag
-    assert "\n\n{% /description %}" not in result, f"Unexpected blank line before closing tag: {result}"
+    assert "\n\n{% /description %}" not in result, (
+        f"Unexpected blank line before closing tag: {result}"
+    )
     # The closing tag should still be on its own line
     assert "\n{% /description %}" in result
 
     # HTML comment version
     text2 = "<!-- f:note -->\nThis is text content.\n<!-- /f:note -->"
     result2 = wrapper(text2, "", "")
-    assert "\n\n<!-- /f:note -->" not in result2, f"Unexpected blank line before closing tag: {result2}"
+    assert "\n\n<!-- /f:note -->" not in result2, (
+        f"Unexpected blank line before closing tag: {result2}"
+    )
     assert "\n<!-- /f:note -->" in result2
 
 
@@ -1195,10 +1252,14 @@ def test_list_content_gets_blank_lines() -> None:
     result = wrapper(text, "", "")
 
     # Should have blank line after opening tag (before list)
-    assert "{% field %}\n\n" in result, f"Expected blank line after opening tag: {result}"
+    assert "{% field %}\n\n" in result, (
+        f"Expected blank line after opening tag: {result}"
+    )
 
     # Should have blank line before closing tag (after list)
-    assert "\n\n{% /field %}" in result, f"Expected blank line before closing tag: {result}"
+    assert "\n\n{% /field %}" in result, (
+        f"Expected blank line before closing tag: {result}"
+    )
 
 
 def test_table_content_gets_blank_lines() -> None:
@@ -1216,10 +1277,14 @@ def test_table_content_gets_blank_lines() -> None:
     result = wrapper(text, "", "")
 
     # Should have blank line before table
-    assert "{% field %}\n\n" in result, f"Expected blank line after opening tag: {result}"
+    assert "{% field %}\n\n" in result, (
+        f"Expected blank line after opening tag: {result}"
+    )
 
     # Should have blank line before closing tag
-    assert "\n\n{% /field %}" in result, f"Expected blank line before closing tag: {result}"
+    assert "\n\n{% /field %}" in result, (
+        f"Expected blank line before closing tag: {result}"
+    )
 
 
 def test_mixed_content_blank_lines_correct() -> None:
@@ -1238,7 +1303,9 @@ def test_mixed_content_blank_lines_correct() -> None:
 
     # Should have blank line before list (list is block content)
     # and blank line before closing tag (after list)
-    assert "\n\n{% /field %}" in result, f"Expected blank line before closing tag: {result}"
+    assert "\n\n{% /field %}" in result, (
+        f"Expected blank line before closing tag: {result}"
+    )
 
 
 def test_closing_tag_spacing_function() -> None:

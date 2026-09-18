@@ -84,7 +84,10 @@ def install_skill(agent_base: str | None = None) -> None:
         skill_content = get_skill_content()
     except (ImportError, FileNotFoundError) as e:
         print(f"\n✗ Error: Could not load skill content: {e}", file=sys.stderr)
-        print("\nThis command requires flowmark to be installed as a package.", file=sys.stderr)
+        print(
+            "\nThis command requires flowmark to be installed as a package.",
+            file=sys.stderr,
+        )
         print("Install with: uv tool install flowmark", file=sys.stderr)
         sys.exit(1)
 
@@ -100,7 +103,9 @@ def install_skill(agent_base: str | None = None) -> None:
         print("=" * 70)
         print(f"\nLocation: {skill_file}")
         print(f"          ({location_path})")
-        print("\nClaude Code will now automatically use flowmark for Markdown formatting.")
+        print(
+            "\nClaude Code will now automatically use flowmark for Markdown formatting."
+        )
         print(f"To uninstall, remove this directory: {skill_dir}")
 
         # Show tip for project installs (when not using default global location)

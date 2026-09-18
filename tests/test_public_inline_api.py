@@ -28,7 +28,12 @@ def _parse(text: str) -> Document:
 
 def test_atomic_pattern_constructs_with_name_and_pattern_only() -> None:
     p = AtomicPattern(name="x", pattern=r"foo")
-    assert p.open_delim == "" and p.close_delim == "" and p.open_re == "" and p.close_re == ""
+    assert (
+        p.open_delim == ""
+        and p.close_delim == ""
+        and p.open_re == ""
+        and p.close_re == ""
+    )
 
 
 def test_markdown_inline_patterns_includes_links_and_urls() -> None:
@@ -59,10 +64,16 @@ def test_inline_math_spans_are_kept_whole_but_prose_currency_is_not() -> None:
     `their $420K ... paying $` matches as one 48-character atomic token and wraps
     ordinary prose far worse than not knowing about math at all.
     """
-    math = [s.text for s in iter_atomic_spans(r"and $H^1(X,\mathcal O_X)=0$ plus") if s.is_atomic]
+    math = [
+        s.text
+        for s in iter_atomic_spans(r"and $H^1(X,\mathcal O_X)=0$ plus")
+        if s.is_atomic
+    ]
     assert math == [r"$H^1(X,\mathcal O_X)=0$"]
 
-    currency = [s.text for s in iter_atomic_spans("it costs $5 and $10 more") if s.is_atomic]
+    currency = [
+        s.text for s in iter_atomic_spans("it costs $5 and $10 more") if s.is_atomic
+    ]
     assert currency == []
 
 
@@ -98,7 +109,10 @@ def test_extract_reference_link_resolves_destination() -> None:
 
 def test_extract_collapsed_and_shortcut_references() -> None:
     doc = _parse("[r][] and [r].\n\n[r]: http://ref.com\n")
-    assert [link.url for link in extract_links(doc)] == ["http://ref.com", "http://ref.com"]
+    assert [link.url for link in extract_links(doc)] == [
+        "http://ref.com",
+        "http://ref.com",
+    ]
 
 
 def test_nested_inline_markup_in_link_text() -> None:
@@ -122,7 +136,9 @@ def test_images_excluded_by_default_included_on_request() -> None:
 
 def test_email_autolink_text_is_display_not_destination() -> None:
     doc = _parse("<user@example.com>\n")
-    assert extract_links(doc) == [Link("user@example.com", "mailto:user@example.com", None)]
+    assert extract_links(doc) == [
+        Link("user@example.com", "mailto:user@example.com", None)
+    ]
 
 
 def test_empty_link_title_is_preserved_distinct_from_none() -> None:
@@ -170,7 +186,10 @@ def test_iter_atomic_spans_round_trip_and_offsets() -> None:
     spans = list(iter_atomic_spans(s))
     assert "".join(sp.text for sp in spans) == s
     assert all(s[sp.start : sp.end] == sp.text for sp in spans)
-    assert [sp.text for sp in spans if sp.is_atomic] == ["[a b](http://x.com)", "`co de`"]
+    assert [sp.text for sp in spans if sp.is_atomic] == [
+        "[a b](http://x.com)",
+        "`co de`",
+    ]
 
 
 def test_atomic_span_name_distinguishes_link_from_code() -> None:
@@ -187,7 +206,9 @@ def test_atomic_span_name_distinguishes_link_from_code() -> None:
 def test_iter_atomic_spans_empty_patterns_yields_single_nonatomic_span() -> None:
     from flowmark.atomic_spans import AtomicSpan
 
-    assert list(iter_atomic_spans("abc", patterns=())) == [AtomicSpan("abc", 0, 3, False)]
+    assert list(iter_atomic_spans("abc", patterns=())) == [
+        AtomicSpan("abc", 0, 3, False)
+    ]
     assert list(iter_atomic_spans("", patterns=())) == []
 
 
@@ -202,7 +223,10 @@ def test_split_sentences_with_spans_are_verbatim() -> None:
     s = "This is one sentence. Here is the second one."
     spans = split_sentences_with_spans(s, min_length=0)
     assert all(s[sp.start : sp.end] == sp.text for sp in spans)
-    assert [sp.text for sp in spans] == ["This is one sentence.", "Here is the second one."]
+    assert [sp.text for sp in spans] == [
+        "This is one sentence.",
+        "Here is the second one.",
+    ]
 
 
 def test_sentence_span_never_bisects_a_link_with_spaces() -> None:

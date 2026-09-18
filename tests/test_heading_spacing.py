@@ -65,7 +65,9 @@ def test_heading_spacing_before_list() -> None:
         + "\n"
     )
 
-    normalized_doc = fill_markdown(input_doc, semantic=True, list_spacing=ListSpacing.loose)
+    normalized_doc = fill_markdown(
+        input_doc, semantic=True, list_spacing=ListSpacing.loose
+    )
     assert normalized_doc == expected_doc
 
 

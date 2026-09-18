@@ -31,8 +31,12 @@ class FileResolver:
 
     def __init__(self, config: FileResolverConfig) -> None:
         self._config: FileResolverConfig = config
-        self._exclude_spec: pathspec.PathSpec = pathspec.PathSpec.from_lines("gitignore", config.effective_exclude)
-        self._include_spec: pathspec.PathSpec = pathspec.PathSpec.from_lines("gitignore", config.effective_include)
+        self._exclude_spec: pathspec.PathSpec = pathspec.PathSpec.from_lines(
+            "gitignore", config.effective_exclude
+        )
+        self._include_spec: pathspec.PathSpec = pathspec.PathSpec.from_lines(
+            "gitignore", config.effective_include
+        )
         self._tool_ignore_cache: dict[Path, pathspec.PathSpec | None] = {}
         # Cache gitignore specs per directory to avoid re-reading from disk.
         self._gitignore_cache: dict[Path, pathspec.PathSpec | None] = {}
@@ -103,7 +107,13 @@ class FileResolver:
             rel_to_root = current.relative_to(root)
 
             # Prune excluded directories in-place (prevents descent)
-            dirnames[:] = [d for d in dirnames if not self._is_dir_excluded(d, rel_to_root / d, current, tool_ignore, root)]
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if not self._is_dir_excluded(
+                    d, rel_to_root / d, current, tool_ignore, root
+                )
+            ]
 
             # Collect gitignore specs for this directory (including ancestors)
             gitignore_specs: list[pathspec.PathSpec] = []
@@ -185,7 +195,9 @@ class FileResolver:
             self._gitignore_cache[directory] = load_gitignore(directory)
         return self._gitignore_cache[directory]
 
-    def _get_gitignore_chain(self, directory: Path, walk_root: Path) -> list[pathspec.PathSpec]:
+    def _get_gitignore_chain(
+        self, directory: Path, walk_root: Path
+    ) -> list[pathspec.PathSpec]:
         """Collect all gitignore specs from walk_root down to directory (inclusive)."""
         specs: list[pathspec.PathSpec] = []
         resolved_root = walk_root.resolve()
@@ -209,5 +221,7 @@ class FileResolver:
         """Lazily load tool-specific ignore file, cached per resolved start directory."""
         resolved = start_dir.resolve()
         if resolved not in self._tool_ignore_cache:
-            self._tool_ignore_cache[resolved] = load_tool_ignore(self._config.tool_name, start_dir)
+            self._tool_ignore_cache[resolved] = load_tool_ignore(
+                self._config.tool_name, start_dir
+            )
         return self._tool_ignore_cache[resolved]

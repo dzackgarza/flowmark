@@ -146,9 +146,14 @@ def test_fenced_div_body_reflows_like_any_other_markdown() -> None:
     or not it is wrapped in a div.
     """
     bare = fill_markdown(DIV_PARAGRAPH, semantic=True, dedent_input=False)
-    wrapped = fill_markdown(f"::: {{.problem}}\n{DIV_PARAGRAPH}:::\n", semantic=True, dedent_input=False)
+    wrapped = fill_markdown(
+        f"::: {{.problem}}\n{DIV_PARAGRAPH}:::\n", semantic=True, dedent_input=False
+    )
 
-    assert bare == "The first sentence states a fact.\nThe second sentence states another fact entirely.\n"
+    assert (
+        bare
+        == "The first sentence states a fact.\nThe second sentence states another fact entirely.\n"
+    )
     assert wrapped == f"::: {{.problem}}\n{bare}:::\n"
 
 

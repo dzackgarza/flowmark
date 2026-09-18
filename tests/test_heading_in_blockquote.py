@@ -21,7 +21,9 @@ def test_heading_in_blockquote_keeps_quote_intact() -> None:
     )
     once = fill_markdown(input_doc, semantic=True)
     # The blank line the heading inserts must stay inside the quote.
-    assert "\n\n" not in once.strip(), f"blockquote split by unprefixed blank line:\n{once}"
+    assert "\n\n" not in once.strip(), (
+        f"blockquote split by unprefixed blank line:\n{once}"
+    )
     assert fill_markdown(once, semantic=True) == once, "formatting must be idempotent"
 
 
@@ -33,7 +35,9 @@ def test_heading_in_blockquote_before_paragraph() -> None:
         """
     )
     once = fill_markdown(input_doc, semantic=True)
-    assert "\n\n" not in once.strip(), f"blockquote split by unprefixed blank line:\n{once}"
+    assert "\n\n" not in once.strip(), (
+        f"blockquote split by unprefixed blank line:\n{once}"
+    )
     assert fill_markdown(once, semantic=True) == once, "formatting must be idempotent"
 
 
@@ -48,7 +52,9 @@ def test_heading_in_callout_keeps_callout_intact() -> None:
         """
     )
     once = fill_markdown(input_doc, semantic=True)
-    assert "\n\n" not in once.strip(), f"callout split by unprefixed blank line:\n{once}"
+    assert "\n\n" not in once.strip(), (
+        f"callout split by unprefixed blank line:\n{once}"
+    )
     assert fill_markdown(once, semantic=True) == once, "formatting must be idempotent"
 
 

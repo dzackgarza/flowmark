@@ -206,7 +206,9 @@ def test_normalize_table_separator() -> None:
 
     # With alignment
     assert normalize_table_separator("|:---|---:|:---:|") == "| :--- | ---: | :---: |"
-    assert normalize_table_separator("| :------------ | --------: |") == "| :--- | ---: |"
+    assert (
+        normalize_table_separator("| :------------ | --------: |") == "| :--- | ---: |"
+    )
 
     # Non-separator lines are returned unchanged
     assert normalize_table_separator("| A | B |") == "| A | B |"

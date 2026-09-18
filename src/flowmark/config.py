@@ -161,7 +161,14 @@ def merge_cli_with_config(
         return cli_opts
 
     # Fields that --auto locks (these come from the preset, not config)
-    auto_locked = {"semantic", "cleanups", "smartquotes", "ellipses", "inplace", "nobackup"}
+    auto_locked = {
+        "semantic",
+        "cleanups",
+        "smartquotes",
+        "ellipses",
+        "inplace",
+        "nobackup",
+    }
 
     for cfg_field in fields(FlowmarkConfig):
         cfg_value = getattr(config, cfg_field.name)

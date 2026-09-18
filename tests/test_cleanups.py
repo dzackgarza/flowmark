@@ -120,7 +120,9 @@ SUSPENSION_WORDS = ["and", "or", "to", "nor", "but", "through", "versus"]
 @pytest.mark.parametrize("word", SUSPENSION_WORDS)
 def test_suspended_hyphenation_is_never_joined(word: str) -> None:
     """One test per member of the suspension scope."""
-    result = fill_markdown(f"the pre-\n{word} post-stable models\n", cleanups=True, dedent_input=False)
+    result = fill_markdown(
+        f"the pre-\n{word} post-stable models\n", cleanups=True, dedent_input=False
+    )
 
     assert f"pre- {word}" in result, result
 
@@ -130,14 +132,18 @@ def test_an_authored_space_after_a_hyphen_is_left_alone() -> None:
     The rule fires only at a line join. A `degree- 2` the author typed on one
     line is the author's, and reflowing must not silently rewrite it.
     """
-    result = fill_markdown("the degree- 2 Coble locus\n", cleanups=True, dedent_input=False)
+    result = fill_markdown(
+        "the degree- 2 Coble locus\n", cleanups=True, dedent_input=False
+    )
 
     assert "degree- 2" in result, result
 
 
 def test_hyphen_join_requires_cleanups() -> None:
     """Without `-c` the faithful `SoftBreak` spacing stands."""
-    result = fill_markdown("the degree-\n2 Coble locus\n", cleanups=False, dedent_input=False)
+    result = fill_markdown(
+        "the degree-\n2 Coble locus\n", cleanups=False, dedent_input=False
+    )
 
     assert "degree- 2" in result, result
 
@@ -148,7 +154,9 @@ def test_hyphen_join_passes_verification() -> None:
     `Str "degree-2"`), so it needs a declared normalization rather than the gate
     being loosened.
     """
-    reformat_text("the degree-\n2 Coble locus and more words\n", cleanups=True, verify=True)
+    reformat_text(
+        "the degree-\n2 Coble locus and more words\n", cleanups=True, verify=True
+    )
 
 
 def test_hyphen_join_scope_matches_the_cleanup() -> None:
@@ -172,7 +180,10 @@ def test_gate_refuses_a_joined_suspension(word: str) -> None:
     hyphen corrupts the sentence.
     """
     with pytest.raises(MeaningChangedError):
-        check_meaning_preserved(f"the pre-\n{word} post-stable models\n", f"the pre-{word} post-stable models\n")
+        check_meaning_preserved(
+            f"the pre-\n{word} post-stable models\n",
+            f"the pre-{word} post-stable models\n",
+        )
 
 
 def test_hyphen_join_reports_how_many(capsys: pytest.CaptureFixture[str]) -> None:
@@ -180,6 +191,10 @@ def test_hyphen_join_reports_how_many(capsys: pytest.CaptureFixture[str]) -> Non
     #18 asks for a count rather than silence, because the scope is heuristic and
     will not be right every time. Saying how many is what lets a reader check them.
     """
-    fill_markdown("the degree-\n2 locus and the white-\nroot wall\n", cleanups=True, dedent_input=False)
+    fill_markdown(
+        "the degree-\n2 locus and the white-\nroot wall\n",
+        cleanups=True,
+        dedent_input=False,
+    )
 
     assert "closed up 2 line breaks" in capsys.readouterr().err

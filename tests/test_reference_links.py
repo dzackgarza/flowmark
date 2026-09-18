@@ -40,7 +40,9 @@ def test_label_equals_text_not_collapsed_to_shortcut() -> None:
     md = flowmark_markdown()
     src = "Use [flowmark][flowmark]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
     result = md(src)
-    assert result == "Use [flowmark][]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
+    assert (
+        result == "Use [flowmark][]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
+    )
 
 
 def test_issue_45_link_survives_round_trip() -> None:
@@ -65,7 +67,9 @@ def test_shortcut_input_normalized_to_collapsed_reference() -> None:
     """A shortcut reference [flowmark] is normalized to the explicit [flowmark][]."""
     md = flowmark_markdown()
     src = "Use [flowmark]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
-    assert md(src) == "Use [flowmark][]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
+    assert (
+        md(src) == "Use [flowmark][]\n\n[flowmark]: https://github.com/jlevy/flowmark\n"
+    )
 
 
 def test_label_equals_text_followed_by_parens_keeps_link() -> None:

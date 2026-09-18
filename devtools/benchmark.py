@@ -36,14 +36,18 @@ DEFAULT_TEST_FILE = Path("tests/testdocs/testdoc.orig.md")
 DEFAULT_ITERATIONS = 10
 
 
-def benchmark_current(test_file: Path, iterations: int, semantic: bool = True) -> list[float]:
+def benchmark_current(
+    test_file: Path, iterations: int, semantic: bool = True
+) -> list[float]:
     """Benchmark the current dev version by importing directly."""
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
     from flowmark import reformat_text
 
     content = test_file.read_text()
     print("Benchmarking current dev version")
-    print(f"File: {test_file} ({len(content)} chars, {len(content.splitlines())} lines)")
+    print(
+        f"File: {test_file} ({len(content)} chars, {len(content.splitlines())} lines)"
+    )
     print(f"Running {iterations} iterations...\n")
 
     times: list[float] = []
@@ -57,11 +61,15 @@ def benchmark_current(test_file: Path, iterations: int, semantic: bool = True) -
     return times
 
 
-def benchmark_version(version: str, test_file: Path, iterations: int, semantic: bool = True) -> list[float]:
+def benchmark_version(
+    version: str, test_file: Path, iterations: int, semantic: bool = True
+) -> list[float]:
     """Benchmark a specific released version using uvx."""
     content = test_file.read_text()
     print(f"Benchmarking v{version}")
-    print(f"File: {test_file} ({len(content)} chars, {len(content.splitlines())} lines)")
+    print(
+        f"File: {test_file} ({len(content)} chars, {len(content.splitlines())} lines)"
+    )
     print(f"Running {iterations} iterations...\n")
 
     benchmark_script = dedent(f'''
@@ -128,7 +136,9 @@ def profile_current(test_file: Path, semantic: bool = True) -> None:
 
     content = test_file.read_text()
     print("Profiling current dev version")
-    print(f"File: {test_file} ({len(content)} chars, {len(content.splitlines())} lines)\n")
+    print(
+        f"File: {test_file} ({len(content)} chars, {len(content.splitlines())} lines)\n"
+    )
 
     profiler = cProfile.Profile()
     profiler.enable()
@@ -196,7 +206,9 @@ def main() -> None:
     elif args.compare:
         current_times = benchmark_current(args.file, args.iterations, semantic=semantic)
         print()
-        old_times = benchmark_version(args.compare, args.file, args.iterations, semantic=semantic)
+        old_times = benchmark_version(
+            args.compare, args.file, args.iterations, semantic=semantic
+        )
 
         print_stats("Current dev version", current_times)
         print_stats(f"v{args.compare}", old_times)
@@ -213,7 +225,9 @@ def main() -> None:
                 print(f"  Current is {abs(diff_pct):.1f}% faster than v{args.compare}")
             print(f"  Ratio: {ratio:.2f}x")
     elif args.version:
-        times = benchmark_version(args.version, args.file, args.iterations, semantic=semantic)
+        times = benchmark_version(
+            args.version, args.file, args.iterations, semantic=semantic
+        )
         print_stats(f"v{args.version}", times)
     else:
         times = benchmark_current(args.file, args.iterations, semantic=semantic)

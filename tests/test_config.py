@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from flowmark.cli import Options
-from flowmark.config import FlowmarkConfig, find_config_file, load_config, merge_cli_with_config
+from flowmark.config import (
+    FlowmarkConfig,
+    find_config_file,
+    load_config,
+    merge_cli_with_config,
+)
 from flowmark.formats.flowmark_markdown import ListSpacing
 
 
@@ -55,7 +60,9 @@ def test_find_config_none_when_missing(tmp_path: Path) -> None:
 
 def test_load_config_flowmark_toml(tmp_path: Path) -> None:
     config_file = tmp_path / "flowmark.toml"
-    config_file.write_text("[formatting]\nwidth = 100\nsemantic = true\nsmartquotes = true\n")
+    config_file.write_text(
+        "[formatting]\nwidth = 100\nsemantic = true\nsmartquotes = true\n"
+    )
     config = load_config(config_file)
     assert config.width == 100
     assert config.semantic is True
@@ -87,7 +94,9 @@ def test_load_config_kebab_case(tmp_path: Path) -> None:
 
 def test_load_config_file_discovery_section(tmp_path: Path) -> None:
     config_file = tmp_path / "flowmark.toml"
-    config_file.write_text('[file-discovery]\nextend-include = ["*.mdx", "*.markdown"]\nexclude = ["my_custom/"]\n')
+    config_file.write_text(
+        '[file-discovery]\nextend-include = ["*.mdx", "*.markdown"]\nexclude = ["my_custom/"]\n'
+    )
     config = load_config(config_file)
     assert config.extend_include == ["*.mdx", "*.markdown"]
     assert config.exclude == ["my_custom/"]
@@ -160,7 +169,9 @@ def _make_options(  # pyright: ignore[reportUnusedParameter]
 
 def test_merge_no_config() -> None:
     opts = _make_options(width=88, semantic=False)
-    result = merge_cli_with_config(opts, config=None, is_auto=False, explicit_flags=set())
+    result = merge_cli_with_config(
+        opts, config=None, is_auto=False, explicit_flags=set()
+    )
     assert result.width == 88
     assert result.semantic is False
 
@@ -168,7 +179,9 @@ def test_merge_no_config() -> None:
 def test_merge_config_overrides_defaults() -> None:
     opts = _make_options()
     config = FlowmarkConfig(width=100, semantic=True)
-    result = merge_cli_with_config(opts, config=config, is_auto=False, explicit_flags=set())
+    result = merge_cli_with_config(
+        opts, config=config, is_auto=False, explicit_flags=set()
+    )
     assert result.width == 100
     assert result.semantic is True
 
@@ -176,7 +189,9 @@ def test_merge_config_overrides_defaults() -> None:
 def test_merge_explicit_cli_overrides_config() -> None:
     opts = _make_options(width=120)
     config = FlowmarkConfig(width=100)
-    result = merge_cli_with_config(opts, config=config, is_auto=False, explicit_flags={"width"})
+    result = merge_cli_with_config(
+        opts, config=config, is_auto=False, explicit_flags={"width"}
+    )
     assert result.width == 120
 
 
@@ -190,7 +205,9 @@ def test_merge_auto_mode_overrides_formatting() -> None:
         inplace=True,
         nobackup=True,
     )
-    result = merge_cli_with_config(opts, config=config, is_auto=True, explicit_flags=set())
+    result = merge_cli_with_config(
+        opts, config=config, is_auto=True, explicit_flags=set()
+    )
     # --auto forces formatting settings on
     assert result.semantic is True
     assert result.smartquotes is True
@@ -209,7 +226,9 @@ def test_merge_auto_mode_width_from_config() -> None:
         inplace=True,
         nobackup=True,
     )
-    result = merge_cli_with_config(opts, config=config, is_auto=True, explicit_flags=set())
+    result = merge_cli_with_config(
+        opts, config=config, is_auto=True, explicit_flags=set()
+    )
     # Width should come from config even in auto mode
     assert result.width == 100
 
@@ -217,7 +236,9 @@ def test_merge_auto_mode_width_from_config() -> None:
 def test_merge_file_discovery_from_config() -> None:
     config = FlowmarkConfig(extend_exclude=["vendor/"], files_max_size=500000)
     opts = _make_options()
-    result = merge_cli_with_config(opts, config=config, is_auto=False, explicit_flags=set())
+    result = merge_cli_with_config(
+        opts, config=config, is_auto=False, explicit_flags=set()
+    )
     assert result.extend_exclude == ["vendor/"]
     assert result.files_max_size == 500000
 
@@ -226,7 +247,9 @@ def test_merge_extend_include_from_config() -> None:
     """Config extend_include should be applied when not explicitly set (fm-p6x5)."""
     config = FlowmarkConfig(extend_include=["*.mdx", "*.markdown"])
     opts = _make_options()
-    result = merge_cli_with_config(opts, config=config, is_auto=False, explicit_flags=set())
+    result = merge_cli_with_config(
+        opts, config=config, is_auto=False, explicit_flags=set()
+    )
     assert result.extend_include == ["*.mdx", "*.markdown"]
 
 
@@ -240,7 +263,9 @@ def test_load_config_malformed_toml(tmp_path: Path) -> None:
     assert config.semantic is None
 
 
-def test_parse_config_warns_unknown_keys(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_parse_config_warns_unknown_keys(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Unknown keys in config should produce a warning (fm-y9cx)."""
     config_file = tmp_path / "flowmark.toml"
     config_file.write_text("unknown_key = true\nwidth = 100\n")

@@ -117,7 +117,10 @@ def test_indented_code_block_as_first_block_stays_code() -> None:
     The four-space indent is the only thing marking the block as code, and it
     sits where the document-edge strip could reach it.
     """
-    assert reformat_text("    literal code\n\nAfter.\n") == "```\nliteral code\n```\n\nAfter.\n"
+    assert (
+        reformat_text("    literal code\n\nAfter.\n")
+        == "```\nliteral code\n```\n\nAfter.\n"
+    )
 
 
 def test_indented_code_block_alone_stays_code() -> None:
@@ -126,7 +129,10 @@ def test_indented_code_block_alone_stays_code() -> None:
 
 
 def test_indented_code_block_after_paragraph_stays_code() -> None:
-    assert reformat_text("Intro.\n\n    literal code\n\nAfter.\n") == "Intro.\n\n```\nliteral code\n```\n\nAfter.\n"
+    assert (
+        reformat_text("Intro.\n\n    literal code\n\nAfter.\n")
+        == "Intro.\n\n```\nliteral code\n```\n\nAfter.\n"
+    )
 
 
 def test_leading_blank_lines_are_still_stripped() -> None:

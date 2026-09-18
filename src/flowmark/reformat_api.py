@@ -82,7 +82,10 @@ def reformat_text(
                 findings = preflight(text)
                 if not findings:
                     raise
-                named = "; ".join(f"{verify_label}:{finding.line}: {finding.message}" for finding in findings[:3])
+                named = "; ".join(
+                    f"{verify_label}:{finding.line}: {finding.message}"
+                    for finding in findings[:3]
+                )
                 more = "" if len(findings) <= 3 else f" (and {len(findings) - 3} more)"
                 raise MeaningChangedError(
                     f"Refusing to write {verify_label}: reformatting would change what "
@@ -178,7 +181,9 @@ def reformat_file(
 
     if inplace:
         backup_suffix = ".orig" if not nobackup else ""
-        with atomic_output_file(path, backup_suffix=backup_suffix, make_parents=make_parents) as tmp_path:
+        with atomic_output_file(
+            path, backup_suffix=backup_suffix, make_parents=make_parents
+        ) as tmp_path:
             tmp_path.write_text(result)
     else:
         if not output or write_stdout:
@@ -244,7 +249,9 @@ def reformat_files(
 
     # Multiple files case
     if not inplace and output and output != "-":
-        raise ValueError("Cannot specify output file when processing multiple files (use --inplace instead)")
+        raise ValueError(
+            "Cannot specify output file when processing multiple files (use --inplace instead)"
+        )
 
     refused = 0
     for file_path in files:

@@ -100,7 +100,12 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         default=88,
         help="Line width to wrap to, or 0 to disable line wrapping (default: %(default)s)",
     )
-    parser.add_argument("-p", "--plaintext", action="store_true", help="Process as plaintext (no Markdown parsing)")
+    parser.add_argument(
+        "-p",
+        "--plaintext",
+        action="store_true",
+        help="Process as plaintext (no Markdown parsing)",
+    )
     parser.add_argument(
         "-s",
         "--semantic",
@@ -146,7 +151,12 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         "'loose' adds blank lines between all items, 'tight' removes blank lines where possible "
         "(default: %(default)s)",
     )
-    parser.add_argument("-i", "--inplace", action="store_true", help="Edit the file in place (ignores --output)")
+    parser.add_argument(
+        "-i",
+        "--inplace",
+        action="store_true",
+        help="Edit the file in place (ignores --output)",
+    )
     parser.add_argument(
         "--nobackup",
         action="store_true",
@@ -262,12 +272,22 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
     # append actions use None as sentinel (argparse creates a list when the flag is used).
     sentinel_parser = argparse.ArgumentParser(add_help=False)
     sentinel_parser.add_argument("-w", "--width", type=int, default=_SENTINEL)
-    sentinel_parser.add_argument("-s", "--semantic", action="store_true", default=_SENTINEL)
-    sentinel_parser.add_argument("-c", "--cleanups", action="store_true", default=_SENTINEL)
-    sentinel_parser.add_argument("--smartquotes", action="store_true", default=_SENTINEL)
+    sentinel_parser.add_argument(
+        "-s", "--semantic", action="store_true", default=_SENTINEL
+    )
+    sentinel_parser.add_argument(
+        "-c", "--cleanups", action="store_true", default=_SENTINEL
+    )
+    sentinel_parser.add_argument(
+        "--smartquotes", action="store_true", default=_SENTINEL
+    )
     sentinel_parser.add_argument("--ellipses", action="store_true", default=_SENTINEL)
-    sentinel_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=_SENTINEL)
-    sentinel_parser.add_argument("--list-spacing", dest="list_spacing", default=_SENTINEL)
+    sentinel_parser.add_argument(
+        "--verify", action=argparse.BooleanOptionalAction, default=_SENTINEL
+    )
+    sentinel_parser.add_argument(
+        "--list-spacing", dest="list_spacing", default=_SENTINEL
+    )
     sentinel_parser.add_argument("--extend-include", action="append", default=None)
     sentinel_parser.add_argument("--exclude", action="append", default=None)
     sentinel_parser.add_argument("--extend-exclude", action="append", default=None)
@@ -277,9 +297,15 @@ def _parse_args(args: list[str] | None = None) -> tuple[Options, set[str], bool]
         action="store_true",
         default=_SENTINEL,
     )
-    sentinel_parser.add_argument("--force-exclude", dest="force_exclude", action="store_true", default=_SENTINEL)
-    sentinel_parser.add_argument("--files-max-size", type=int, dest="files_max_size", default=_SENTINEL)
-    sentinel_opts, _ = sentinel_parser.parse_known_args(args if args is not None else sys.argv[1:])
+    sentinel_parser.add_argument(
+        "--force-exclude", dest="force_exclude", action="store_true", default=_SENTINEL
+    )
+    sentinel_parser.add_argument(
+        "--files-max-size", type=int, dest="files_max_size", default=_SENTINEL
+    )
+    sentinel_opts, _ = sentinel_parser.parse_known_args(
+        args if args is not None else sys.argv[1:]
+    )
 
     explicit_flags: set[str] = set()
     for dest_name, field_name in _tracked_flags.items():

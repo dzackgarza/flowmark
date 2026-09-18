@@ -63,7 +63,9 @@ class TestGetDocsContent:
 class TestInstallSkill:
     """Tests for install_skill function."""
 
-    def test_install_skill_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_install_skill_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Skill installs to ~/.claude by default."""
         # Mock Path.home() to return tmp_path
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
