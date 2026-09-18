@@ -500,3 +500,21 @@ found most useful.
 
 For development workflows, see [development.md](docs/development.md).
 
+
+## Pandoc-aware linting
+
+Flowmark also ships a standalone linter over the same semantic Markdown parser used by
+the formatter. It understands Flowmark's Pandoc-oriented constructs (including math, raw
+TeX, fenced divs, definition lists, tables, and footnotes) before applying style checks,
+so TeX underscores and asterisks are not reinterpreted as Markdown emphasis.
+
+```bash
+flowmark-lint README.md
+flowmark-lint --format json --exit-zero - < document.md
+```
+
+The Python API is `flowmark.lint_text()`. Diagnostics use 1-based source coordinates and
+stable rule ids. `pandoc/ambiguous-input` reports high-confidence semantic ambiguities;
+`format/canonical` reports source ranges that differ from Flowmark's canonical rendering.
+The linter does not edit files.
+

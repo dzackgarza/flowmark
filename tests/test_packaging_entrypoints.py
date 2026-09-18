@@ -19,3 +19,4 @@ def test_flowmark_py_alias_entrypoint() -> None:
 
     assert scripts["flowmark"] == "flowmark.cli:main"
     assert scripts["flowmark-py"] == "flowmark.cli:main"
+    assert scripts["flowmark-lint"] == "flowmark.lint_cli:main"

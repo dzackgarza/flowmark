@@ -63,6 +63,7 @@ dev = [
 # Add script entry points here.
 flowmark = "flowmark.cli:main"
 flowmark-py = "flowmark.cli:main"
+flowmark-lint = "flowmark.lint_cli:main"
 
 
 
