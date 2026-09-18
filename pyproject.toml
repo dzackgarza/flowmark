@@ -86,6 +86,10 @@ source = "uv-dynamic-versioning"
 vcs = "git"
 style = "pep440"
 bump = true
+# Source archives/submodule exports have no live .git metadata. They remain
+# installable as standalone Flowmark distributions under an explicit sentinel
+# version instead of making Git checkout state a runtime requirement.
+fallback-version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 # The source location for the package.

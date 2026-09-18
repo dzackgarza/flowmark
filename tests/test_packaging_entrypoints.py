@@ -20,3 +20,10 @@ def test_flowmark_py_alias_entrypoint() -> None:
     assert scripts["flowmark"] == "flowmark.cli:main"
     assert scripts["flowmark-py"] == "flowmark.cli:main"
     assert scripts["flowmark-lint"] == "flowmark.lint_cli:main"
+
+
+def test_source_archive_has_explicit_dynamic_version_fallback() -> None:
+    """A copied/submodule-exported source tree must build without .git metadata."""
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    assert data["tool"]["uv-dynamic-versioning"]["fallback-version"] == "0.0.0"
