@@ -514,7 +514,24 @@ flowmark-lint --format json --exit-zero - < document.md
 ```
 
 The Python API is `flowmark.lint_text()`. Diagnostics use 1-based source coordinates and
-stable rule ids. `pandoc/ambiguous-input` reports high-confidence semantic ambiguities;
-`format/canonical` reports source ranges that differ from Flowmark's canonical rendering.
-The linter does not edit files.
+stable rule ids. The default rule layer checks structural/semantic failures that a
+formatter cannot safely infer away: heading hierarchy/duplicates, reference and footnote
+integrity, malformed or empty links, local fragments and local-file targets, image alt
+text, fenced-code language/tabs/boundaries, frontmatter integrity, duplicate Pandoc ids,
+malformed attributes, and unclosed fenced-div/math/TeX constructs. `pandoc/ambiguous-input`
+adds the high-confidence ambiguity checks from Flowmark's preflight, while
+`format/canonical` reports remaining source ranges that differ from Flowmark's canonical
+rendering. The linter does not edit files.
+
+Pure house-style policies are opt-in instead of being treated as Markdown correctness:
+
+```bash
+flowmark-lint --style bare-url --style heading-punctuation README.md
+flowmark-lint --style unordered-list-marker --style fence-marker README.md
+flowmark-lint --style require-h1 --style no-inline-html README.md
+flowmark-lint --max-line-length 100 README.md
+```
+
+Editor/stdin clients can supply `--source-path PATH` so relative links and cross-file
+Markdown fragments are checked against the document's real location.
 

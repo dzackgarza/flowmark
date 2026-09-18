@@ -6,14 +6,18 @@ source.  Consequently math, raw TeX, fenced divs, definition lists, tables, foot
 and the other constructs Flowmark models are opaque or structured in exactly the same
 places during linting as they are during formatting.
 
-Two rule families are reported:
+Three layers are reported:
 
-* ``pandoc/ambiguous-input``: high-confidence constructs already detected by
-  :func:`flowmark.preflight.preflight` as likely to be read by Pandoc differently from
-  what the author intended.
-* ``format/canonical``: source ranges whose spelling differs from Flowmark's canonical
-  rendering under the requested formatting policy.  This is a semantic normalization
-  check, not a regex style checker: the source is parsed before it is rendered.
+* explicit semantic/structural rules (references, headings, links, footnotes,
+  frontmatter, Pandoc attributes, code fences, and malformed math/TeX constructs);
+* ``pandoc/ambiguous-input`` high-confidence ambiguity checks from
+  :func:`flowmark.preflight.preflight`;
+* ``format/canonical`` source ranges whose spelling differs from Flowmark's canonical
+  rendering under the requested formatting policy.
+
+Optional house-style policies are selected with :class:`StyleRule`; they are separate
+from the default correctness rules so valid Pandoc Markdown is not rejected merely for
+being written in another conventional style.
 
 The public result is editor-neutral.  A CLI, an editor, CI, or a pre-commit hook can all
 consume the same diagnostics without importing CodeMirror or any Zettlr code.
@@ -21,11 +25,13 @@ consume the same diagnostics without importing CodeMirror or any Zettlr code.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from difflib import SequenceMatcher
 from enum import StrEnum
+from pathlib import Path
 
 from flowmark.formats.flowmark_markdown import ListSpacing
+from flowmark.lint_rules import StyleRule, lint_rule_findings
 from flowmark.preflight import preflight
 from flowmark.reformat_api import reformat_text
 
@@ -74,6 +80,8 @@ class LintOptions:
     ellipses: bool = False
     list_spacing: ListSpacing = ListSpacing.preserve
     check_format: bool = True
+    styles: frozenset[StyleRule] = field(default_factory=frozenset)
+    max_line_length: int | None = None
 
 
 def _line_end_column(lines: list[str], line: int) -> int:
@@ -130,7 +138,48 @@ def _format_diagnostics(source: str, normalized: str) -> list[LintDiagnostic]:
     return diagnostics
 
 
-def lint_text(text: str, options: LintOptions | None = None) -> list[LintDiagnostic]:
+def _offset_to_point(text: str, offset: int) -> tuple[int, int]:
+    """Convert a source offset to a 1-based ``(line, column)`` pair."""
+    offset = min(max(offset, 0), len(text))
+    line = text.count("\n", 0, offset) + 1
+    last_newline = text.rfind("\n", 0, offset)
+    column = offset - last_newline
+    return line, column
+
+
+def _explicit_rule_diagnostics(
+    text: str, options: LintOptions, source_path: Path | None
+) -> list[LintDiagnostic]:
+    diagnostics: list[LintDiagnostic] = []
+    for finding in lint_rule_findings(
+        text,
+        source_path=source_path,
+        styles=options.styles,
+        max_line_length=options.max_line_length,
+    ):
+        line, column = _offset_to_point(text, finding.start)
+        end_line, end_column = _offset_to_point(text, finding.end)
+        diagnostics.append(
+            LintDiagnostic(
+                rule=finding.rule,
+                severity=Severity(finding.severity),
+                message=finding.message,
+                line=line,
+                column=column,
+                end_line=end_line,
+                end_column=end_column,
+                replacement=finding.replacement,
+            )
+        )
+    return diagnostics
+
+
+def lint_text(
+    text: str,
+    options: LintOptions | None = None,
+    *,
+    source_path: Path | None = None,
+) -> list[LintDiagnostic]:
     """Lint one Markdown document without modifying it.
 
     Ambiguous-input findings are returned first.  If they exist, canonical-format
@@ -140,6 +189,7 @@ def lint_text(text: str, options: LintOptions | None = None) -> list[LintDiagnos
     if options is None:
         options = LintOptions()
 
+    explicit = _explicit_rule_diagnostics(text, options, source_path)
     ambiguous = [
         LintDiagnostic(
             rule="pandoc/ambiguous-input",
@@ -154,8 +204,13 @@ def lint_text(text: str, options: LintOptions | None = None) -> list[LintDiagnos
         )
         for finding in preflight(text)
     ]
-    if ambiguous or not options.check_format:
-        return ambiguous
+    diagnostics = [*explicit, *ambiguous]
+    diagnostics.sort(key=lambda item: (item.line, item.column, item.rule))
+    if (
+        any(item.severity is Severity.ERROR for item in diagnostics)
+        or not options.check_format
+    ):
+        return diagnostics
 
     normalized = reformat_text(
         text,
@@ -168,7 +223,17 @@ def lint_text(text: str, options: LintOptions | None = None) -> list[LintDiagnos
         list_spacing=options.list_spacing,
         verify=False,
     )
-    return _format_diagnostics(text, normalized)
+    canonical = [
+        item
+        for item in _format_diagnostics(text, normalized)
+        if not any(
+            not (
+                item.end_line < explicit_item.line or explicit_item.end_line < item.line
+            )
+            for explicit_item in diagnostics
+        )
+    ]
+    return [*diagnostics, *canonical]
 
 
-__all__ = ("LintDiagnostic", "LintOptions", "Severity", "lint_text")
+__all__ = ("LintDiagnostic", "LintOptions", "Severity", "StyleRule", "lint_text")

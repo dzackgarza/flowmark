@@ -10,7 +10,7 @@ from typing import TypedDict
 
 from flowmark.file_resolver import FileResolver, FileResolverConfig
 from flowmark.formats.flowmark_markdown import ListSpacing
-from flowmark.lint import LintOptions, lint_text
+from flowmark.lint import LintOptions, StyleRule, lint_text
 
 
 class LintFileResult(TypedDict):
@@ -62,6 +62,28 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--list-spacing", choices=("preserve", "loose", "tight"), default="preserve"
     )
+    parser.add_argument(
+        "--style",
+        action="append",
+        choices=tuple(rule.value for rule in StyleRule),
+        default=[],
+        metavar="RULE",
+        help="Enable an opt-in style rule; may be repeated",
+    )
+    parser.add_argument(
+        "--max-line-length",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Warn when an ordinary prose line exceeds N characters",
+    )
+    parser.add_argument(
+        "--source-path",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Path context for stdin, used to resolve relative links",
+    )
     return parser
 
 
@@ -96,6 +118,8 @@ def _options(args: argparse.Namespace) -> LintOptions:
         ellipses=args.ellipses,
         list_spacing=ListSpacing(args.list_spacing),
         check_format=not args.no_format_check,
+        styles=frozenset(StyleRule(value) for value in args.style),
+        max_line_length=args.max_line_length,
     )
 
 
@@ -118,8 +142,14 @@ def main(argv: list[str] | None = None) -> int:
     diagnostic_count = 0
 
     for path in paths:
+        source_path = (
+            Path(args.source_path)
+            if path == "-" and args.source_path is not None
+            else (None if path == "-" else Path(path))
+        )
         diagnostics = [
-            diagnostic.to_json() for diagnostic in lint_text(_read(path), options)
+            diagnostic.to_json()
+            for diagnostic in lint_text(_read(path), options, source_path=source_path)
         ]
         diagnostic_count += len(diagnostics)
         results.append({"path": path, "diagnostics": diagnostics})

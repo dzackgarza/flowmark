@@ -7,6 +7,7 @@ __all__ = (
     "lint_text",
     "LintDiagnostic",
     "LintOptions",
+    "StyleRule",
     "get_html_md_word_splitter",
     "simple_word_splitter",
     "line_wrap_by_sentence",
@@ -28,7 +29,7 @@ __all__ = (
 )
 
 from flowmark.formats.flowmark_markdown import flowmark_markdown
-from flowmark.lint import LintDiagnostic, LintOptions, lint_text
+from flowmark.lint import LintDiagnostic, LintOptions, StyleRule, lint_text
 from flowmark.linewrapping.line_wrappers import (
     line_wrap_by_sentence,
     line_wrap_to_width,
