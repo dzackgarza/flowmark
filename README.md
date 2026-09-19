@@ -518,11 +518,14 @@ stable rule ids. The default rule layer checks structural/semantic failures that
 formatter cannot safely infer away: heading hierarchy/duplicates, reference and footnote
 integrity, malformed or empty links, local fragments and local-file targets, image alt
 text, fenced-code language/tabs/boundaries, frontmatter integrity, duplicate Pandoc ids,
-malformed attributes, mismatched/unclosed TeX environments, repeated TeX subscripts or
-superscripts, and likely bare mathematical operators. `pandoc/ambiguous-input` adds the
-high-confidence ambiguity checks from Flowmark's preflight. Formatter normalization is
-not a lint diagnostic; use the formatter itself when canonical source spelling matters.
-The linter does not edit files.
+malformed attributes, mismatched/unclosed TeX environments, unbalanced TeX groups and
+`\\left`/`\\right` pairs, repeated TeX subscripts or superscripts, likely bare mathematical
+operators, and statically resolvable missing Pandoc/TeX resources. Resource checks are
+deliberately limited to explicit Pandoc-local paths; TeX search paths belong to the
+calling editor/build environment and are not guessed. `pandoc/ambiguous-input` adds the high-confidence ambiguity
+checks from Flowmark's preflight. Formatter normalization is not a lint diagnostic; use
+the formatter itself when canonical source spelling matters. The linter does not edit
+files.
 
 Pure house-style policies are opt-in instead of being treated as Markdown correctness:
 

@@ -9,13 +9,8 @@ import pytest
 from flowmark.lint import LintOptions, StyleRule, lint_text
 
 
-def rule_ids(
-    text: str, *, options: LintOptions | None = None, source_path: Path | None = None
-) -> set[str]:
-    return {
-        diagnostic.rule
-        for diagnostic in lint_text(text, options, source_path=source_path)
-    }
+def rule_ids(text: str, *, options: LintOptions | None = None, source_path: Path | None = None) -> set[str]:
+    return {diagnostic.rule for diagnostic in lint_text(text, options, source_path=source_path)}
 
 
 @pytest.mark.parametrize(
@@ -64,13 +59,15 @@ def rule_ids(
         ("Inline \\(x_i with no closer.\n", "math/unclosed-inline"),
         ("Inline $x_i_j$.\n", "math/repeated-subscript"),
         ("Inline $x^2^3$.\n", "math/repeated-superscript"),
+        ("Inline $x_{i$.\n", "math/unclosed-group"),
+        ("Inline $x_i}$.\n", "math/unmatched-group-close"),
+        ("Inline $\\left(x$.\n", "math/unclosed-left"),
+        ("Inline $x\\right)$.\n", "math/unmatched-right"),
         ("Inline $Hom_R(M,N)$.\n", "math/bare-operator"),
         ("$$\nSpec R \\to Proj S\n$$\n", "math/bare-operator"),
     ],
 )
-def test_default_rules_cover_common_structural_and_semantic_failures(
-    source: str, expected: str
-) -> None:
+def test_default_rules_cover_common_structural_and_semantic_failures(source: str, expected: str) -> None:
     assert expected in rule_ids(source)
 
 
@@ -80,11 +77,7 @@ def test_semantic_diagnostics_do_not_depend_on_formatter_spelling() -> None:
 
 
 def test_math_code_and_raw_tex_are_opaque_to_markdown_rules() -> None:
-    source = (
-        "Math $[x][missing] * text * x_i$, \\(y_j [bad](url]\\), "
-        "and \\underline{z_k}.\n\n"
-        "```text\n#Heading\n[text][missing]\nhttps://example.com\n```\n"
-    )
+    source = "Math $[x][missing] * text * x_i$, \\(y_j [bad](url]\\), and \\underline{z_k}.\n\n```text\n#Heading\n[text][missing]\nhttps://example.com\n```\n"
     diagnostics = lint_text(
         source,
         LintOptions(styles=frozenset({StyleRule.BARE_URL})),
@@ -105,14 +98,23 @@ def test_semantic_math_macros_and_braced_scripts_are_quiet() -> None:
     assert "math/bare-operator" not in rules
 
 
-def test_tex_and_math_examples_inside_code_fences_are_literal() -> None:
-    source = (
-        "```tex\n"
-        "\\begin{align}\n"
-        "$x_i_j = Hom(M,N)$\n"
-        "\\end{equation}\n"
-        "```\n"
+def test_escaped_braces_and_tex_comments_do_not_corrupt_math_group_balance() -> None:
+    source = "$\\left\\{ x_{i} \\right\\}$\n\n$$\nx_{i} % a comment with unmatched } and \\right\n+ y_{j}\n$$\n"
+    rules = rule_ids(source)
+    assert not any(
+        rule
+        in {
+            "math/unclosed-group",
+            "math/unmatched-group-close",
+            "math/unclosed-left",
+            "math/unmatched-right",
+        }
+        for rule in rules
     )
+
+
+def test_tex_and_math_examples_inside_code_fences_are_literal() -> None:
+    source = "```tex\n\\begin{align}\n$x_i_j = Hom(M,N)$\n\\end{equation}\n```\n"
     rules = rule_ids(source)
     assert "tex/mismatched-environment" not in rules
     assert "math/repeated-subscript" not in rules
@@ -121,11 +123,7 @@ def test_tex_and_math_examples_inside_code_fences_are_literal() -> None:
 
 def test_valid_reference_footnote_fragment_and_image_are_quiet() -> None:
     source = (
-        "# Target Heading\n\n"
-        "[reference][ref] and [fragment](#target-heading) and ![diagram](image.png).\n\n"
-        "Text[^note].\n\n"
-        "[ref]: https://example.com\n"
-        "[^note]: Footnote.\n"
+        "# Target Heading\n\n[reference][ref] and [fragment](#target-heading) and ![diagram](image.png).\n\nText[^note].\n\n[ref]: https://example.com\n[^note]: Footnote.\n"
     )
     assert lint_text(source) == []
 
@@ -134,25 +132,14 @@ def test_local_file_and_cross_file_fragment_validation(tmp_path: Path) -> None:
     source_path = tmp_path / "source.md"
     target = tmp_path / "target.md"
     target.write_text("# Existing Heading\n")
-    source = (
-        "[ok](target.md#existing-heading) "
-        "[missing](absent.md) "
-        "[bad-fragment](target.md#missing-heading)\n"
-    )
+    source = "[ok](target.md#existing-heading) [missing](absent.md) [bad-fragment](target.md#missing-heading)\n"
     rules = rule_ids(source, source_path=source_path)
     assert "link/missing-local-target" in rules
     assert "link/invalid-fragment" in rules
 
 
 def test_opt_in_style_rules_are_not_default_policy() -> None:
-    source = (
-        "* one\n+ two\n\n"
-        "~~~python\nx=1\n~~~\n\n"
-        "```python\ny=2\n```\n\n"
-        "https://example.com\n\n"
-        "## Heading.\n\n"
-        "<span>html</span>\n"
-    )
+    source = "* one\n+ two\n\n~~~python\nx=1\n~~~\n\n```python\ny=2\n```\n\nhttps://example.com\n\n## Heading.\n\n<span>html</span>\n"
     default_rules = rule_ids(source)
     assert not any(rule.startswith("style/") for rule in default_rules)
 
@@ -196,3 +183,29 @@ def test_reference_labels_are_case_and_whitespace_normalized() -> None:
 def test_duplicate_ids_inside_math_or_code_are_not_pandoc_attribute_ids() -> None:
     source = "$\\{#same\\}$\n\n```text\n{#same}\n{#same}\n```\n"
     assert "pandoc/duplicate-identifier" not in rule_ids(source)
+
+
+def test_missing_pandoc_frontmatter_resources_are_path_aware(tmp_path: Path) -> None:
+    source_path = tmp_path / "paper.md"
+    (tmp_path / "refs.bib").write_text("@book{ok, title={OK}}\n")
+    (tmp_path / "second.bib").write_text("@book{second, title={Second}}\n")
+    source = (
+        "---\n"
+        "bibliography: [refs.bib, missing-inline.bib]\n"
+        "include-in-header:\n"
+        "  - second.bib\n"
+        "  - headers/missing.tex\n"
+        "csl: styles/missing.csl\n"
+        "template: named-template\n"
+        "---\n\n"
+        "Text.\n"
+    )
+    diagnostics = lint_text(source, source_path=source_path)
+    missing = [d for d in diagnostics if d.rule == "pandoc/missing-resource"]
+    assert len(missing) == 3
+    assert any("missing-inline.bib" in d.message for d in missing)
+    assert any("headers/missing.tex" in d.message for d in missing)
+    assert any("styles/missing.csl" in d.message for d in missing)
+    assert not any("refs.bib" in d.message for d in diagnostics)
+    assert not any("second.bib" in d.message for d in diagnostics)
+    assert not any("named-template" in d.message for d in diagnostics)
