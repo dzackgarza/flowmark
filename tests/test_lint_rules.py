@@ -55,8 +55,17 @@ def rule_ids(
         ("# A {#x .foo\n", "pandoc/malformed-attributes"),
         ("::: theorem\nText\n", "pandoc/unclosed-fenced-div"),
         ("\\begin{align}\nx &= y\n", "tex/unclosed-environment"),
+        (
+            "\\begin{align}\nx &= y\n\\end{equation}\n",
+            "tex/mismatched-environment",
+        ),
+        ("\\end{align}\n", "tex/unmatched-environment-end"),
         ("\\[\nx_i\n", "math/unclosed-display"),
         ("Inline \\(x_i with no closer.\n", "math/unclosed-inline"),
+        ("Inline $x_i_j$.\n", "math/repeated-subscript"),
+        ("Inline $x^2^3$.\n", "math/repeated-superscript"),
+        ("Inline $Hom_R(M,N)$.\n", "math/bare-operator"),
+        ("$$\nSpec R \\to Proj S\n$$\n", "math/bare-operator"),
     ],
 )
 def test_default_rules_cover_common_structural_and_semantic_failures(
@@ -65,12 +74,9 @@ def test_default_rules_cover_common_structural_and_semantic_failures(
     assert expected in rule_ids(source)
 
 
-def test_canonical_format_rule_is_suppressed_when_specific_rule_owns_same_line() -> (
-    None
-):
-    diagnostics = lint_text("Text[^x].\n\n[^x]: one\n[^x]: two\n")
-    assert "footnote/duplicate-definition" in {d.rule for d in diagnostics}
-    assert not any(d.rule == "format/canonical" and d.line == 4 for d in diagnostics)
+def test_semantic_diagnostics_do_not_depend_on_formatter_spelling() -> None:
+    diagnostics = lint_text("Use _emphasis_.\n\n[text][missing]\n")
+    assert {d.rule for d in diagnostics} == {"reference/undefined"}
 
 
 def test_math_code_and_raw_tex_are_opaque_to_markdown_rules() -> None:
@@ -84,6 +90,33 @@ def test_math_code_and_raw_tex_are_opaque_to_markdown_rules() -> None:
         LintOptions(styles=frozenset({StyleRule.BARE_URL})),
     )
     assert diagnostics == []
+
+
+def test_semantic_math_macros_and_braced_scripts_are_quiet() -> None:
+    source = (
+        r"$x_{i_j}, x_i^j, \Hom_R(M,N), \operatorname{Spec} R, \sin x$"
+        "\n"
+        r"\[ \mathrm{Hom}(M,N) \to \operatorname{Proj}(S) \]"
+        "\n"
+    )
+    rules = rule_ids(source)
+    assert "math/repeated-subscript" not in rules
+    assert "math/repeated-superscript" not in rules
+    assert "math/bare-operator" not in rules
+
+
+def test_tex_and_math_examples_inside_code_fences_are_literal() -> None:
+    source = (
+        "```tex\n"
+        "\\begin{align}\n"
+        "$x_i_j = Hom(M,N)$\n"
+        "\\end{equation}\n"
+        "```\n"
+    )
+    rules = rule_ids(source)
+    assert "tex/mismatched-environment" not in rules
+    assert "math/repeated-subscript" not in rules
+    assert "math/bare-operator" not in rules
 
 
 def test_valid_reference_footnote_fragment_and_image_are_quiet() -> None:

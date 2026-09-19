@@ -1,10 +1,9 @@
 """Semantic and structural lint rules for Pandoc-flavoured Markdown.
 
-The rule engine is deliberately separate from the formatter-diff rule in
-:mod:`flowmark.lint`.  Formatting differences are reported by ``format/canonical``;
-this module owns defects that canonical rendering cannot reliably express: broken
-references, heading structure, malformed Pandoc constructs, accessibility checks,
-frontmatter integrity, and opt-in style policies.
+Linting is deliberately separate from formatting.  This module owns defects that
+canonical rendering cannot safely decide or repair: broken references, heading
+structure, malformed Pandoc/TeX/math constructs, accessibility checks, frontmatter
+integrity, and explicitly requested authoring policies.
 
 Rules operate on the same source language Flowmark formats.  Inline code/math/raw TeX
 and block code/math/TeX regions are protected before syntax-oriented scans run, so a
@@ -147,15 +146,103 @@ _FENCE_OPEN = re.compile(r"^(?P<indent> {0,3})(?P<marker>`{3,}|~{3,})(?P<info>.*
 _FENCED_DIV_OPEN = re.compile(r"^ {0,3}(?P<fence>:{3,})(?P<attrs>[ \t]+.*)?$")
 _LATEX_BEGIN = re.compile(r"\\begin\{(?P<name>[A-Za-z*]+)\}")
 _LATEX_END_TEMPLATE = r"\\end\{%s\}"
+_LATEX_ENV_TOKEN = re.compile(
+    r"(?<!\\)\\(?P<kind>begin|end)\{(?P<name>[A-Za-z@*]+)\}"
+)
 _EXPLICIT_ID = re.compile(r"\{[^{}\n]*#(?P<id>[A-Za-z][A-Za-z0-9_.:-]*)[^{}\n]*\}")
 _BARE_URL = re.compile(r"(?<![<\w])(https?://[^\s<>]+)")
 _INLINE_HTML = re.compile(r"</?[A-Za-z][^>\n]*>")
 _UNORDERED_MARKER = re.compile(r"^(?P<indent> *)(?P<marker>[*+-])[ \t]+")
 _TOP_LEVEL_YAML_KEY = re.compile(r"^(?P<key>[A-Za-z0-9_.-]+)[ \t]*:")
+# ``INLINE_MATH`` intentionally omits same-line ``\[...\]`` because its original
+# job is line wrapping.  The linter needs the complete authoring dialect.
+_INLINE_BRACKET_MATH = re.compile(r"\\\[(?:\\.|[^\n\\])*?\\\]")
+
+_REPEATED_MATH_SCRIPT = re.compile(
+    r"(?<!\\)(?P<script>[_^])(?:\\[A-Za-z@]+|\\.|[A-Za-z0-9])[ \t]*(?P=script)"
+)
+
+_MATH_OPERATOR_NAMES = (
+    "arccos",
+    "arcsin",
+    "arctan",
+    "argmax",
+    "argmin",
+    "liminf",
+    "limsup",
+    "coker",
+    "codim",
+    "cosh",
+    "coth",
+    "csch",
+    "sech",
+    "sinh",
+    "tanh",
+    "Spec",
+    "Proj",
+    "Hom",
+    "Ext",
+    "Tor",
+    "Aut",
+    "End",
+    "Pic",
+    "Gal",
+    "PGL",
+    "PSL",
+    "rank",
+    "char",
+    "dim",
+    "deg",
+    "det",
+    "gcd",
+    "lcm",
+    "ker",
+    "lim",
+    "sup",
+    "inf",
+    "max",
+    "min",
+    "sin",
+    "cos",
+    "tan",
+    "cot",
+    "sec",
+    "csc",
+    "log",
+    "ln",
+    "exp",
+    "arg",
+    "GL",
+    "SL",
+    "SO",
+    "SU",
+    "Sp",
+)
+_BARE_MATH_OPERATOR = re.compile(
+    r"(?<![A-Za-z\\])(?P<name>"
+    + "|".join(re.escape(name) for name in _MATH_OPERATOR_NAMES)
+    + r")(?![A-Za-z])"
+)
+_ROMANIZED_MATH_TEXT = re.compile(
+    r"\\(?:operatorname|mathrm|textrm|text|mathsf|mathtt|mathbf|mathit)\*?"
+    r"[ \t]*\{(?:\\.|[^{}])*\}"
+)
 
 _PROTECTED_INLINE_PATTERNS = (
     INLINE_CODE_SPAN,
     INLINE_MATH,
+    SINGLE_HTML_COMMENT,
+    PAIRED_HTML_COMMENT,
+    SINGLE_JINJA_TAG,
+    PAIRED_JINJA_TAG,
+    SINGLE_JINJA_COMMENT,
+    PAIRED_JINJA_COMMENT,
+    SINGLE_JINJA_VAR,
+    PAIRED_JINJA_VAR,
+)
+
+_LITERAL_ONLY_PATTERNS = (
+    INLINE_CODE_SPAN,
     SINGLE_HTML_COMMENT,
     PAIRED_HTML_COMMENT,
     SINGLE_JINJA_TAG,
@@ -315,11 +402,188 @@ def _build_protected_map(
         if span.is_atomic:
             _mark(protected, span.start, span.end)
 
+    # The wrapping-oriented INLINE_MATH pattern intentionally omits same-line
+    # \[...\], but the authoring dialect accepts it as math.  Protect it from
+    # Markdown-oriented rules for exactly the same reason as $...$ and \(...\).
+    for match in _INLINE_BRACKET_MATH.finditer(text):
+        _mark(protected, match.start(), match.end())
+
     raw_tex_pattern = CustomRawInlineTex.pattern
     if isinstance(raw_tex_pattern, re.Pattern):
         for match in raw_tex_pattern.finditer(text):
             _mark(protected, match.start(), match.end())
     return protected
+
+
+def _build_literal_protected_map(
+    text: str,
+    frontmatter: _Frontmatter | None,
+    fences: list[_Fence],
+) -> bytearray:
+    """Protect regions where TeX-looking source is literal rather than authored TeX."""
+    protected = bytearray(len(text))
+    if frontmatter is not None:
+        last = frontmatter.closing or (
+            frontmatter.body[-1] if frontmatter.body else frontmatter.opening
+        )
+        _mark(protected, frontmatter.opening.start, last.raw_end)
+    for fence in fences:
+        last = fence.closing or (fence.content[-1] if fence.content else fence.opening)
+        _mark(protected, fence.opening.start, last.raw_end)
+    for span in iter_atomic_spans(text, _LITERAL_ONLY_PATTERNS):
+        if span.is_atomic:
+            _mark(protected, span.start, span.end)
+    return protected
+
+
+def _math_regions(
+    text: str,
+    lines: list[_Line],
+    frontmatter: _Frontmatter | None,
+    fences: list[_Fence],
+) -> list[tuple[int, int]]:
+    """Return half-open source ranges containing TeX math, without delimiters."""
+    literal = _build_literal_protected_map(text, frontmatter, fences)
+    regions: list[tuple[int, int]] = []
+
+    for span in iter_atomic_spans(text, (INLINE_MATH,)):
+        if not span.is_atomic or _overlaps(literal, span.start, span.end):
+            continue
+        if span.text.startswith("$$"):
+            regions.append((span.start + 2, span.end - 2))
+        elif span.text.startswith("$"):
+            regions.append((span.start + 1, span.end - 1))
+        elif span.text.startswith("\\("):
+            regions.append((span.start + 2, span.end - 2))
+
+    for match in _INLINE_BRACKET_MATH.finditer(text):
+        if not _overlaps(literal, match.start(), match.end()):
+            regions.append((match.start() + 2, match.end() - 2))
+
+    index = 0
+    while index < len(lines):
+        opener = lines[index]
+        marker = opener.text.strip()
+        if marker not in {"$$", "\\["} or _overlaps(
+            literal, opener.start, opener.raw_end
+        ):
+            index += 1
+            continue
+        probe = index + 1
+        while probe < len(lines):
+            closer = lines[probe]
+            if marker == "$$" and closer.text.strip() == "$$":
+                regions.append((opener.raw_end, closer.start))
+                index = probe + 1
+                break
+            if marker == "\\[" and closer.text.rstrip().endswith("\\]"):
+                close_at = closer.end - 2
+                regions.append((opener.raw_end, close_at))
+                index = probe + 1
+                break
+            probe += 1
+        else:
+            index += 1
+
+    return sorted(set(regions))
+
+
+def _mask_romanized_math(text: str) -> str:
+    """Mask explicit text/operator wrappers while preserving source offsets."""
+    chars = list(text)
+    for match in _ROMANIZED_MATH_TEXT.finditer(text):
+        chars[match.start() : match.end()] = " " * (match.end() - match.start())
+    return "".join(chars)
+
+
+def _mathematical_findings(
+    text: str,
+    lines: list[_Line],
+    frontmatter: _Frontmatter | None,
+    fences: list[_Fence],
+) -> list[RuleFinding]:
+    """High-confidence TeX/math diagnostics that normalization cannot repair."""
+    findings: list[RuleFinding] = []
+    for start, end in _math_regions(text, lines, frontmatter, fences):
+        source = text[start:end]
+        for match in _REPEATED_MATH_SCRIPT.finditer(source):
+            script = match.group("script")
+            second = start + match.end() - 1
+            kind = "subscript" if script == "_" else "superscript"
+            findings.append(
+                RuleFinding(
+                    f"math/repeated-{kind}",
+                    "error",
+                    f"Repeated unbraced {kind} operator; TeX rejects this as a double {kind}.",
+                    second,
+                    second + 1,
+                )
+            )
+
+        visible = _mask_romanized_math(source)
+        for match in _BARE_MATH_OPERATOR.finditer(visible):
+            name = match.group("name")
+            findings.append(
+                RuleFinding(
+                    "math/bare-operator",
+                    "warning",
+                    f"Math operator {name!r} is written as ordinary variables; use its semantic operator macro or \\operatorname{{{name}}}.",
+                    start + match.start("name"),
+                    start + match.end("name"),
+                )
+            )
+    return findings
+
+
+def _tex_environment_findings(
+    text: str,
+    frontmatter: _Frontmatter | None,
+    fences: list[_Fence],
+) -> list[RuleFinding]:
+    """Check the authored TeX environment stack, ignoring literal code regions."""
+    protected = _build_literal_protected_map(text, frontmatter, fences)
+    stack: list[tuple[str, re.Match[str]]] = []
+    findings: list[RuleFinding] = []
+    for match in _LATEX_ENV_TOKEN.finditer(text):
+        if _overlaps(protected, match.start(), match.end()):
+            continue
+        name = match.group("name")
+        if match.group("kind") == "begin":
+            stack.append((name, match))
+            continue
+        if not stack:
+            findings.append(
+                RuleFinding(
+                    "tex/unmatched-environment-end",
+                    "error",
+                    f"LaTeX environment {name!r} is closed here but was not opened.",
+                    match.start(),
+                    match.end(),
+                )
+            )
+            continue
+        expected, _opening = stack.pop()
+        if expected != name:
+            findings.append(
+                RuleFinding(
+                    "tex/mismatched-environment",
+                    "error",
+                    f"LaTeX environment {expected!r} is closed with \\end{{{name}}}; expected \\end{{{expected}}}.",
+                    match.start(),
+                    match.end(),
+                )
+            )
+    for name, opening in stack:
+        findings.append(
+            RuleFinding(
+                "tex/unclosed-environment",
+                "error",
+                f"LaTeX environment {name!r} is opened but never closed.",
+                opening.start(),
+                opening.end(),
+            )
+        )
+    return findings
 
 
 def _overlaps(protected: bytearray, start: int, end: int) -> bool:
@@ -1048,26 +1312,6 @@ def _unclosed_construct_findings(
                 display_open.end,
             )
         )
-    # Raw TeX environments: a begin with no later matching end is an error.
-    source = "\n".join(line.text for line in lines)
-    for match in _LATEX_BEGIN.finditer(source):
-        close_re = re.compile(_LATEX_END_TEMPLATE % re.escape(match.group("name")))
-        if close_re.search(source, match.end()) is None:
-            # Re-map through the line table using source offsets from the
-            # newline-normalized join; this is exact for ordinary LF input and
-            # conservative for CRLF (the line itself is still correct).
-            line_no = source.count("\n", 0, match.start()) + 1
-            line = lines[min(line_no - 1, len(lines) - 1)]
-            column = match.start() - (source.rfind("\n", 0, match.start()) + 1)
-            findings.append(
-                RuleFinding(
-                    "tex/unclosed-environment",
-                    "error",
-                    f"LaTeX environment {match.group('name')!r} is opened but never closed.",
-                    line.start + column,
-                    line.end,
-                )
-            )
     return findings
 
 
@@ -1469,6 +1713,8 @@ def lint_rule_findings(
         *_explicit_identifier_findings(text, protected),
         *_attribute_findings(lines, protected),
         *_unclosed_construct_findings(lines, protected),
+        *_tex_environment_findings(text, frontmatter, fences),
+        *_mathematical_findings(text, lines, frontmatter, fences),
         *_malformed_inline_findings(text, protected),
         *_link_findings(text, headings, definitions, protected, styles, source_path),
         *_table_boundary_findings(lines, protected),

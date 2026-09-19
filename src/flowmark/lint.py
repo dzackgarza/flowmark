@@ -6,14 +6,17 @@ source.  Consequently math, raw TeX, fenced divs, definition lists, tables, foot
 and the other constructs Flowmark models are opaque or structured in exactly the same
 places during linting as they are during formatting.
 
-Three layers are reported:
+Two layers are reported:
 
 * explicit semantic/structural rules (references, headings, links, footnotes,
   frontmatter, Pandoc attributes, code fences, and malformed math/TeX constructs);
 * ``pandoc/ambiguous-input`` high-confidence ambiguity checks from
   :func:`flowmark.preflight.preflight`;
-* ``format/canonical`` source ranges whose spelling differs from Flowmark's canonical
-  rendering under the requested formatting policy.
+
+Formatting is deliberately not a lint concern.  Whether source text differs from
+Flowmark's canonical rendering is answered by the formatter/check surface, not by
+editor diagnostics.  A linter finding therefore always identifies something that
+requires author judgment or cannot be repaired uniquely by normalization.
 
 Optional house-style policies are selected with :class:`StyleRule`; they are separate
 from the default correctness rules so valid Pandoc Markdown is not rejected merely for
@@ -26,14 +29,11 @@ consume the same diagnostics without importing CodeMirror or any Zettlr code.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from difflib import SequenceMatcher
 from enum import StrEnum
 from pathlib import Path
 
-from flowmark.formats.flowmark_markdown import ListSpacing
 from flowmark.lint_rules import StyleRule, lint_rule_findings
 from flowmark.preflight import preflight
-from flowmark.reformat_api import reformat_text
 
 
 class Severity(StrEnum):
@@ -65,21 +65,13 @@ class LintDiagnostic:
 
 @dataclass(frozen=True)
 class LintOptions:
-    """Formatting policy used by the canonical-form rule.
+    """Semantic lint policy.
 
-    Defaults deliberately avoid prose reflow and opinionated typography.  They model
-    the structural/style checks an editor expects: Flowmark may normalize Markdown
-    syntax, but ordinary paragraph line breaking, quotes, ellipses, and list tightness
-    are left alone unless the caller explicitly opts in.
+    Formatting options intentionally do not exist here.  Flowmark's formatter owns
+    normalization; the linter owns correctness, ambiguity, and explicitly requested
+    authoring policies.
     """
 
-    width: int = 0
-    semantic: bool = False
-    cleanups: bool = False
-    smartquotes: bool = False
-    ellipses: bool = False
-    list_spacing: ListSpacing = ListSpacing.preserve
-    check_format: bool = True
     styles: frozenset[StyleRule] = field(default_factory=frozenset)
     max_line_length: int | None = None
 
@@ -90,52 +82,6 @@ def _line_end_column(lines: list[str], line: int) -> int:
         return 1
     index = min(max(line - 1, 0), len(lines) - 1)
     return len(lines[index].rstrip("\n")) + 1
-
-
-def _format_diagnostics(source: str, normalized: str) -> list[LintDiagnostic]:
-    """Convert a line diff against canonical output into source diagnostics."""
-    if source == normalized:
-        return []
-
-    source_lines = source.splitlines(keepends=True)
-    normalized_lines = normalized.splitlines(keepends=True)
-    # splitlines() returns [] for an empty document.  The synthetic line keeps
-    # insertion diagnostics representable at line 1 without special coordinates.
-    coordinate_lines = source_lines or [""]
-    matcher = SequenceMatcher(a=source_lines, b=normalized_lines, autojunk=False)
-    diagnostics: list[LintDiagnostic] = []
-
-    for (
-        tag,
-        source_start,
-        source_end,
-        normalized_start,
-        normalized_end,
-    ) in matcher.get_opcodes():
-        if tag == "equal":
-            continue
-
-        first_line = min(source_start + 1, len(coordinate_lines))
-        if source_end > source_start:
-            last_line = min(source_end, len(coordinate_lines))
-        else:
-            last_line = first_line
-        replacement = "".join(normalized_lines[normalized_start:normalized_end])
-
-        diagnostics.append(
-            LintDiagnostic(
-                rule="format/canonical",
-                severity=Severity.WARNING,
-                message="Markdown differs from Flowmark's canonical Pandoc-aware form.",
-                line=first_line,
-                column=1,
-                end_line=last_line,
-                end_column=_line_end_column(coordinate_lines, last_line),
-                replacement=replacement,
-            )
-        )
-
-    return diagnostics
 
 
 def _offset_to_point(text: str, offset: int) -> tuple[int, int]:
@@ -180,12 +126,7 @@ def lint_text(
     *,
     source_path: Path | None = None,
 ) -> list[LintDiagnostic]:
-    """Lint one Markdown document without modifying it.
-
-    Ambiguous-input findings are returned first.  If they exist, canonical-format
-    diagnostics are withheld: formatting malformed or semantically ambiguous input can
-    produce secondary spelling differences that are less useful than the root defect.
-    """
+    """Lint one Markdown document without modifying or normalizing it."""
     if options is None:
         options = LintOptions()
 
@@ -206,34 +147,7 @@ def lint_text(
     ]
     diagnostics = [*explicit, *ambiguous]
     diagnostics.sort(key=lambda item: (item.line, item.column, item.rule))
-    if (
-        any(item.severity is Severity.ERROR for item in diagnostics)
-        or not options.check_format
-    ):
-        return diagnostics
-
-    normalized = reformat_text(
-        text,
-        width=options.width,
-        plaintext=False,
-        semantic=options.semantic,
-        cleanups=options.cleanups,
-        smartquotes=options.smartquotes,
-        ellipses=options.ellipses,
-        list_spacing=options.list_spacing,
-        verify=False,
-    )
-    canonical = [
-        item
-        for item in _format_diagnostics(text, normalized)
-        if not any(
-            not (
-                item.end_line < explicit_item.line or explicit_item.end_line < item.line
-            )
-            for explicit_item in diagnostics
-        )
-    ]
-    return [*diagnostics, *canonical]
+    return diagnostics
 
 
 __all__ = ("LintDiagnostic", "LintOptions", "Severity", "StyleRule", "lint_text")
