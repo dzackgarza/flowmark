@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TypedDict
 
 from flowmark.file_resolver import FileResolver, FileResolverConfig
-from flowmark.formats.flowmark_markdown import ListSpacing
 from flowmark.lint import LintOptions, StyleRule, lint_text
 
 
@@ -35,32 +34,6 @@ def _parser() -> argparse.ArgumentParser:
         "--exit-zero",
         action="store_true",
         help="Return 0 even when diagnostics are present (editor integration)",
-    )
-    parser.add_argument(
-        "--no-format-check",
-        action="store_true",
-        help="Run semantic ambiguity checks only",
-    )
-    parser.add_argument(
-        "--width",
-        type=int,
-        default=0,
-        help="Canonical line width; 0 disables width wrapping (default: 0)",
-    )
-    parser.add_argument(
-        "--semantic", action=argparse.BooleanOptionalAction, default=False
-    )
-    parser.add_argument(
-        "--cleanups", action=argparse.BooleanOptionalAction, default=False
-    )
-    parser.add_argument(
-        "--smartquotes", action=argparse.BooleanOptionalAction, default=False
-    )
-    parser.add_argument(
-        "--ellipses", action=argparse.BooleanOptionalAction, default=False
-    )
-    parser.add_argument(
-        "--list-spacing", choices=("preserve", "loose", "tight"), default="preserve"
     )
     parser.add_argument(
         "--style",
@@ -111,13 +84,6 @@ def _resolve_files(arguments: list[str]) -> list[str]:
 
 def _options(args: argparse.Namespace) -> LintOptions:
     return LintOptions(
-        width=args.width,
-        semantic=args.semantic,
-        cleanups=args.cleanups,
-        smartquotes=args.smartquotes,
-        ellipses=args.ellipses,
-        list_spacing=ListSpacing(args.list_spacing),
-        check_format=not args.no_format_check,
         styles=frozenset(StyleRule(value) for value in args.style),
         max_line_length=args.max_line_length,
     )

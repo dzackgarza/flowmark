@@ -19,13 +19,8 @@ def test_math_and_raw_tex_are_not_markdown_style_findings() -> None:
     assert lint_text(source) == []
 
 
-def test_genuine_markdown_emphasis_is_normalized_semantically() -> None:
-    diagnostics = lint_text("Use _emphasis_ and __strong__ here.\n")
-    assert diagnostics
-    assert all(d.rule == "format/canonical" for d in diagnostics)
-    replacement = "".join(d.replacement or "" for d in diagnostics)
-    assert "*emphasis*" in replacement
-    assert "**strong**" in replacement
+def test_formatter_normalization_is_not_a_lint_diagnostic() -> None:
+    assert lint_text("Use _emphasis_ and __strong__ here.\n") == []
 
 
 def test_preflight_ambiguity_wins_over_secondary_formatting() -> None:
@@ -35,23 +30,19 @@ def test_preflight_ambiguity_wins_over_secondary_formatting() -> None:
     assert diagnostics[0].severity is Severity.ERROR
 
 
-def test_format_check_can_be_disabled() -> None:
-    assert lint_text("Use _emphasis_ here.\n", LintOptions(check_format=False)) == []
-
-
 def test_json_cli_is_editor_consumable(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = tmp_path / "doc.md"
-    path.write_text("Use _emphasis_ here.\n")
+    path.write_text("[text][missing]\n")
     assert main(["--format", "json", "--exit-zero", str(path)]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["version"] == 1
     assert payload["files"][0]["path"] == str(path)
     diagnostic = payload["files"][0]["diagnostics"][0]
-    assert diagnostic["rule"] == "format/canonical"
+    assert diagnostic["rule"] == "reference/undefined"
     assert diagnostic["line"] == 1
-    assert diagnostic["column"] == 1
+    assert diagnostic["column"] == 8
 
 
 def test_json_cli_uses_source_path_for_stdin_local_links(
