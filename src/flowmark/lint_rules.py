@@ -515,7 +515,7 @@ def _mathematical_findings(
                 RuleFinding(
                     "math/bare-operator",
                     "warning",
-                    f"Math operator {name!r} is written as ordinary variables; use its semantic operator macro or \\operatorname{{{name}}}.",
+                    f"{name!r} is being typeset as variables. Use \\operatorname{{{name}}} or a defined operator macro.",
                     start + match.start("name"),
                     start + match.end("name"),
                 )
@@ -805,7 +805,7 @@ def _pandoc_resource_findings(
                 RuleFinding(
                     "pandoc/missing-resource",
                     "warning",
-                    f"Pandoc frontmatter resource {resource!r} does not exist relative to this document.",
+                    f"Can't find {resource!r} relative to this document.",
                     start,
                     end,
                 )
@@ -899,7 +899,7 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "code/missing-language",
                     "warning",
-                    "Fenced code block has no language/info class.",
+                    "Code fence has no language.",
                     fence.opening.start,
                     fence.opening.end,
                 )
@@ -930,7 +930,7 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "pandoc/duplicate-identifier",
                     "error",
-                    f"Pandoc identifier {identifier!r} is used more than once.",
+                    f"ID {identifier!r} is used more than once.",
                     start,
                     end,
                 )
@@ -996,7 +996,7 @@ def _pandoc_semantic_findings(
                     RuleFinding(
                         "link/invalid-fragment",
                         "warning",
-                        f"Local fragment '#{fragment}' does not match a Pandoc identifier in this document.",
+                        f"No target with ID '#{fragment}' exists in this document.",
                         start,
                         end,
                     )
@@ -1063,7 +1063,7 @@ def _local_destination_finding(
         return RuleFinding(
             "link/missing-local-target",
             "warning",
-            f"Local link target {parsed.path!r} does not exist relative to this document.",
+            f"Can't find linked file {parsed.path!r} relative to this document.",
             start,
             end,
         )
@@ -1078,7 +1078,7 @@ def _local_destination_finding(
     return RuleFinding(
         "link/invalid-fragment",
         "warning",
-        f"Fragment '#{fragment}' does not match a heading identifier in {parsed.path!r}.",
+        f"No target with ID '#{fragment}' exists in {parsed.path!r}.",
         start,
         end,
     )
@@ -1106,7 +1106,7 @@ def _style_findings(
                     RuleFinding(
                         "style/fence-marker",
                         "warning",
-                        "Code fence marker is inconsistent with the first fence in the document.",
+                        f"Use one code-fence marker consistently; earlier fences use {seen_marker!r}.",
                         fence.opening.start,
                         fence.opening.end,
                     )
@@ -1119,7 +1119,7 @@ def _style_findings(
                 RuleFinding(
                     "style/bare-url",
                     "warning",
-                    "Bare URL is disallowed by the selected lint style.",
+                    "Use a Markdown link instead of a bare URL.",
                     match.start(),
                     match.end(),
                 )
@@ -1140,7 +1140,7 @@ def _style_findings(
                     RuleFinding(
                         "style/unordered-list-marker",
                         "warning",
-                        f"Unordered-list marker {marker!r} is inconsistent with {expected!r} at this nesting level.",
+                        f"Use one list marker at this indentation; earlier items use {expected!r}.",
                         line.start + match.start("marker"),
                         line.start + match.end("marker"),
                     )
@@ -1153,7 +1153,7 @@ def _style_findings(
                 RuleFinding(
                     "style/no-inline-html",
                     "warning",
-                    "Inline HTML is disallowed by the selected lint style.",
+                    "Inline HTML is disabled by the selected style.",
                     match.start(),
                     match.end(),
                 )
