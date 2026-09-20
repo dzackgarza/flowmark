@@ -15,7 +15,6 @@ by the caller.
 from __future__ import annotations
 
 import re
-import unicodedata
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -23,7 +22,6 @@ from urllib.parse import unquote, urlsplit
 
 from flowmark.atomic_spans import (
     INLINE_CODE_SPAN,
-    INLINE_MATH,
     PAIRED_HTML_COMMENT,
     PAIRED_JINJA_COMMENT,
     PAIRED_JINJA_TAG,
@@ -35,6 +33,14 @@ from flowmark.atomic_spans import (
     iter_atomic_spans,
 )
 from flowmark.formats.flowmark_markdown import CustomRawInlineTex
+from flowmark.pandoc_lint import (
+    PandocJson,
+    pandoc_math_sequence,
+    pandoc_plain,
+    parse_pandoc_for_lint,
+    walk_pandoc,
+)
+from flowmark.pandoc_math import iter_pandoc_math_spans
 
 
 class StyleRule(StrEnum):
@@ -89,70 +95,21 @@ class _Heading:
 
 
 @dataclass(frozen=True)
-class _Definition:
-    label: str
-    normalized: str
-    line: _Line
-    start: int
-    end: int
-    destination: str
-
-
-@dataclass(frozen=True)
-class _FootnoteDefinition:
-    label: str
-    normalized: str
-    line: _Line
-    start: int
-    end: int
-
-
-@dataclass(frozen=True)
 class _Frontmatter:
     opening: _Line
     closing: _Line | None
     body: tuple[_Line, ...]
 
 
-_ATX_HEADING = re.compile(r"^(?P<indent> {0,3})(?P<marks>#{1,6})(?:[ \t]+|$)(?P<body>.*)$")
+_ATX_HEADING = re.compile(r"^(?P<indent> {0,3})(?P<marks>#+)(?:[ \t]+|$)(?P<body>.*)$")
 _SETEXT_UNDERLINE = re.compile(r"^ {0,3}(?P<marks>=+|-+)[ \t]*$")
-_HEADING_NO_SPACE = re.compile(r"^ {0,3}#{1,6}[^#\s]")
-_HEADING_TOO_DEEP = re.compile(r"^ {0,3}#{7,}(?:[ \t]+|$)")
-_ATTR_BLOCK = re.compile(r"\{(?P<body>[^{}\n]*)\}")
 _ATTR_ID = re.compile(r"(?:^|\s)#(?P<id>[A-Za-z][A-Za-z0-9_.:-]*)")
-_REF_DEFINITION = re.compile(r"^ {0,3}\[(?P<label>[^\]^\n]+)\]:[ \t]*(?P<dest><[^>\n]*>|\S+)(?:[ \t]+.*)?$")
-_FOOTNOTE_DEFINITION = re.compile(r"^ {0,3}\[\^(?P<label>[^\]\n]+)\]:")
-_FULL_REFERENCE = re.compile(r"(?P<image>!?)\[(?P<text>[^\]\n]*)\]\[(?P<label>[^\]\n]*)\]")
-_BRACKET_TOKEN = re.compile(r"(?P<image>!?)\[(?P<text>[^\]\n]+)\]")
-_INLINE_LINK = re.compile(
-    r"(?P<image>!?)\[(?P<text>[^\]\n]*)\]\("
-    r"(?P<dest><[^>\n]*>|(?:\\.|[^)\n])*)"
-    r"(?P<title>[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?\)"
-)
-_EMPTY_LINK = re.compile(r"(?P<image>!?)\[(?P<text>[^\]\n]*)\]\([ \t]*\)")
-_REVERSED_LINK = re.compile(r"(?<![!\w])\((?P<text>[^()\n]+)\)\[(?P<dest>[^\]\n]+)\]")
-_MALFORMED_LINK_CLOSER = re.compile(r"(?P<image>!?)\[[^\]\n]*\]\([^\n)]*\]")
-_SPACED_LINK_TEXT = re.compile(r"(?P<image>!?)\[[ \t]+[^\]\n]*[^\]\s][ \t]+\]\(")
-_SPACED_EMPHASIS = re.compile(r"(?<![*_])(?P<marker>\*\*|__|\*|_)[ \t]+(?P<body>[^\n]+?)[ \t]+(?P=marker)(?![*_])")
 _FENCE_OPEN = re.compile(r"^(?P<indent> {0,3})(?P<marker>`{3,}|~{3,})(?P<info>.*)$")
-_FENCED_DIV_OPEN = re.compile(r"^ {0,3}(?P<fence>:{3,})(?P<attrs>[ \t]+.*)?$")
 _LATEX_BEGIN = re.compile(r"\\begin\{(?P<name>[A-Za-z*]+)\}")
 _LATEX_END_TEMPLATE = r"\\end\{%s\}"
-_LATEX_ENV_TOKEN = re.compile(r"(?<!\\)\\(?P<kind>begin|end)\{(?P<name>[A-Za-z@*]+)\}")
-_EXPLICIT_ID = re.compile(r"\{[^{}\n]*#(?P<id>[A-Za-z][A-Za-z0-9_.:-]*)[^{}\n]*\}")
 _BARE_URL = re.compile(r"(?<![<\w])(https?://[^\s<>]+)")
 _INLINE_HTML = re.compile(r"</?[A-Za-z][^>\n]*>")
 _UNORDERED_MARKER = re.compile(r"^(?P<indent> *)(?P<marker>[*+-])[ \t]+")
-_TOP_LEVEL_YAML_KEY = re.compile(r"^(?P<key>[A-Za-z0-9_.-]+)[ \t]*:")
-_FRONTMATTER_RESOURCE = re.compile(
-    r"^(?P<key>bibliography|csl|template|include-in-header|include-before-body|include-after-body)"
-    r"[ \t]*:[ \t]*(?P<value>[^#\n]*?)[ \t]*$"
-)
-_YAML_LIST_RESOURCE = re.compile(r"^(?P<indent>[ \t]+)-[ \t]+(?P<value>[^#\n]+?)[ \t]*$")
-# ``INLINE_MATH`` intentionally omits same-line ``\[...\]`` because its original
-# job is line wrapping.  The linter needs the complete authoring dialect.
-_INLINE_BRACKET_MATH = re.compile(r"\\\[(?:\\.|[^\n\\])*?\\\]")
-
 _REPEATED_MATH_SCRIPT = re.compile(r"(?<!\\)(?P<script>[_^])(?:\\[A-Za-z@]+|\\.|[A-Za-z0-9])[ \t]*(?P=script)")
 
 _MATH_OPERATOR_NAMES = (
@@ -220,7 +177,6 @@ _LEFT_RIGHT = re.compile(r"(?<!\\)\\(?P<kind>left|right)\b")
 
 _PROTECTED_INLINE_PATTERNS = (
     INLINE_CODE_SPAN,
-    INLINE_MATH,
     SINGLE_HTML_COMMENT,
     PAIRED_HTML_COMMENT,
     SINGLE_JINJA_TAG,
@@ -340,33 +296,20 @@ def _build_protected_map(
     fences: list[_Fence],
 ) -> bytearray:
     protected = bytearray(len(text))
-    if frontmatter is not None:
-        last = frontmatter.closing or (frontmatter.body[-1] if frontmatter.body else frontmatter.opening)
+    if frontmatter is not None and frontmatter.closing is not None:
+        last = frontmatter.closing
         _mark(protected, frontmatter.opening.start, last.raw_end)
 
     for fence in fences:
-        last = fence.closing or (fence.content[-1] if fence.content else fence.opening)
-        _mark(protected, fence.opening.start, last.raw_end)
+        if fence.closing is not None:
+            _mark(protected, fence.opening.start, fence.closing.raw_end)
 
-    # Block display math and LaTeX environments are verbatim from the Markdown
-    # linter's point of view.  Protect complete well-formed blocks; malformed
-    # openers are intentionally left visible to the dedicated unclosed rules.
+    # Raw LaTeX environments are verbatim from the Markdown linter's point of
+    # view. Math itself is marked below by the Pandoc-derived scanner; do not
+    # recreate its block/inline boundary rules here.
     index = 0
     while index < len(lines):
         line = lines[index]
-        stripped = line.text.strip()
-        if stripped in {"$$", "\\["}:
-            closer = "$$" if stripped == "$$" else "\\]"
-            probe = index + 1
-            while probe < len(lines):
-                if lines[probe].text.rstrip().endswith(closer):
-                    _mark(protected, line.start, lines[probe].raw_end)
-                    index = probe + 1
-                    break
-                probe += 1
-            else:
-                index += 1
-            continue
         begin = _LATEX_BEGIN.search(line.text)
         if begin is not None:
             close_re = re.compile(_LATEX_END_TEMPLATE % re.escape(begin.group("name")))
@@ -386,11 +329,9 @@ def _build_protected_map(
         if span.is_atomic:
             _mark(protected, span.start, span.end)
 
-    # The wrapping-oriented INLINE_MATH pattern intentionally omits same-line
-    # \[...\], but the authoring dialect accepts it as math.  Protect it from
-    # Markdown-oriented rules for exactly the same reason as $...$ and \(...\).
-    for match in _INLINE_BRACKET_MATH.finditer(text):
-        _mark(protected, match.start(), match.end())
+    literal = _build_literal_protected_map(text, frontmatter, fences)
+    for span in iter_pandoc_math_spans(text, blocked=literal):
+        _mark(protected, span.start, span.end)
 
     raw_tex_pattern = CustomRawInlineTex.pattern
     if isinstance(raw_tex_pattern, re.Pattern):
@@ -406,12 +347,12 @@ def _build_literal_protected_map(
 ) -> bytearray:
     """Protect regions where TeX-looking source is literal rather than authored TeX."""
     protected = bytearray(len(text))
-    if frontmatter is not None:
-        last = frontmatter.closing or (frontmatter.body[-1] if frontmatter.body else frontmatter.opening)
+    if frontmatter is not None and frontmatter.closing is not None:
+        last = frontmatter.closing
         _mark(protected, frontmatter.opening.start, last.raw_end)
     for fence in fences:
-        last = fence.closing or (fence.content[-1] if fence.content else fence.opening)
-        _mark(protected, fence.opening.start, last.raw_end)
+        if fence.closing is not None:
+            _mark(protected, fence.opening.start, fence.closing.raw_end)
     for span in iter_atomic_spans(text, _LITERAL_ONLY_PATTERNS):
         if span.is_atomic:
             _mark(protected, span.start, span.end)
@@ -420,52 +361,29 @@ def _build_literal_protected_map(
 
 def _math_regions(
     text: str,
-    lines: list[_Line],
-    frontmatter: _Frontmatter | None,
-    fences: list[_Fence],
+    pandoc_document: dict[str, PandocJson],
 ) -> list[tuple[int, int]]:
-    """Return half-open source ranges containing TeX math, without delimiters."""
-    literal = _build_literal_protected_map(text, frontmatter, fences)
+    """Locate only source spans which reconcile to actual Pandoc ``Math`` nodes."""
+    expected = pandoc_math_sequence(pandoc_document)
+    if not expected:
+        return []
+
+    candidates = list(iter_pandoc_math_spans(text))
     regions: list[tuple[int, int]] = []
-
-    for span in iter_atomic_spans(text, (INLINE_MATH,)):
-        if not span.is_atomic or _overlaps(literal, span.start, span.end):
-            continue
-        if span.text.startswith("$$"):
-            regions.append((span.start + 2, span.end - 2))
-        elif span.text.startswith("$"):
-            regions.append((span.start + 1, span.end - 1))
-        elif span.text.startswith("\\("):
-            regions.append((span.start + 2, span.end - 2))
-
-    for match in _INLINE_BRACKET_MATH.finditer(text):
-        if not _overlaps(literal, match.start(), match.end()):
-            regions.append((match.start() + 2, match.end() - 2))
-
-    index = 0
-    while index < len(lines):
-        opener = lines[index]
-        marker = opener.text.strip()
-        if marker not in {"$$", "\\["} or _overlaps(literal, opener.start, opener.raw_end):
-            index += 1
-            continue
-        probe = index + 1
-        while probe < len(lines):
-            closer = lines[probe]
-            if marker == "$$" and closer.text.strip() == "$$":
-                regions.append((opener.raw_end, closer.start))
-                index = probe + 1
+    cursor = 0
+    for display, equation in expected:
+        while cursor < len(candidates):
+            candidate = candidates[cursor]
+            cursor += 1
+            if candidate.display == display and candidate.equation == equation:
+                regions.append((candidate.content_start, candidate.content_end))
                 break
-            if marker == "\\[" and closer.text.rstrip().endswith("\\]"):
-                close_at = closer.end - 2
-                regions.append((opener.raw_end, close_at))
-                index = probe + 1
-                break
-            probe += 1
         else:
-            index += 1
-
-    return sorted(set(regions))
+            # The AST is authoritative. If the source locator cannot reproduce
+            # one node, decline source-local diagnostics for that node instead
+            # of guessing where it came from.
+            break
+    return regions
 
 
 def _mask_romanized_math(text: str) -> str:
@@ -569,13 +487,11 @@ def _tex_group_findings(source: str, source_offset: int) -> list[RuleFinding]:
 
 def _mathematical_findings(
     text: str,
-    lines: list[_Line],
-    frontmatter: _Frontmatter | None,
-    fences: list[_Fence],
+    pandoc_document: dict[str, PandocJson],
 ) -> list[RuleFinding]:
     """High-confidence TeX/math diagnostics that normalization cannot repair."""
     findings: list[RuleFinding] = []
-    for start, end in _math_regions(text, lines, frontmatter, fences):
+    for start, end in _math_regions(text, pandoc_document):
         source = text[start:end]
         findings.extend(_tex_group_findings(source, start))
         for match in _REPEATED_MATH_SCRIPT.finditer(source):
@@ -607,65 +523,10 @@ def _mathematical_findings(
     return findings
 
 
-def _tex_environment_findings(
-    text: str,
-    frontmatter: _Frontmatter | None,
-    fences: list[_Fence],
-) -> list[RuleFinding]:
-    """Check the authored TeX environment stack, ignoring literal code regions."""
-    protected = _build_literal_protected_map(text, frontmatter, fences)
-    stack: list[tuple[str, re.Match[str]]] = []
-    findings: list[RuleFinding] = []
-    for match in _LATEX_ENV_TOKEN.finditer(text):
-        if _overlaps(protected, match.start(), match.end()):
-            continue
-        name = match.group("name")
-        if match.group("kind") == "begin":
-            stack.append((name, match))
-            continue
-        if not stack:
-            findings.append(
-                RuleFinding(
-                    "tex/unmatched-environment-end",
-                    "error",
-                    f"LaTeX environment {name!r} is closed here but was not opened.",
-                    match.start(),
-                    match.end(),
-                )
-            )
-            continue
-        expected, _opening = stack.pop()
-        if expected != name:
-            findings.append(
-                RuleFinding(
-                    "tex/mismatched-environment",
-                    "error",
-                    f"LaTeX environment {expected!r} is closed with \\end{{{name}}}; expected \\end{{{expected}}}.",
-                    match.start(),
-                    match.end(),
-                )
-            )
-    for name, opening in stack:
-        findings.append(
-            RuleFinding(
-                "tex/unclosed-environment",
-                "error",
-                f"LaTeX environment {name!r} is opened but never closed.",
-                opening.start(),
-                opening.end(),
-            )
-        )
-    return findings
-
-
 def _overlaps(protected: bytearray, start: int, end: int) -> bool:
     if end <= start:
         return False
     return any(protected[start:end])
-
-
-def _normalize_reference_label(label: str) -> str:
-    return " ".join(label.split()).casefold()
 
 
 def _strip_heading_attributes(text: str) -> tuple[str, str | None]:
@@ -743,286 +604,284 @@ def _plain_inline_text(text: str) -> str:
     return " ".join(text.split())
 
 
-def _pandoc_auto_identifier(text: str) -> str:
-    """Implement Pandoc's documented automatic heading identifier algorithm."""
-    plain = _plain_inline_text(re.sub(r"\[\^[^\]]+\]", "", text))
-    chars: list[str] = []
-    for char in plain:
-        if char.isspace():
-            chars.append("-")
-        elif char in "_-." or char.isalnum():
-            chars.append(char.lower())
-        elif unicodedata.category(char).startswith("L"):
-            chars.append(char.lower())
-    identifier = re.sub(r"-+", "-", "".join(chars))
-    first_letter = next((index for index, char in enumerate(identifier) if char.isalpha()), None)
-    if first_letter is None:
-        return "section"
-    return identifier[first_letter:]
+def _pandoc_attr(value: PandocJson) -> tuple[str, list[str], list[tuple[str, str]]] | None:
+    if not isinstance(value, list) or len(value) != 3:
+        return None
+    identifier, classes, key_values = value
+    if not isinstance(identifier, str) or not isinstance(classes, list) or not isinstance(key_values, list):
+        return None
+    parsed_classes = [item for item in classes if isinstance(item, str)]
+    parsed_key_values: list[tuple[str, str]] = []
+    for item in key_values:
+        if (
+            isinstance(item, list)
+            and len(item) == 2
+            and isinstance(item[0], str)
+            and isinstance(item[1], str)
+        ):
+            parsed_key_values.append((item[0], item[1]))
+    return identifier, parsed_classes, parsed_key_values
 
 
-def _heading_identifiers(headings: list[_Heading]) -> set[str]:
-    identifiers: set[str] = set()
-    counts: dict[str, int] = {}
-    for heading in headings:
-        if heading.explicit_id is not None:
-            identifier = heading.explicit_id
-        else:
-            base = _pandoc_auto_identifier(heading.text)
-            count = counts.get(base, 0)
-            identifier = base if count == 0 else f"{base}-{count}"
-            counts[base] = count + 1
-        identifiers.add(identifier)
-    return identifiers
+def _pandoc_node_attr(node: dict[str, PandocJson]) -> tuple[str, list[str], list[tuple[str, str]]] | None:
+    kind = node.get("t")
+    content = node.get("c")
+    if not isinstance(content, list):
+        return None
+    attr_index = {
+        "Header": 1,
+        "CodeBlock": 0,
+        "Div": 0,
+        "Span": 0,
+        "Link": 0,
+        "Image": 0,
+        "Table": 0,
+    }.get(kind if isinstance(kind, str) else "")
+    if attr_index is None or attr_index >= len(content):
+        return None
+    return _pandoc_attr(content[attr_index])
 
 
-def _definitions(lines: list[_Line], protected: bytearray) -> list[_Definition]:
-    result: list[_Definition] = []
-    for line in lines:
-        if _overlaps(protected, line.start, line.end):
+def _pandoc_headers(document: dict[str, PandocJson]) -> list[tuple[int, str, str]]:
+    result: list[tuple[int, str, str]] = []
+    for node in walk_pandoc(document):
+        if node.get("t") != "Header":
             continue
-        match = _REF_DEFINITION.match(line.text)
-        if match is None:
+        content = node.get("c")
+        if not isinstance(content, list) or len(content) != 3 or not isinstance(content[0], int):
             continue
-        label = match.group("label")
-        destination = match.group("dest").strip("<>")
-        result.append(
-            _Definition(
-                label=label,
-                normalized=_normalize_reference_label(label),
-                line=line,
-                start=line.start + match.start("label"),
-                end=line.start + match.end("label"),
-                destination=destination,
-            )
-        )
+        attr = _pandoc_attr(content[1])
+        identifier = "" if attr is None else attr[0]
+        result.append((content[0], " ".join(pandoc_plain(content[2]).split()), identifier))
     return result
 
 
-def _footnote_definitions(lines: list[_Line], protected: bytearray) -> list[_FootnoteDefinition]:
-    result: list[_FootnoteDefinition] = []
-    for line in lines:
-        if _overlaps(protected, line.start, line.end):
-            continue
-        match = _FOOTNOTE_DEFINITION.match(line.text)
-        if match is None:
-            continue
-        label = match.group("label")
-        result.append(
-            _FootnoteDefinition(
-                label=label,
-                normalized=_normalize_reference_label(label),
-                line=line,
-                start=line.start + match.start("label"),
-                end=line.start + match.end("label"),
-            )
-        )
+def _reconcile_heading_locations(
+    headers: list[tuple[int, str, str]],
+    candidates: list[_Heading],
+) -> list[tuple[int, int]]:
+    """Map Pandoc-proven headers to local source candidates without creating syntax."""
+    locations: list[tuple[int, int]] = []
+    cursor = 0
+    for level, text, _identifier in headers:
+        wanted = text.casefold()
+        found: _Heading | None = None
+        while cursor < len(candidates):
+            candidate = candidates[cursor]
+            cursor += 1
+            if candidate.level != level:
+                continue
+            if _plain_inline_text(candidate.text).casefold() != wanted:
+                continue
+            found = candidate
+            break
+        locations.append((0, 0) if found is None else (found.start, found.end))
+    return locations
+
+
+def _pandoc_identifiers(document: dict[str, PandocJson]) -> list[str]:
+    result: list[str] = []
+    for node in walk_pandoc(document):
+        attr = _pandoc_node_attr(node)
+        if attr is not None and attr[0]:
+            result.append(attr[0])
     return result
 
 
-def _reference_findings(text: str, lines: list[_Line], protected: bytearray) -> list[RuleFinding]:
+def _locate_after(text: str, needles: tuple[str, ...], start: int = 0) -> tuple[int, int]:
+    best: tuple[int, int] | None = None
+    for needle in needles:
+        if not needle:
+            continue
+        offset = text.find(needle, start)
+        if offset < 0:
+            continue
+        candidate = (offset, offset + len(needle))
+        if best is None or candidate[0] < best[0]:
+            best = candidate
+    return best or (0, 0)
+
+
+def _pandoc_code_blocks(
+    document: dict[str, PandocJson],
+) -> list[tuple[tuple[str, list[str], list[tuple[str, str]]], str]]:
+    result: list[tuple[tuple[str, list[str], list[tuple[str, str]]], str]] = []
+    for node in walk_pandoc(document):
+        if node.get("t") != "CodeBlock":
+            continue
+        content = node.get("c")
+        if not isinstance(content, list) or len(content) != 2 or not isinstance(content[1], str):
+            continue
+        attr = _pandoc_attr(content[0])
+        if attr is None:
+            continue
+        result.append((attr, content[1]))
+    return result
+
+
+def _fence_source_text(fence: _Fence) -> str:
+    opening_indent = len(fence.opening.text) - len(fence.opening.text.lstrip(" "))
+    content: list[str] = []
+    for line in fence.content:
+        text = line.text
+        drop = 0
+        while drop < min(opening_indent, len(text)) and text[drop] == " ":
+            drop += 1
+        content.append(text[drop:])
+    return "\n".join(content).expandtabs(4)
+
+
+def _reconciled_fences(
+    document: dict[str, PandocJson],
+    fences: list[_Fence],
+) -> list[tuple[_Fence, tuple[str, list[str], list[tuple[str, str]]], str]]:
+    """Pair source fences with actual Pandoc CodeBlocks; unmatched source is ignored."""
+    candidates = [fence for fence in fences if fence.closing is not None]
+    cursor = 0
+    result: list[tuple[_Fence, tuple[str, list[str], list[tuple[str, str]]], str]] = []
+    for attr, code in _pandoc_code_blocks(document):
+        found: _Fence | None = None
+        while cursor < len(candidates):
+            candidate = candidates[cursor]
+            cursor += 1
+            if _fence_source_text(candidate) == code:
+                found = candidate
+                break
+        if found is not None:
+            result.append((found, attr, code))
+    return result
+
+
+def _meta_strings(value: PandocJson) -> list[str]:
+    """Flatten scalar/list metadata values exactly as exposed by Pandoc JSON."""
+    if not isinstance(value, dict):
+        return []
+    kind = value.get("t")
+    content = value.get("c")
+    if kind == "MetaString" and isinstance(content, str):
+        return [content]
+    if kind == "MetaInlines":
+        return [" ".join(pandoc_plain(content).split())]
+    if kind == "MetaList" and isinstance(content, list):
+        result: list[str] = []
+        for item in content:
+            result.extend(_meta_strings(item))
+        return result
+    return []
+
+
+def _pandoc_resource_findings(
+    text: str,
+    pandoc_document: dict[str, PandocJson],
+    source_path: Path | None,
+) -> list[RuleFinding]:
+    if source_path is None:
+        return []
+    meta = pandoc_document.get("meta")
+    if not isinstance(meta, dict):
+        return []
     findings: list[RuleFinding] = []
-    definitions = _definitions(lines, protected)
-    by_label: dict[str, list[_Definition]] = {}
-    for definition in definitions:
-        by_label.setdefault(definition.normalized, []).append(definition)
-
-    for group in by_label.values():
-        if len(group) > 1:
-            for duplicate in group[1:]:
-                findings.append(
-                    RuleFinding(
-                        "reference/duplicate-definition",
-                        "warning",
-                        f"Reference label {duplicate.label!r} is defined more than once.",
-                        duplicate.start,
-                        duplicate.end,
-                    )
-                )
-
-    used: set[str] = set()
-    definition_line_numbers = {definition.line.number for definition in definitions}
-    for match in _FULL_REFERENCE.finditer(text):
-        if _overlaps(protected, match.start(), match.end()):
+    search_from = 0
+    for key in (
+        "bibliography",
+        "csl",
+        "template",
+        "include-in-header",
+        "include-before-body",
+        "include-after-body",
+    ):
+        value = meta.get(key)
+        if value is None:
             continue
-        # A definition line can contain bracket pairs in its title/destination;
-        # no reference use originates on the definition marker itself.
-        line_number = _line_number_for_offset(lines, match.start())
-        if line_number in definition_line_numbers:
-            continue
-        label = match.group("label") or match.group("text")
-        normalized = _normalize_reference_label(label)
-        if normalized in by_label:
-            used.add(normalized)
-        else:
+        for resource in _meta_strings(value):
+            if not _is_explicit_local_resource(resource):
+                continue
+            if _resolve_local_resource(source_path, resource).exists():
+                continue
+            start, end = _locate_after(text, (resource,), search_from)
+            if end > start:
+                search_from = end
             findings.append(
                 RuleFinding(
-                    "reference/undefined",
+                    "pandoc/missing-resource",
                     "warning",
-                    f"Reference label {label!r} has no definition.",
-                    match.start("label") if match.group("label") else match.start("text"),
-                    match.end("label") if match.group("label") else match.end("text"),
+                    f"Pandoc frontmatter resource {resource!r} does not exist relative to this document.",
+                    start,
+                    end,
                 )
             )
-
-    # Shortcut references only have reference semantics when a matching
-    # definition exists.  Count those for unused-definition analysis, but never
-    # call an arbitrary [word] undefined.
-    for match in _BRACKET_TOKEN.finditer(text):
-        if _overlaps(protected, match.start(), match.end()):
-            continue
-        if _line_number_for_offset(lines, match.start()) in definition_line_numbers:
-            continue
-        if match.end() < len(text) and text[match.end()] in "([":
-            continue
-        if match.start() > 0 and text[match.start() - 1] == "^":
-            continue
-        normalized = _normalize_reference_label(match.group("text"))
-        if normalized in by_label:
-            used.add(normalized)
-
-    for normalized, group in by_label.items():
-        if normalized in used:
-            continue
-        definition = group[0]
-        findings.append(
-            RuleFinding(
-                "reference/unused-definition",
-                "warning",
-                f"Reference label {definition.label!r} is defined but never used.",
-                definition.start,
-                definition.end,
-            )
-        )
     return findings
 
 
-def _line_number_for_offset(lines: list[_Line], offset: int) -> int:
-    # Linear scan is acceptable for rule matches; files are capped at 1 MiB by
-    # Flowmark's discovery layer and the number of syntax matches is small.
-    for line in lines:
-        if line.start <= offset <= line.raw_end:
-            return line.number
-    return lines[-1].number
-
-
-def _footnote_findings(text: str, lines: list[_Line], protected: bytearray) -> list[RuleFinding]:
-    findings: list[RuleFinding] = []
-    definitions = _footnote_definitions(lines, protected)
-    by_label: dict[str, list[_FootnoteDefinition]] = {}
-    for definition in definitions:
-        by_label.setdefault(definition.normalized, []).append(definition)
-    for group in by_label.values():
-        if len(group) > 1:
-            for duplicate in group[1:]:
-                findings.append(
-                    RuleFinding(
-                        "footnote/duplicate-definition",
-                        "warning",
-                        f"Footnote {duplicate.label!r} is defined more than once.",
-                        duplicate.start,
-                        duplicate.end,
-                    )
-                )
-
-    definition_ranges = {(definition.line.start, definition.line.end) for definition in definitions}
-    used: set[str] = set()
-    for match in re.finditer(r"\[\^(?P<label>[^\]\n]+)\]", text):
-        if _overlaps(protected, match.start(), match.end()):
-            continue
-        if any(start <= match.start() <= end and text[match.end() : match.end() + 1] == ":" for start, end in definition_ranges):
-            continue
-        label = match.group("label")
-        normalized = _normalize_reference_label(label)
-        if normalized in by_label:
-            used.add(normalized)
-        else:
-            findings.append(
-                RuleFinding(
-                    "footnote/undefined",
-                    "warning",
-                    f"Footnote reference {label!r} has no definition.",
-                    match.start("label"),
-                    match.end("label"),
-                )
-            )
-    for normalized, group in by_label.items():
-        if normalized in used:
-            continue
-        definition = group[0]
-        findings.append(
-            RuleFinding(
-                "footnote/unused-definition",
-                "warning",
-                f"Footnote {definition.label!r} is defined but never referenced.",
-                definition.start,
-                definition.end,
-            )
-        )
-    return findings
-
-
-def _heading_findings(
-    headings: list[_Heading],
+def _pandoc_semantic_findings(
+    text: str,
+    pandoc_document: dict[str, PandocJson],
     lines: list[_Line],
+    frontmatter: _Frontmatter | None,
+    fences: list[_Fence],
     protected: bytearray,
     styles: frozenset[StyleRule],
+    source_path: Path | None,
 ) -> list[RuleFinding]:
+    """Semantic lint rules over constructs whose existence Pandoc already proved."""
     findings: list[RuleFinding] = []
+
+    headers = _pandoc_headers(pandoc_document)
+    local_headers = _headings(lines, protected, frontmatter)
+    header_locations = _reconcile_heading_locations(headers, local_headers)
     previous_level: int | None = None
-    seen_text: dict[str, _Heading] = {}
-    h1s: list[_Heading] = []
-    for heading in headings:
-        if previous_level is not None and heading.level > previous_level + 1:
+    seen_heading_text: dict[str, int] = {}
+    h1_count = 0
+    for index, (level, title, _identifier) in enumerate(headers):
+        start, end = header_locations[index]
+        if previous_level is not None and level > previous_level + 1:
             findings.append(
                 RuleFinding(
                     "heading/increment",
                     "warning",
-                    f"Heading level jumps from H{previous_level} to H{heading.level}.",
-                    heading.start,
-                    heading.end,
+                    f"Heading level jumps from H{previous_level} to H{level}.",
+                    start,
+                    end,
                 )
             )
-        previous_level = heading.level
-        plain = _plain_inline_text(heading.text).casefold()
-        if plain:
-            if plain in seen_text:
+        previous_level = level
+        normalized_title = title.casefold()
+        if normalized_title:
+            if normalized_title in seen_heading_text:
                 findings.append(
                     RuleFinding(
                         "heading/duplicate",
                         "warning",
-                        f"Heading {heading.text!r} duplicates an earlier heading.",
-                        heading.start,
-                        heading.end,
+                        f"Heading {title!r} duplicates an earlier heading.",
+                        start,
+                        end,
                     )
                 )
             else:
-                seen_text[plain] = heading
-        if heading.level == 1:
-            h1s.append(heading)
-        if StyleRule.HEADING_PUNCTUATION in styles:
-            plain_text = _plain_inline_text(heading.text).rstrip()
-            if plain_text and plain_text[-1] in _HEADING_PUNCTUATION:
+                seen_heading_text[normalized_title] = index
+        if level == 1:
+            h1_count += 1
+            if h1_count > 1:
                 findings.append(
                     RuleFinding(
-                        "style/heading-punctuation",
+                        "heading/multiple-h1",
                         "warning",
-                        "Heading ends in punctuation.",
-                        heading.start,
-                        heading.end,
+                        "Document contains more than one level-1 heading.",
+                        start,
+                        end,
                     )
                 )
-    for heading in h1s[1:]:
-        findings.append(
-            RuleFinding(
-                "heading/multiple-h1",
-                "warning",
-                "Document contains more than one level-1 heading.",
-                heading.start,
-                heading.end,
+        if StyleRule.HEADING_PUNCTUATION in styles and title.rstrip().endswith(tuple(_HEADING_PUNCTUATION)):
+            findings.append(
+                RuleFinding(
+                    "style/heading-punctuation",
+                    "warning",
+                    "Heading ends in punctuation.",
+                    start,
+                    end,
+                )
             )
-        )
-    if StyleRule.REQUIRE_H1 in styles and not h1s:
+    if StyleRule.REQUIRE_H1 in styles and h1_count == 0:
         first = next((line for line in lines if line.text.strip()), lines[0])
         findings.append(
             RuleFinding(
@@ -1034,56 +893,7 @@ def _heading_findings(
             )
         )
 
-    for line in lines:
-        if _overlaps(protected, line.start, line.end):
-            continue
-        if _HEADING_NO_SPACE.match(line.text):
-            findings.append(
-                RuleFinding(
-                    "heading/malformed",
-                    "warning",
-                    "ATX heading marker must be followed by whitespace.",
-                    line.start,
-                    line.end,
-                )
-            )
-        elif _HEADING_TOO_DEEP.match(line.text):
-            findings.append(
-                RuleFinding(
-                    "heading/malformed",
-                    "warning",
-                    "Markdown headings have at most six levels; this line is parsed as prose.",
-                    line.start,
-                    line.end,
-                )
-            )
-    return findings
-
-
-def _fence_language(info: str) -> str | None:
-    info = info.strip()
-    if not info:
-        return None
-    if not info.startswith("{"):
-        return info.split()[0]
-    match = re.search(r"(?:^|\s)\.([A-Za-z0-9_+.-]+)", info.strip("{}"))
-    return match.group(1) if match is not None else None
-
-
-def _fence_findings(fences: list[_Fence], lines: list[_Line], styles: frozenset[StyleRule]) -> list[RuleFinding]:
-    findings: list[RuleFinding] = []
-    seen_marker: str | None = None
-    for fence in fences:
-        if fence.closing is None:
-            findings.append(
-                RuleFinding(
-                    "code/unclosed-fence",
-                    "error",
-                    "Fenced code block opens here but is never closed.",
-                    fence.opening.start,
-                    fence.opening.end,
-                )
-            )
+    for fence, _attr, _code in _reconciled_fences(pandoc_document, fences):
         if _fence_language(fence.info) is None:
             findings.append(
                 RuleFinding(
@@ -1095,226 +905,118 @@ def _fence_findings(fences: list[_Fence], lines: list[_Line], styles: frozenset[
                 )
             )
         for line in fence.content:
-            if "\t" in line.text:
-                column = line.text.index("\t")
-                findings.append(
-                    RuleFinding(
-                        "code/hard-tab",
-                        "warning",
-                        "Fenced code block contains a hard tab.",
-                        line.start + column,
-                        line.start + column + 1,
-                    )
-                )
-        opening_index = fence.opening.number - 1
-        if opening_index > 0 and lines[opening_index - 1].text.strip():
+            if "\t" not in line.text:
+                continue
+            column = line.text.index("\t")
             findings.append(
                 RuleFinding(
-                    "code/surrounding-blank-lines",
+                    "code/hard-tab",
                     "warning",
-                    "Fenced code block should be preceded by a blank line.",
-                    fence.opening.start,
-                    fence.opening.end,
+                    "Fenced code block contains a hard tab.",
+                    line.start + column,
+                    line.start + column + 1,
                 )
             )
-        if fence.closing is not None:
-            closing_index = fence.closing.number - 1
-            if closing_index + 1 < len(lines) and lines[closing_index + 1].text.strip():
+
+    seen_ids: set[str] = set()
+    id_search_from = 0
+    all_ids = set(_pandoc_identifiers(pandoc_document))
+    for identifier in _pandoc_identifiers(pandoc_document):
+        start, end = _locate_after(text, (f"#{identifier}", f'id="{identifier}"', f"id={identifier}"), id_search_from)
+        if end > start:
+            id_search_from = end
+        if identifier in seen_ids:
+            findings.append(
+                RuleFinding(
+                    "pandoc/duplicate-identifier",
+                    "error",
+                    f"Pandoc identifier {identifier!r} is used more than once.",
+                    start,
+                    end,
+                )
+            )
+        else:
+            seen_ids.add(identifier)
+
+    link_search_from = 0
+    for node in walk_pandoc(pandoc_document):
+        kind = node.get("t")
+        if kind not in {"Link", "Image"}:
+            continue
+        content = node.get("c")
+        if not isinstance(content, list) or len(content) != 3:
+            continue
+        label = " ".join(pandoc_plain(content[1]).split())
+        target = content[2]
+        if not isinstance(target, list) or len(target) != 2 or not isinstance(target[0], str):
+            continue
+        destination = target[0]
+        start, end = _locate_after(
+            text,
+            (destination, label, "![]" if kind == "Image" and not label else "", "]()" if not destination else ""),
+            link_search_from,
+        )
+        if end > start:
+            link_search_from = end
+
+        if kind == "Image" and not label:
+            findings.append(
+                RuleFinding(
+                    "accessibility/image-alt",
+                    "warning",
+                    "Image has empty alternative text.",
+                    start,
+                    end,
+                )
+            )
+        if kind == "Link" and destination == "":
+            findings.append(
+                RuleFinding(
+                    "link/empty-destination",
+                    "warning",
+                    "Link has an empty destination.",
+                    start,
+                    end,
+                )
+            )
+        if kind == "Link" and label.casefold() in _NON_DESCRIPTIVE_LINK_TEXT:
+            findings.append(
+                RuleFinding(
+                    "link/non-descriptive-text",
+                    "warning",
+                    f"Link text {label!r} does not describe its destination.",
+                    start,
+                    end,
+                )
+            )
+        if kind == "Link" and destination.startswith("#"):
+            fragment = unquote(destination[1:])
+            if fragment and fragment not in all_ids:
                 findings.append(
                     RuleFinding(
-                        "code/surrounding-blank-lines",
+                        "link/invalid-fragment",
                         "warning",
-                        "Fenced code block should be followed by a blank line.",
-                        fence.closing.start,
-                        fence.closing.end,
+                        f"Local fragment '#{fragment}' does not match a Pandoc identifier in this document.",
+                        start,
+                        end,
                     )
                 )
-        if StyleRule.FENCE_MARKER in styles:
-            marker = fence.marker[0]
-            if seen_marker is None:
-                seen_marker = marker
-            elif marker != seen_marker:
-                findings.append(
-                    RuleFinding(
-                        "style/fence-marker",
-                        "warning",
-                        "Code fence marker is inconsistent with the first fence in the document.",
-                        fence.opening.start,
-                        fence.opening.end,
-                    )
-                )
+        if kind == "Link":
+            local_finding = _local_destination_finding(destination, start, end, source_path)
+            if local_finding is not None:
+                findings.append(local_finding)
+
     return findings
 
 
-def _frontmatter_findings(frontmatter: _Frontmatter | None) -> list[RuleFinding]:
-    if frontmatter is None:
-        return []
-    if frontmatter.closing is None:
-        return [
-            RuleFinding(
-                "frontmatter/unclosed",
-                "error",
-                "YAML frontmatter opens here but has no closing '---' or '...'.",
-                frontmatter.opening.start,
-                frontmatter.opening.end,
-            )
-        ]
-
-    findings: list[RuleFinding] = []
-    seen_keys: dict[str, _Line] = {}
-    stack: list[tuple[str, _Line, int]] = []
-    quote: str | None = None
-    quote_line: _Line | None = None
-    quote_column = 0
-    for line in frontmatter.body:
-        key_match = _TOP_LEVEL_YAML_KEY.match(line.text)
-        if key_match is not None:
-            key = key_match.group("key")
-            if key in seen_keys:
-                findings.append(
-                    RuleFinding(
-                        "frontmatter/duplicate-key",
-                        "error",
-                        f"Frontmatter key {key!r} is defined more than once.",
-                        line.start + key_match.start("key"),
-                        line.start + key_match.end("key"),
-                    )
-                )
-            else:
-                seen_keys[key] = line
-
-        escaped = False
-        index = 0
-        while index < len(line.text):
-            char = line.text[index]
-            if quote is None and char == "#":
-                break
-            if quote == '"':
-                if char == "\\" and not escaped:
-                    escaped = True
-                    index += 1
-                    continue
-                if char == '"' and not escaped:
-                    quote = None
-                escaped = False
-                index += 1
-                continue
-            if quote == "'":
-                if char == "'":
-                    if index + 1 < len(line.text) and line.text[index + 1] == "'":
-                        index += 2
-                        continue
-                    quote = None
-                index += 1
-                continue
-            if char in {"'", '"'}:
-                quote = char
-                quote_line = line
-                quote_column = index
-            elif char in "[{":
-                stack.append((char, line, index))
-            elif char in "]}":
-                expected = "[" if char == "]" else "{"
-                if not stack or stack[-1][0] != expected:
-                    findings.append(
-                        RuleFinding(
-                            "frontmatter/malformed-flow",
-                            "error",
-                            f"Unexpected {char!r} in YAML frontmatter.",
-                            line.start + index,
-                            line.start + index + 1,
-                        )
-                    )
-                else:
-                    stack.pop()
-            index += 1
-
-    if quote is not None and quote_line is not None:
-        findings.append(
-            RuleFinding(
-                "frontmatter/malformed-flow",
-                "error",
-                "Unterminated quoted scalar in YAML frontmatter.",
-                quote_line.start + quote_column,
-                quote_line.end,
-            )
-        )
-    for opener, line, column in stack:
-        findings.append(
-            RuleFinding(
-                "frontmatter/malformed-flow",
-                "error",
-                f"Unclosed {opener!r} flow collection in YAML frontmatter.",
-                line.start + column,
-                line.start + column + 1,
-            )
-        )
-    return findings
-
-
-def _simple_yaml_path(value: str) -> str | None:
-    """Return one scalar path, declining YAML collections/block scalars."""
-    value = value.strip()
-    if not value or value[0] in "[{|>" or value.startswith("!!"):
+def _fence_language(info: str) -> str | None:
+    info = info.strip()
+    if not info:
         return None
-    if value[0] in {"'", '"'}:
-        if len(value) < 2 or value[-1] != value[0]:
-            return None
-        value = value[1:-1]
-    return value.strip() or None
-
-
-def _inline_yaml_paths(value: str) -> list[tuple[str, int, int]]:
-    """Extract scalar path tokens from one simple YAML scalar/flow-list value."""
-    leading = len(value) - len(value.lstrip())
-    trailing_end = len(value.rstrip())
-    stripped = value[leading:trailing_end]
-    if not stripped:
-        return []
-
-    if not stripped.startswith("["):
-        path_value = _simple_yaml_path(stripped)
-        return [] if path_value is None else [(path_value, leading, trailing_end)]
-    if not stripped.endswith("]"):
-        return []
-
-    content = stripped[1:-1]
-    content_offset = leading + 1
-    result: list[tuple[str, int, int]] = []
-    quote: str | None = None
-    token_start = 0
-    index = 0
-    while index <= len(content):
-        at_end = index == len(content)
-        char = "" if at_end else content[index]
-        if not at_end and quote is not None:
-            if char == quote:
-                if quote == "'" and index + 1 < len(content) and content[index + 1] == "'":
-                    index += 2
-                    continue
-                quote = None
-            elif char == "\\" and quote == '"':
-                index += 2
-                continue
-            index += 1
-            continue
-        if not at_end and char in {"'", '"'}:
-            quote = char
-            index += 1
-            continue
-        if at_end or char == ",":
-            raw = content[token_start:index]
-            left = len(raw) - len(raw.lstrip())
-            right = len(raw.rstrip())
-            token = raw[left:right]
-            path_value = _simple_yaml_path(token)
-            if path_value is not None:
-                start = content_offset + token_start + left
-                end = content_offset + token_start + right
-                result.append((path_value, start, end))
-            token_start = index + 1
-        index += 1
-    return result
+    if not info.startswith("{"):
+        return info.split()[0]
+    match = re.search(r"(?:^|\s)\.([A-Za-z0-9_+.-]+)", info.strip("{}"))
+    return match.group(1) if match is not None else None
 
 
 def _is_explicit_local_resource(value: str) -> bool:
@@ -1333,237 +1035,15 @@ def _resolve_local_resource(source_path: Path, value: str) -> Path:
     return resource if resource.is_absolute() else source_path.parent / resource
 
 
-def _frontmatter_resource_findings(frontmatter: _Frontmatter | None, source_path: Path | None) -> list[RuleFinding]:
-    if frontmatter is None or source_path is None:
-        return []
-    findings: list[RuleFinding] = []
-
-    def add_missing(line: _Line, value: str, start: int, end: int) -> None:
-        if not _is_explicit_local_resource(value):
-            return
-        if _resolve_local_resource(source_path, value).exists():
-            return
-        findings.append(
-            RuleFinding(
-                "pandoc/missing-resource",
-                "warning",
-                f"Pandoc frontmatter resource {value!r} does not exist relative to this document.",
-                line.start + start,
-                line.start + end,
-            )
-        )
-
-    for index, line in enumerate(frontmatter.body):
-        match = _FRONTMATTER_RESOURCE.match(line.text)
-        if match is None:
-            continue
-        raw_value = match.group("value")
-        if raw_value.strip():
-            for value, start, end in _inline_yaml_paths(raw_value):
-                add_missing(
-                    line,
-                    value,
-                    match.start("value") + start,
-                    match.start("value") + end,
-                )
-            continue
-
-        # Common Pandoc form:
-        # bibliography:
-        #   - first.bib
-        #   - second.bib
-        for nested in frontmatter.body[index + 1 :]:
-            if _TOP_LEVEL_YAML_KEY.match(nested.text) is not None:
-                break
-            list_match = _YAML_LIST_RESOURCE.match(nested.text)
-            if list_match is None:
-                if nested.text.strip():
-                    break
-                continue
-            list_value = _simple_yaml_path(list_match.group("value"))
-            if list_value is not None:
-                add_missing(
-                    nested,
-                    list_value,
-                    list_match.start("value"),
-                    list_match.end("value"),
-                )
-    return findings
-
-
-def _explicit_identifier_findings(text: str, protected: bytearray) -> list[RuleFinding]:
-    findings: list[RuleFinding] = []
-    seen: dict[str, tuple[int, int]] = {}
-    for match in _EXPLICIT_ID.finditer(text):
-        if _overlaps(protected, match.start(), match.end()):
-            continue
-        identifier = match.group("id")
-        if identifier in seen:
-            findings.append(
-                RuleFinding(
-                    "pandoc/duplicate-identifier",
-                    "error",
-                    f"Pandoc identifier {identifier!r} is used more than once.",
-                    match.start("id"),
-                    match.end("id"),
-                )
-            )
-        else:
-            seen[identifier] = (match.start("id"), match.end("id"))
-    return findings
-
-
-def _attribute_findings(lines: list[_Line], protected: bytearray) -> list[RuleFinding]:
-    findings: list[RuleFinding] = []
-    for line in lines:
-        if _overlaps(protected, line.start, line.end):
-            continue
-        # Attribute-looking suffixes are authored after headings/images/div
-        # openers.  A missing closing brace is almost certainly a malformed
-        # Pandoc attribute block, but ordinary prose braces are not diagnosed.
-        match = re.search(r"(?:^|[ \t])\{(?=[#.A-Za-z][^{}\n]*$)", line.text)
-        if match is None or "}" in line.text[match.start() :]:
-            continue
-        prefix = line.text[: match.start()].lstrip()
-        if not (prefix.startswith("#") or prefix.startswith("!") or prefix.startswith(":::") or prefix.endswith(")") or prefix.endswith("]")):
-            continue
-        start = line.start + match.start() + (1 if match.group(0).startswith(" ") else 0)
-        findings.append(
-            RuleFinding(
-                "pandoc/malformed-attributes",
-                "error",
-                "Pandoc attribute block opens here but has no closing '}'.",
-                start,
-                line.end,
-            )
-        )
-    return findings
-
-
-def _unclosed_construct_findings(lines: list[_Line], protected: bytearray) -> list[RuleFinding]:
-    findings: list[RuleFinding] = []
-
-    # Pandoc fenced divs nest, so track fence lengths as a stack and ignore
-    # lines protected by literal code/math blocks.
-    div_stack: list[tuple[int, _Line]] = []
-    for line in lines:
-        if _overlaps(protected, line.start, line.end):
-            continue
-        match = _FENCED_DIV_OPEN.match(line.text)
-        if match is None:
-            continue
-        fence_len = len(match.group("fence"))
-        attrs = (match.group("attrs") or "").strip()
-        if not attrs and div_stack:
-            div_stack.pop()
-        else:
-            div_stack.append((fence_len, line))
-    for _length, line in div_stack:
-        findings.append(
-            RuleFinding(
-                "pandoc/unclosed-fenced-div",
-                "error",
-                "Pandoc fenced div opens here but is never closed.",
-                line.start,
-                line.end,
-            )
-        )
-
-    # Standalone bracket display math and inline \(...\) math.
-    display_open: _Line | None = None
-    for line in lines:
-        if display_open is None and line.text.strip() == "\\[":
-            display_open = line
-        elif display_open is not None and line.text.rstrip().endswith("\\]"):
-            display_open = None
-    if display_open is not None:
-        findings.append(
-            RuleFinding(
-                "math/unclosed-display",
-                "error",
-                "Display math opens with '\\[' but has no closing '\\]'.",
-                display_open.start,
-                display_open.end,
-            )
-        )
-    return findings
-
-
-def _find_unprotected(text: str, needle: str, protected: bytearray | None, start: int = 0) -> int | None:
-    index = text.find(needle, start)
-    while index >= 0:
-        if protected is None or not _overlaps(protected, index, index + len(needle)):
-            return index
-        index = text.find(needle, index + len(needle))
-    return None
-
-
-def _malformed_inline_findings(text: str, protected: bytearray) -> list[RuleFinding]:
-    findings: list[RuleFinding] = []
-    for regex, rule, message in (
-        (
-            _REVERSED_LINK,
-            "link/reversed-syntax",
-            "Link syntax appears reversed; use '[text](destination)'.",
-        ),
-        (
-            _MALFORMED_LINK_CLOSER,
-            "link/malformed-syntax",
-            "Link/image destination closes with ']' instead of ')'.",
-        ),
-        (
-            _SPACED_LINK_TEXT,
-            "link/text-padding",
-            "Link text has padding spaces inside its brackets.",
-        ),
-        (
-            _SPACED_EMPHASIS,
-            "emphasis/padding",
-            "Whitespace inside emphasis markers prevents Markdown emphasis parsing.",
-        ),
-    ):
-        for match in regex.finditer(text):
-            if _overlaps(protected, match.start(), match.end()):
-                continue
-            findings.append(RuleFinding(rule, "warning", message, match.start(), match.end()))
-
-    # Inline \(...\) delimiters may span lines.  Scan balanced pairs without
-    # interpreting anything inside protected code/fence regions.
-    position = 0
-    while True:
-        opener = _find_unprotected(text, "\\(", protected, position)
-        if opener is None:
-            break
-        closer = _find_unprotected(text, "\\)", protected, opener + 2)
-        if closer is None:
-            findings.append(
-                RuleFinding(
-                    "math/unclosed-inline",
-                    "error",
-                    "Inline math opens with '\\(' but has no closing '\\)'.",
-                    opener,
-                    opener + 2,
-                )
-            )
-            break
-        position = closer + 2
-    return findings
-
-
-def _target_heading_ids(path: Path) -> set[str] | None:
+def _target_pandoc_ids(path: Path) -> set[str] | None:
     try:
         target_text = path.read_text()
     except OSError, UnicodeError:
         return None
-    target_lines = _lines(target_text)
-    target_frontmatter = _frontmatter(target_lines)
-    frontmatter_lines: set[int] = set()
-    if target_frontmatter is not None:
-        last = target_frontmatter.closing.number if target_frontmatter.closing is not None else target_lines[-1].number
-        frontmatter_lines.update(range(target_frontmatter.opening.number, last + 1))
-    target_fences = _fences(target_lines, frontmatter_lines)
-    target_protected = _build_protected_map(target_text, target_lines, target_frontmatter, target_fences)
-    return _heading_identifiers(_headings(target_lines, target_protected, target_frontmatter))
+    parsed = parse_pandoc_for_lint(target_text)
+    if parsed.document is None:
+        return None
+    return set(_pandoc_identifiers(parsed.document))
 
 
 def _local_destination_finding(
@@ -1591,7 +1071,7 @@ def _local_destination_finding(
         return None
     if target.suffix.casefold() not in {".md", ".markdown", ".mdown", ".mkd"}:
         return None
-    identifiers = _target_heading_ids(target)
+    identifiers = _target_pandoc_ids(target)
     fragment = unquote(parsed.fragment)
     if identifiers is None or fragment in identifiers:
         return None
@@ -1604,186 +1084,46 @@ def _local_destination_finding(
     )
 
 
-def _link_findings(
-    text: str,
-    headings: list[_Heading],
-    definitions: list[_Definition],
-    protected: bytearray,
-    styles: frozenset[StyleRule],
-    source_path: Path | None,
-) -> list[RuleFinding]:
-    findings: list[RuleFinding] = []
-    heading_ids = _heading_identifiers(headings)
-
-    for match in _EMPTY_LINK.finditer(text):
-        if _overlaps(protected, match.start(), match.end()):
-            continue
-        kind = "image" if match.group("image") else "link"
-        findings.append(
-            RuleFinding(
-                "link/empty-destination",
-                "warning",
-                f"{kind.capitalize()} has an empty destination.",
-                match.start(),
-                match.end(),
-            )
-        )
-
-    for match in _INLINE_LINK.finditer(text):
-        if _overlaps(protected, match.start(), match.end()):
-            continue
-        is_image = bool(match.group("image"))
-        text_content = _plain_inline_text(match.group("text"))
-        destination = match.group("dest").strip("<>")
-        if is_image and not text_content:
-            findings.append(
-                RuleFinding(
-                    "accessibility/image-alt",
-                    "warning",
-                    "Image has empty alternative text.",
-                    match.start("text"),
-                    match.end("text"),
-                )
-            )
-        if not is_image and text_content.casefold() in _NON_DESCRIPTIVE_LINK_TEXT:
-            findings.append(
-                RuleFinding(
-                    "link/non-descriptive-text",
-                    "warning",
-                    f"Link text {text_content!r} does not describe its destination.",
-                    match.start("text"),
-                    match.end("text"),
-                )
-            )
-        if not is_image and destination.startswith("#"):
-            fragment = unquote(destination[1:])
-            if fragment and fragment not in heading_ids:
-                findings.append(
-                    RuleFinding(
-                        "link/invalid-fragment",
-                        "warning",
-                        f"Local fragment '#{fragment}' does not match a heading identifier in this document.",
-                        match.start("dest"),
-                        match.end("dest"),
-                    )
-                )
-        local_finding = _local_destination_finding(destination, match.start("dest"), match.end("dest"), source_path)
-        if local_finding is not None:
-            findings.append(local_finding)
-
-    # Reference-definition destinations can also be same-document fragments.
-    for definition in definitions:
-        if definition.destination.startswith("#"):
-            fragment = unquote(definition.destination[1:])
-            if fragment and fragment not in heading_ids:
-                findings.append(
-                    RuleFinding(
-                        "link/invalid-fragment",
-                        "warning",
-                        f"Local fragment '#{fragment}' does not match a heading identifier in this document.",
-                        definition.line.start,
-                        definition.line.end,
-                    )
-                )
-        local_finding = _local_destination_finding(
-            definition.destination,
-            definition.line.start,
-            definition.line.end,
-            source_path,
-        )
-        if local_finding is not None:
-            findings.append(local_finding)
-
-    # Reference images: the alternative text is the first bracket payload.
-    for match in _FULL_REFERENCE.finditer(text):
-        if not match.group("image") or _overlaps(protected, match.start(), match.end()):
-            continue
-        if not _plain_inline_text(match.group("text")):
-            findings.append(
-                RuleFinding(
-                    "accessibility/image-alt",
-                    "warning",
-                    "Image has empty alternative text.",
-                    match.start("text"),
-                    match.end("text"),
-                )
-            )
-
-    if StyleRule.BARE_URL in styles:
-        for match in _BARE_URL.finditer(text):
-            if _overlaps(protected, match.start(), match.end()):
-                continue
-            # URLs inside an inline link destination or angle-bracket autolink
-            # are not literal prose URLs.
-            before = text[max(0, match.start() - 2) : match.start()]
-            if "<" in before or "](" in text[max(0, match.start() - 3) : match.start()]:
-                continue
-            findings.append(
-                RuleFinding(
-                    "style/bare-url",
-                    "warning",
-                    "Bare URL is used in prose; use a descriptive Markdown link.",
-                    match.start(),
-                    match.end(),
-                )
-            )
-    return findings
-
-
-def _table_boundary_findings(lines: list[_Line], protected: bytearray) -> list[RuleFinding]:
-    findings: list[RuleFinding] = []
-    index = 0
-    while index + 1 < len(lines):
-        line = lines[index]
-        next_line = lines[index + 1]
-        if _overlaps(protected, line.start, line.end):
-            index += 1
-            continue
-        looks_like_header = "|" in line.text and bool(line.text.strip())
-        delimiter = re.match(
-            r"^ {0,3}\|?(?:[ \t]*:?-{1,}:?[ \t]*\|)+[ \t]*:?-{1,}:?[ \t]*\|?[ \t]*$",
-            next_line.text,
-        )
-        if not looks_like_header or delimiter is None:
-            index += 1
-            continue
-        start = index
-        end = index + 2
-        while end < len(lines) and "|" in lines[end].text and lines[end].text.strip():
-            end += 1
-        if start > 0 and lines[start - 1].text.strip():
-            findings.append(
-                RuleFinding(
-                    "table/surrounding-blank-lines",
-                    "warning",
-                    "Pipe table should be preceded by a blank line.",
-                    line.start,
-                    line.end,
-                )
-            )
-        if end < len(lines) and lines[end].text.strip():
-            last = lines[end - 1]
-            findings.append(
-                RuleFinding(
-                    "table/surrounding-blank-lines",
-                    "warning",
-                    "Pipe table should be followed by a blank line.",
-                    last.start,
-                    last.end,
-                )
-            )
-        index = end
-    return findings
-
-
 def _style_findings(
     text: str,
     lines: list[_Line],
+    fences: list[_Fence],
     protected: bytearray,
     styles: frozenset[StyleRule],
     max_line_length: int | None,
 ) -> list[RuleFinding]:
     findings: list[RuleFinding] = []
+    if StyleRule.FENCE_MARKER in styles:
+        seen_marker: str | None = None
+        for fence in fences:
+            if fence.closing is None:
+                continue
+            marker = fence.marker[0]
+            if seen_marker is None:
+                seen_marker = marker
+            elif marker != seen_marker:
+                findings.append(
+                    RuleFinding(
+                        "style/fence-marker",
+                        "warning",
+                        "Code fence marker is inconsistent with the first fence in the document.",
+                        fence.opening.start,
+                        fence.opening.end,
+                    )
+                )
+    if StyleRule.BARE_URL in styles:
+        for match in _BARE_URL.finditer(text):
+            if _overlaps(protected, match.start(), match.end()):
+                continue
+            findings.append(
+                RuleFinding(
+                    "style/bare-url",
+                    "warning",
+                    "Bare URL is disallowed by the selected lint style.",
+                    match.start(),
+                    match.end(),
+                )
+            )
     if StyleRule.UNORDERED_LIST_MARKER in styles:
         markers_by_indent: dict[int, str] = {}
         for line in lines:
@@ -1837,6 +1177,7 @@ def _style_findings(
 def lint_rule_findings(
     text: str,
     *,
+    pandoc_document: dict[str, PandocJson],
     source_path: Path | None = None,
     styles: frozenset[StyleRule] | None = None,
     max_line_length: int | None = None,
@@ -1851,25 +1192,21 @@ def lint_rule_findings(
         frontmatter_line_numbers.update(range(frontmatter.opening.number, last_number + 1))
     fences = _fences(lines, frontmatter_line_numbers)
     protected = _build_protected_map(text, lines, frontmatter, fences)
-    headings = _headings(lines, protected, frontmatter)
-    definitions = _definitions(lines, protected)
 
     findings = [
-        *_frontmatter_findings(frontmatter),
-        *_frontmatter_resource_findings(frontmatter, source_path),
-        *_reference_findings(text, lines, protected),
-        *_footnote_findings(text, lines, protected),
-        *_heading_findings(headings, lines, protected, styles),
-        *_fence_findings(fences, lines, styles),
-        *_explicit_identifier_findings(text, protected),
-        *_attribute_findings(lines, protected),
-        *_unclosed_construct_findings(lines, protected),
-        *_tex_environment_findings(text, frontmatter, fences),
-        *_mathematical_findings(text, lines, frontmatter, fences),
-        *_malformed_inline_findings(text, protected),
-        *_link_findings(text, headings, definitions, protected, styles, source_path),
-        *_table_boundary_findings(lines, protected),
-        *_style_findings(text, lines, protected, styles, max_line_length),
+        *_pandoc_semantic_findings(
+            text,
+            pandoc_document,
+            lines,
+            frontmatter,
+            fences,
+            protected,
+            styles,
+            source_path,
+        ),
+        *_pandoc_resource_findings(text, pandoc_document, source_path),
+        *_mathematical_findings(text, pandoc_document),
+        *_style_findings(text, lines, fences, protected, styles, max_line_length),
     ]
     # Identical findings can arise when one malformed token is recognized by a
     # generic and a family-specific scan.  Preserve the most specific first one.

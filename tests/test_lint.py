@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from flowmark.lint import LintOptions, Severity, lint_text
+from flowmark.lint import lint_text
 from flowmark.lint_cli import main
 
 
@@ -23,26 +23,42 @@ def test_formatter_normalization_is_not_a_lint_diagnostic() -> None:
     assert lint_text("Use _emphasis_ and __strong__ here.\n") == []
 
 
-def test_preflight_ambiguity_wins_over_secondary_formatting() -> None:
-    diagnostics = lint_text("An unterminated $x_i expression.\n")
-    assert len(diagnostics) == 1
-    assert diagnostics[0].rule == "pandoc/ambiguous-input"
-    assert diagnostics[0].severity is Severity.ERROR
+def test_linter_does_not_invent_math_from_unparsed_dollar_text() -> None:
+    # Pandoc does not produce a Math node for this source. A linter cannot call
+    # it "unterminated math" without independently inventing author intent.
+    assert lint_text("An unmatched $x_i expression.\n") == []
+
+
+def test_multiline_pandoc_inline_math_is_not_reported_as_unterminated() -> None:
+    # Regression from the Zettlr workspace. Pandoc's mathInlineWith explicitly
+    # permits a single physical newline; the old preflight counted dollars per
+    # line and emitted two contradictory "unterminated $" errors.
+    source = (
+        "summand of $B\\cong U\\oplus U\\oplus\\latI_{0,7}$; then "
+        "$e^{\\perp B} = \\ZZ e\\oplus\n"
+        "U\\oplus\\latI_{0,7}$ and "
+        "$e^{\\perp}/e\\cong U\\oplus\\latI_{0,7}\\cong\\latI_{1,8}$,\n"
+    )
+    assert lint_text(source) == []
 
 
 def test_json_cli_is_editor_consumable(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = tmp_path / "doc.md"
-    path.write_text("[text][missing]\n")
+    path.write_text("[x]: /a\n[x]: /b\n\n[x][]\n")
     assert main(["--format", "json", "--exit-zero", str(path)]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["version"] == 1
     assert payload["files"][0]["path"] == str(path)
-    diagnostic = payload["files"][0]["diagnostics"][0]
-    assert diagnostic["rule"] == "reference/undefined"
-    assert diagnostic["line"] == 1
-    assert diagnostic["column"] == 8
+    diagnostic = next(
+        item
+        for item in payload["files"][0]["diagnostics"]
+        if item["rule"] == "reference/duplicate-definition"
+    )
+    assert diagnostic["rule"] == "reference/duplicate-definition"
+    assert diagnostic["line"] == 2
+    assert diagnostic["column"] == 1
 
 
 def test_json_cli_uses_source_path_for_stdin_local_links(

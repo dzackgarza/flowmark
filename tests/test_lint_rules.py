@@ -19,44 +19,19 @@ def rule_ids(text: str, *, options: LintOptions | None = None, source_path: Path
         ("# H1\n\n### H3\n", "heading/increment"),
         ("## Same\n\nText\n\n## Same\n", "heading/duplicate"),
         ("# A\n\n# B\n", "heading/multiple-h1"),
-        ("#Heading\n", "heading/malformed"),
-        ("####### Heading\n", "heading/malformed"),
-        ("[text][missing]\n", "reference/undefined"),
-        ("[unused]: /target\n", "reference/unused-definition"),
         ("[x]: /a\n[x]: /b\n\n[x][]\n", "reference/duplicate-definition"),
         ("[text]()\n", "link/empty-destination"),
-        ("(text)[https://example.com]\n", "link/reversed-syntax"),
-        ("[text](https://example.com]\n", "link/malformed-syntax"),
-        ("[ text ](https://example.com)\n", "link/text-padding"),
-        ("Use * text * here.\n", "emphasis/padding"),
         ("![](image.png)\n", "accessibility/image-alt"),
         ("[click here](https://example.com)\n", "link/non-descriptive-text"),
         ("# Heading\n\n[bad](#missing)\n", "link/invalid-fragment"),
-        ("Text[^missing].\n", "footnote/undefined"),
         ("[^unused]: note\n", "footnote/unused-definition"),
         ("Text[^x].\n\n[^x]: one\n[^x]: two\n", "footnote/duplicate-definition"),
         ("---\ntitle: A\ntitle: B\n---\n\nText\n", "frontmatter/duplicate-key"),
         ("---\ntitle: [oops\n---\n\nText\n", "frontmatter/malformed-flow"),
-        ("---\ntitle: A\n", "frontmatter/unclosed"),
         ("```\ncode\n```\n", "code/missing-language"),
-        ("```python\ncode\n", "code/unclosed-fence"),
         ("```python\n\tx=1\n```\n", "code/hard-tab"),
-        ("Text\n```python\nx=1\n```\nAfter\n", "code/surrounding-blank-lines"),
-        (
-            "Text\n| a | b |\n| --- | --- |\n| x | y |\nAfter\n",
-            "table/surrounding-blank-lines",
-        ),
         ("# A {#x}\n\n# B {#x}\n", "pandoc/duplicate-identifier"),
-        ("# A {#x .foo\n", "pandoc/malformed-attributes"),
         ("::: theorem\nText\n", "pandoc/unclosed-fenced-div"),
-        ("\\begin{align}\nx &= y\n", "tex/unclosed-environment"),
-        (
-            "\\begin{align}\nx &= y\n\\end{equation}\n",
-            "tex/mismatched-environment",
-        ),
-        ("\\end{align}\n", "tex/unmatched-environment-end"),
-        ("\\[\nx_i\n", "math/unclosed-display"),
-        ("Inline \\(x_i with no closer.\n", "math/unclosed-inline"),
         ("Inline $x_i_j$.\n", "math/repeated-subscript"),
         ("Inline $x^2^3$.\n", "math/repeated-superscript"),
         ("Inline $x_{i$.\n", "math/unclosed-group"),
@@ -72,8 +47,64 @@ def test_default_rules_cover_common_structural_and_semantic_failures(source: str
 
 
 def test_semantic_diagnostics_do_not_depend_on_formatter_spelling() -> None:
-    diagnostics = lint_text("Use _emphasis_.\n\n[text][missing]\n")
-    assert {d.rule for d in diagnostics} == {"reference/undefined"}
+    diagnostics = lint_text("Use _emphasis_.\n\n# Heading\n\n[bad](#missing)\n")
+    assert {d.rule for d in diagnostics} == {"link/invalid-fragment"}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "[text][missing]\n",
+        "[unused]: /target\n",
+        "Text[^missing].\n",
+        "---\ntitle: A\n",
+        "Text\n```python\nx=1\n```\nAfter\n",
+        "Text\n| a | b |\n| --- | --- |\n| x | y |\nAfter\n",
+    ],
+)
+def test_default_linter_does_not_invent_structure_pandoc_did_not_report(source: str) -> None:
+    assert lint_text(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "#Heading\n",
+        "(text)[https://example.com]\n",
+        "[text](https://example.com]\n",
+        "Use * text * here.\n",
+        "# A {#x .foo\n",
+        "```python\ncode\n",
+        "\\begin{align}\nx &= y\n",
+        "\\begin{align}\nx &= y\n\\end{equation}\n",
+        "\\end{align}\n",
+    ],
+)
+def test_pandoc_prose_is_not_reclassified_as_failed_syntax(source: str) -> None:
+    assert lint_text(source) == []
+
+
+def test_pandoc_allows_atx_heading_levels_above_six() -> None:
+    assert lint_text("####### Heading\n") == []
+
+
+def test_padded_link_text_is_valid_pandoc_link_not_malformed_syntax() -> None:
+    assert "link/text-padding" not in rule_ids("[ text ](https://example.com)\n")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Inline $x_i with no closer.\n",
+        "Inline \\(x_i with no closer.\n",
+        "\\[\nx_i\n",
+    ],
+)
+def test_unparsed_math_openers_are_not_reclassified_as_math_errors(source: str) -> None:
+    # Pandoc leaves these as ordinary text because no Math node is formed. The
+    # linter may diagnose TeX *inside recognized Math*, but it must not invent a
+    # second delimiter grammar to infer attempted math from prose.
+    assert not any(rule.startswith("math/unclosed-") for rule in rule_ids(source))
 
 
 def test_math_code_and_raw_tex_are_opaque_to_markdown_rules() -> None:

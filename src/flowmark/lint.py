@@ -1,17 +1,14 @@
-"""Standalone Pandoc-aware Markdown linting built on Flowmark's semantic parser.
+"""Standalone Pandoc-aware Markdown linting with Pandoc as syntax authority.
 
-The linter has one syntax authority: the same parser and normalizer Flowmark uses to
-format Pandoc-flavoured Markdown.  It does not run a second Markdown grammar over the
-source.  Consequently math, raw TeX, fenced divs, definition lists, tables, footnotes,
-and the other constructs Flowmark models are opaque or structured in exactly the same
-places during linting as they are during formatting.
+Every lint pass first invokes the canonical Pandoc reader dialect.  Correctness rules
+receive that exact JSON AST and warning stream; source scanners may locate an
+already-proven node but may not independently decide that Markdown syntax exists.
 
-Two layers are reported:
-
-* explicit semantic/structural rules (references, headings, links, footnotes,
-  frontmatter, Pandoc attributes, code fences, and malformed math/TeX constructs);
-* ``pandoc/ambiguous-input`` high-confidence ambiguity checks from
-  :func:`flowmark.preflight.preflight`;
+The reported rules are explicit semantic/structural checks (references, headings,
+links, footnotes, frontmatter, Pandoc attributes, code fences, and TeX checks inside
+math which the Pandoc grammar actually recognizes). The formatter's historical
+``preflight`` heuristics are deliberately not lint rules: they guess author intent
+from source spelling and do not have source-backed Pandoc grammar semantics.
 
 Formatting is deliberately not a lint concern.  Whether source text differs from
 Flowmark's canonical rendering is answered by the formatter/check surface, not by
@@ -33,7 +30,12 @@ from enum import StrEnum
 from pathlib import Path
 
 from flowmark.lint_rules import StyleRule, lint_rule_findings
-from flowmark.preflight import preflight
+from flowmark.pandoc_lint import (
+    PandocJson,
+    PandocLintUnavailableError,
+    PandocMessage,
+    parse_pandoc_for_lint,
+)
 
 
 class Severity(StrEnum):
@@ -76,14 +78,6 @@ class LintOptions:
     max_line_length: int | None = None
 
 
-def _line_end_column(lines: list[str], line: int) -> int:
-    """Return the 1-based column immediately after ``line``'s visible text."""
-    if not lines:
-        return 1
-    index = min(max(line - 1, 0), len(lines) - 1)
-    return len(lines[index].rstrip("\n")) + 1
-
-
 def _offset_to_point(text: str, offset: int) -> tuple[int, int]:
     """Convert a source offset to a 1-based ``(line, column)`` pair."""
     offset = min(max(offset, 0), len(text))
@@ -94,7 +88,10 @@ def _offset_to_point(text: str, offset: int) -> tuple[int, int]:
 
 
 def _explicit_rule_diagnostics(
-    text: str, options: LintOptions, source_path: Path | None
+    text: str,
+    options: LintOptions,
+    source_path: Path | None,
+    pandoc_document: dict[str, PandocJson],
 ) -> list[LintDiagnostic]:
     diagnostics: list[LintDiagnostic] = []
     for finding in lint_rule_findings(
@@ -102,6 +99,7 @@ def _explicit_rule_diagnostics(
         source_path=source_path,
         styles=options.styles,
         max_line_length=options.max_line_length,
+        pandoc_document=pandoc_document,
     ):
         line, column = _offset_to_point(text, finding.start)
         end_line, end_column = _offset_to_point(text, finding.end)
@@ -120,6 +118,40 @@ def _explicit_rule_diagnostics(
     return diagnostics
 
 
+def _pandoc_message_rule(message: PandocMessage) -> str:
+    lowered = message.message.casefold()
+    if "error parsing yaml metadata" in lowered or "yaml parse exception" in lowered:
+        return "frontmatter/malformed-flow"
+    if "duplicate key" in lowered:
+        return "frontmatter/duplicate-key"
+    if "duplicate link reference" in lowered:
+        return "reference/duplicate-definition"
+    if "duplicate note reference" in lowered:
+        return "footnote/duplicate-definition"
+    if "note with key" in lowered and "not used" in lowered:
+        return "footnote/unused-definition"
+    if "div at line" in lowered and "unclosed" in lowered:
+        return "pandoc/unclosed-fenced-div"
+    return "pandoc/parse-error" if message.severity == "error" else "pandoc/warning"
+
+
+def _pandoc_message_diagnostic(text: str, message: PandocMessage) -> LintDiagnostic:
+    line = message.line or 1
+    column = message.column or 1
+    lines = text.splitlines() or [""]
+    line_index = max(0, min(len(lines) - 1, line - 1))
+    end_column = min(len(lines[line_index]) + 1, column + 1)
+    return LintDiagnostic(
+        rule=_pandoc_message_rule(message),
+        severity=Severity.ERROR if message.severity == "error" else Severity.WARNING,
+        message=message.message,
+        line=line,
+        column=column,
+        end_line=line,
+        end_column=end_column,
+    )
+
+
 def lint_text(
     text: str,
     options: LintOptions | None = None,
@@ -130,22 +162,25 @@ def lint_text(
     if options is None:
         options = LintOptions()
 
-    explicit = _explicit_rule_diagnostics(text, options, source_path)
-    ambiguous = [
-        LintDiagnostic(
-            rule="pandoc/ambiguous-input",
-            severity=Severity.ERROR,
-            message=finding.message,
-            line=finding.line,
-            column=1,
-            end_line=finding.line,
-            end_column=_line_end_column(
-                text.splitlines(keepends=True) or [""], finding.line
-            ),
-        )
-        for finding in preflight(text)
+    try:
+        pandoc = parse_pandoc_for_lint(text)
+    except PandocLintUnavailableError as error:
+        raise RuntimeError(str(error)) from error
+
+    diagnostics = [
+        _pandoc_message_diagnostic(text, message) for message in pandoc.messages
     ]
-    diagnostics = [*explicit, *ambiguous]
+    if pandoc.document is not None:
+        # The recursive JSON type is intentionally erased at this call boundary;
+        # lint_rules treats it structurally through the pandoc_lint helpers.
+        diagnostics.extend(
+            _explicit_rule_diagnostics(
+                text,
+                options,
+                source_path,
+                pandoc.document,
+            )
+        )
     diagnostics.sort(key=lambda item: (item.line, item.column, item.rule))
     return diagnostics
 

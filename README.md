@@ -503,10 +503,11 @@ For development workflows, see [development.md](docs/development.md).
 
 ## Pandoc-aware linting
 
-Flowmark also ships a standalone linter over the same semantic Markdown parser used by
-the formatter. It understands Flowmark's Pandoc-oriented constructs (including math, raw
-TeX, fenced divs, definition lists, tables, and footnotes) before applying style checks,
-so TeX underscores and asterisks are not reinterpreted as Markdown emphasis.
+Flowmark also ships a standalone linter whose Markdown syntax authority is the real
+Pandoc reader. Each lint pass parses the authored source with the canonical Pandoc
+dialect and uses that JSON AST and Pandoc's own warning/error stream to decide which
+constructs exist. Local scanners may locate an already-proven construct for source
+coordinates, but they do not create Markdown syntax independently.
 
 ```bash
 flowmark-lint README.md
@@ -514,18 +515,26 @@ flowmark-lint --format json --exit-zero - < document.md
 ```
 
 The Python API is `flowmark.lint_text()`. Diagnostics use 1-based source coordinates and
-stable rule ids. The default rule layer checks structural/semantic failures that a
-formatter cannot safely infer away: heading hierarchy/duplicates, reference and footnote
-integrity, malformed or empty links, local fragments and local-file targets, image alt
-text, fenced-code language/tabs/boundaries, frontmatter integrity, duplicate Pandoc ids,
-malformed attributes, mismatched/unclosed TeX environments, unbalanced TeX groups and
-`\\left`/`\\right` pairs, repeated TeX subscripts or superscripts, likely bare mathematical
-operators, and statically resolvable missing Pandoc/TeX resources. Resource checks are
-deliberately limited to explicit Pandoc-local paths; TeX search paths belong to the
-calling editor/build environment and are not guessed. `pandoc/ambiguous-input` adds the high-confidence ambiguity
-checks from Flowmark's preflight. Formatter normalization is not a lint diagnostic; use
-the formatter itself when canonical source spelling matters. The linter does not edit
-files.
+stable rule ids. The default layer checks semantics only after Pandoc has established the
+relevant syntax: heading hierarchy/duplicates, actual links/images and fragments,
+fenced-code language/tabs, explicit Pandoc identifiers, Pandoc metadata resources, and
+TeX checks inside actual Pandoc `Math` nodes. Pandoc's own reader diagnostics are mapped
+directly for cases such as malformed YAML, duplicate link/note definitions, unused note
+definitions, duplicate YAML keys, and unclosed fenced divs. Source that merely resembles
+an unterminated link, footnote, code fence, TeX environment, math delimiter, attribute
+block, or YAML opener is not reclassified as failed syntax when Pandoc parsed it as
+ordinary prose.
+
+Math source positions come from a literal port of Pandoc 3.10.2
+`Text.Pandoc.Parsing.Math` (`mathInlineWith`/`mathDisplayWith`) and are reconciled against
+the actual Pandoc JSON `Math` sequence before any TeX-content diagnostic runs. The math
+scanner has a generated differential torture corpus against the real Pandoc AST, and the
+default linter has a separate adversarial corpus for parser-looking prose, literal
+regions, block-boundary interactions, and Pandoc warning/error mapping. Flowmark's
+formatter `preflight` heuristics are not lint diagnostics: they are
+verification-attribution helpers, not a Markdown grammar. Formatter normalization is
+likewise not a lint diagnostic; use the formatter itself when canonical source spelling
+matters. The linter does not edit files.
 
 Pure house-style policies are opt-in instead of being treated as Markdown correctness:
 
