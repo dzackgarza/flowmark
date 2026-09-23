@@ -144,8 +144,14 @@ _EMPTY_LINK = re.compile(r"(?P<image>!?)\[(?P<text>[^\]\n]*)\]\([ \t]*\)")
 _REVERSED_LINK = re.compile(r"(?<![!\w])\((?P<text>[^()\n]+)\)\[(?P<dest>[^\]\n]+)\]")
 _MALFORMED_LINK_CLOSER = re.compile(r"(?P<image>!?)\[[^\]\n]*\]\([^\n)]*\]")
 _SPACED_LINK_TEXT = re.compile(r"(?P<image>!?)\[[ \t]+[^\]\n]*[^\]\s][ \t]+\]\(")
+# Emphasis the author padded inside its markers (`* text *`). The opener must stand
+# where an opener can (after whitespace, `(`, `[`, or line start) and the closer
+# where a closer can (before whitespace, punctuation, or line end); otherwise the
+# "span" is the gap between two real spans, as in `**a** and **b**`.
 _SPACED_EMPHASIS = re.compile(
-    r"(?<![*_])(?P<marker>\*\*|__|\*|_)[ \t]+(?P<body>[^\n]+?)[ \t]+(?P=marker)(?![*_])"
+    r"(?<![^\s(\[])(?P<marker>\*\*|__|\*|_)[ \t]+(?P<body>[^\n]+?)[ \t]+(?P=marker)"
+    r"(?=[\s.,;:!?)\]]|$)",
+    re.MULTILINE,
 )
 _FENCE_OPEN = re.compile(r"^(?P<indent> {0,3})(?P<marker>`{3,}|~{3,})(?P<info>.*)$")
 _FENCED_DIV_OPEN = re.compile(r"^ {0,3}(?P<fence>:{3,})(?P<attrs>[ \t]+.*)?$")
@@ -1109,6 +1115,13 @@ def _malformed_inline_findings(text: str, protected: bytearray) -> list[RuleFind
         for match in regex.finditer(text):
             if _overlaps(protected, match.start(), match.end()):
                 continue
+            line_start = text.rfind("\n", 0, match.start()) + 1
+            if (
+                regex is _SPACED_EMPHASIS
+                and match.group("marker") == "*"
+                and not text[line_start : match.start()].strip()
+            ):
+                continue  # a `*` bullet, not an emphasis opener
             findings.append(
                 RuleFinding(rule, "warning", message, match.start(), match.end())
             )

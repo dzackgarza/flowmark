@@ -229,6 +229,18 @@ def test_unicode_math_symbols_are_reported_in_code_and_math_too() -> None:
     assert _findings(source, "math/unicode-symbol") == ["∈", "α", "ψ", "∇", "→"]
 
 
+def test_emphasis_padding_ignores_bullets_and_adjacent_strong_spans() -> None:
+    """
+    A `*` bullet is not an emphasis opener, and the words between two bold spans
+    are not one padded span. Pandoc reads both lines' emphasis correctly.
+    """
+    source = (
+        "* A *topological group* is a group object in Top.\n\n"
+        "The **maximal elliptic** subdiagrams and **maximal parabolic** ones.\n"
+    )
+    assert "emphasis/padding" not in rule_ids(source)
+
+
 def test_backslash_delimiters_are_prose_to_pandoc() -> None:
     """
     Pandoc's `markdown` leaves `tex_math_single_backslash` off, so `\\(x_i\\)` reads
