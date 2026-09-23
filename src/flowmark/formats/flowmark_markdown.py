@@ -271,16 +271,23 @@ class CustomTableRow(gfm_elements.TableRow):
     @override
     @classmethod
     def match(cls, source: Source) -> bool:
-        # marko's `TableRow.match` with its splitter replaced
-        # (marko/ext/gfm/elements.py, marko 2.2.2).
+        # marko's `TableRow.match` with pandoc's row rules
+        # (marko/ext/gfm/elements.py, marko 2.2.2): a row has a `|` outside code
+        # and math, and a delimiter cell is exactly `:?-+:?`. marko accepted a bar
+        # anywhere and matched the delimiter as a prefix, so a paragraph with
+        # `$|a|$` above a `- item` line became a table.
         line = _next_line(source)
         if not line or not re.match(r" {,3}\S", line):
+            return False
+        if not any(m.group("bar") for m in _PIPE_ROW_TOKEN.finditer(line.strip())):
             return False
         cells = split_pipe_table_row(line)
         if not cells:
             return False
         source.context.cells = cells
-        source.context.is_delimiter = all(cls.delimiter.match(cell) for cell in cells)
+        source.context.is_delimiter = all(
+            cls.delimiter.fullmatch(cell) for cell in cells
+        )
         return True
 
     @override
@@ -320,10 +327,9 @@ class CustomTable(gfm_elements.Table):
         source.anchor()
         if not CustomTableRow.match(source) or source.context.is_delimiter:
             return False
-        # The row just matched is a non-empty line, so reading it again succeeds.
-        head_line = cast("str", _next_line(source))
-        if CustomTableRow.splitter.search(head_line) is None:
-            return False
+        # Re-reading the head row sets `source.match` to it; the row just matched
+        # is a non-empty line, so the read succeeds.
+        _next_line(source)
         source.pos = cast("re.Match[str]", source.match).end()
         head = CustomTableRow([CustomTableCell(cell) for cell in source.context.cells])
         if (

@@ -262,6 +262,22 @@ def test_bar_inside_a_code_span_or_math_stays_in_its_cell() -> None:
     assert reformat_text(BARS_IN_SPANS_TABLE) == BARS_IN_SPANS_TABLE
 
 
+def test_bars_only_inside_math_do_not_start_a_table() -> None:
+    """
+    A pipe-table row needs a `|` outside code and math, and a delimiter cell is
+    only `:?-+:?`. This paragraph and the bullet under it are not a table.
+    """
+    source = (
+        "- Item:\n\n"
+        "  With grading $|a|' = |a| - 1$, the bracket satisfies:\n"
+        "  - Graded skew-symmetry.\n"
+    )
+    result = reformat_text(source)
+
+    assert "---" not in result
+    assert "- Graded skew-symmetry." in result
+
+
 def test_row_wider_than_its_header_keeps_its_text() -> None:
     """
     A bare `d|N` splits the row, and pandoc drops the cells past the header's
