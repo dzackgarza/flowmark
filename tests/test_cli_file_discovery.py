@@ -146,6 +146,17 @@ def test_explicit_file_still_works(
     assert "# Hello World" in out
 
 
+def test_one_file_with_output_writes_the_output(tmp_path: Path) -> None:
+    """`-o` names where one input goes; it was refused as a multi-file request."""
+    source = tmp_path / "in.md"
+    source.write_text("Some   text.\n")
+    target = tmp_path / "out.md"
+
+    assert main([str(source), "-o", str(target)]) == 0
+    assert target.read_text() == "Some text.\n"
+    assert source.read_text() == "Some   text.\n"
+
+
 def test_stdin_still_works(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -239,8 +239,11 @@ def reformat_files(
             parsed AST, and write nothing if it did. On by default (only applies
             to Markdown mode).
     """
-    if len(files) == 1 and files[0] == "-":
-        # Single stdin case - use original function
+    # Stdin, or one file with an output path: a single document with a single
+    # destination, so a refusal raises instead of being reported as a batch skip.
+    if len(files) == 1 and (
+        files[0] == "-" or (output and output != "-" and not inplace)
+    ):
         reformat_file(
             path=files[0],
             output=output,
