@@ -61,6 +61,7 @@ from itertools import combinations
 from typing import cast
 
 from flowmark.formats.frontmatter import split_frontmatter
+from flowmark.linewrapping.tag_handling import is_tag_only_line
 
 PandocJson = (
     str | int | float | bool | None | list["PandocJson"] | dict[str, "PandocJson"]
@@ -454,18 +455,111 @@ def _collapse_lazy_lists_at_level(
     return out
 
 
-def _collapse_lazy_lists(before: PandocJson, after: PandocJson) -> PandocJson:
-    """Walk both trees in parallel, collapsing materialized lists wherever they align."""
+def _tag_line_inlines(block: PandocJson) -> list[PandocJson] | None:
+    """
+    The inlines `block` becomes when pandoc reads it as a lazy continuation line,
+    or None if `block` is not a tag-only line (`is_tag_only_line`).
+
+    An HTML comment alone on its line reads as a `RawBlock`; a Markdoc or Jinja tag
+    reads as a paragraph of text, which `_canonical` has merged into one `Str`.
+    """
+    if not isinstance(block, dict):
+        return None
+    content = block.get("c")
+    if block.get("t") == "RawBlock" and isinstance(content, list):
+        fmt, text = content
+        if isinstance(fmt, str) and isinstance(text, str) and is_tag_only_line(text):
+            return [{"t": "RawInline", "c": [fmt, text]}]
+        return None
+    if block.get("t") in _PARAGRAPH_BLOCKS and isinstance(content, list):
+        match content:
+            case [{"t": "Str", "c": str(text)}] if is_tag_only_line(text):
+                return content
+            case _:
+                return None
+    return None
+
+
+def _extend_last_paragraph(
+    block: PandocJson, inlines: list[PandocJson]
+) -> PandocJson | None:
+    """
+    `block` with `inlines` appended to its last paragraph, as a lazy continuation
+    line appends to the innermost open paragraph; None if `block` does not end in one.
+    """
+    if not isinstance(block, dict):
+        return None
+    kind, content = block.get("t"), block.get("c")
+    if kind in _PARAGRAPH_BLOCKS and isinstance(content, list):
+        paragraph: dict[str, PandocJson] = {
+            "t": kind,
+            "c": [*content, {"t": "Space"}, *inlines],
+        }
+        return paragraph
+    items = content
+    if kind == "OrderedList" and isinstance(content, list) and len(content) == 2:
+        items = content[1]
+    elif kind != "BulletList":
+        return None
+    if not isinstance(items, list) or not items or not isinstance(items[-1], list):
+        return None
+    last_item = items[-1]
+    if not last_item:
+        return None
+    extended = _extend_last_paragraph(last_item[-1], inlines)
+    if extended is None:
+        return None
+    new_items: list[PandocJson] = [*items[:-1], [*last_item[:-1], extended]]
+    rebuilt: dict[str, PandocJson] = {"t": kind, "c": new_items}
+    if kind == "OrderedList" and isinstance(content, list):
+        rebuilt["c"] = [content[0], new_items]
+    return rebuilt
+
+
+def _fold_tag_lines_at_level(
+    before: list[PandocJson], after: list[PandocJson]
+) -> list[PandocJson]:
+    """
+    Rewrite `after` so a list followed by tag-only blocks becomes the single list
+    `before` has there -- but only when folding them back into the list's last
+    paragraph reproduces `before` exactly.
+    """
+    out: list[PandocJson] = []
+    before_index = 0
+    after_index = 0
+    while after_index < len(after):
+        original = before[before_index] if before_index < len(before) else None
+        candidate: PandocJson | None = after[after_index]
+        folded = 0
+        for offset, block in enumerate(after[after_index + 1 :], start=1):
+            inlines = _tag_line_inlines(block)
+            if inlines is None or candidate is None:
+                break
+            candidate = _extend_last_paragraph(candidate, inlines)
+            if candidate is not None and _canonical(candidate) == original:
+                folded = offset
+        out.append(original if folded else after[after_index])
+        after_index += 1 + folded
+        before_index += 1
+    return out
+
+
+def _walk_levels(
+    at_level: Callable[[list[PandocJson], list[PandocJson]], list[PandocJson]],
+    before: PandocJson,
+    after: PandocJson,
+) -> PandocJson:
+    """Walk both trees in parallel, rewriting each of `after`'s node lists with `at_level`."""
     if isinstance(before, dict) and isinstance(after, dict):
         return {
-            key: _collapse_lazy_lists(before.get(key), value)
+            key: _walk_levels(at_level, before.get(key), value)
             for key, value in after.items()
         }
     if isinstance(before, list) and isinstance(after, list):
-        collapsed = _collapse_lazy_lists_at_level(before, after)
+        rewritten = at_level(before, after)
         return [
-            _collapse_lazy_lists(before[index] if index < len(before) else None, item)
-            for index, item in enumerate(collapsed)
+            _walk_levels(at_level, before[index] if index < len(before) else None, item)
+            for index, item in enumerate(rewritten)
         ]
     return after
 
@@ -488,6 +582,15 @@ LAZY_LIST = "lazy_list"
 Never requested: no flag asks for it, so it is always reported.  The author wrote
 bullets under a paragraph line and pandoc's dialect read them as prose; flowmark
 gives them the list they drew, and says so.
+"""
+
+TAG_LINE_SPLIT = "tag_line_split"
+"""Identifier for moving a tag-only line out of the list item above it.
+
+Never requested, so it is always reported.  An HTML comment or Markdoc tag on the
+line right after a list item is that item's text to pandoc and a block of its own
+to CommonMark.  The block is what a `<!--toc:end-->` marker or a closing
+`{% /tag %}` means, so flowmark writes it as one (`preprocess_tag_block_spacing`).
 """
 
 Normalization = Callable[[PandocJson, PandocJson], tuple[PandocJson, PandocJson]]
@@ -613,7 +716,20 @@ def _normalize_lazy_list(
     formatter destroyed into prose -- has the extra structure on the `before` side,
     where nothing rewrites it, so it still mismatches and still raises.
     """
-    return before, _collapse_lazy_lists(before, after)
+    return before, _walk_levels(_collapse_lazy_lists_at_level, before, after)
+
+
+def _normalize_tag_line_split(
+    before: PandocJson, after: PandocJson
+) -> tuple[PandocJson, PandocJson]:
+    """
+    Fold tag-only blocks `after` split out of `before`'s last list item back in.
+
+    Directional, like `LAZY_LIST`: only `after` is rewritten, and only where the
+    fold reproduces `before` exactly, so a tag line the formatter pulled *into* a
+    list item still raises.
+    """
+    return before, _walk_levels(_fold_tag_lines_at_level, before, after)
 
 
 _NORMALIZATIONS: list[tuple[str, str, Normalization]] = [
@@ -624,6 +740,11 @@ _NORMALIZATIONS: list[tuple[str, str, Normalization]] = [
         LAZY_LIST,
         "made a list out of a lazy paragraph continuation",
         _normalize_lazy_list,
+    ),
+    (
+        TAG_LINE_SPLIT,
+        "moved a comment or tag line out of the list item above it",
+        _normalize_tag_line_split,
     ),
     (
         HYPHEN_JOIN,

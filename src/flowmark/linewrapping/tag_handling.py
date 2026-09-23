@@ -110,7 +110,7 @@ def denormalize_adjacent_tags(text: str) -> str:
     return _denormalize_tags_re.sub(remove_space, text)
 
 
-def _is_tag_only_line(line: str) -> bool:
+def is_tag_only_line(line: str) -> bool:
     """
     Check if a line contains only a tag (opening or closing), not inline tags in content.
 
@@ -179,7 +179,7 @@ def preprocess_tag_block_spacing(text: str) -> str:
     result_lines: list[str] = []
 
     # Check if there are any tag-only lines in the text
-    has_tag_only_lines = any(_is_tag_only_line(line) for line in lines)
+    has_tag_only_lines = any(is_tag_only_line(line) for line in lines)
     if not has_tag_only_lines:
         return text
 
@@ -193,7 +193,7 @@ def preprocess_tag_block_spacing(text: str) -> str:
             # (need blank line after opening tag before list/table)
             if (
                 not prev_is_empty
-                and _is_tag_only_line(prev_line)
+                and is_tag_only_line(prev_line)
                 and line_is_block_content(line)
             ):
                 result_lines.append("")
@@ -203,7 +203,7 @@ def preprocess_tag_block_spacing(text: str) -> str:
             if (
                 not prev_is_empty
                 and line_is_block_content(prev_line)
-                and _is_tag_only_line(line)
+                and is_tag_only_line(line)
             ):
                 result_lines.append("")
 
