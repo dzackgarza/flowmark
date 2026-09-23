@@ -518,7 +518,11 @@ stable rule ids. The default rule layer checks structural/semantic failures that
 formatter cannot safely infer away: heading hierarchy/duplicates, reference and footnote
 integrity, malformed or empty links, local fragments and local-file targets, image alt
 text, fenced-code language/tabs/boundaries, frontmatter integrity, duplicate Pandoc ids,
-malformed attributes, and unclosed fenced-div/math/TeX constructs. `pandoc/ambiguous-input`
+malformed attributes, and unclosed fenced-div/math/TeX constructs. It also reports
+mathematics written outside `$...$`: `math/outside-math-mode` for TeX notation in prose
+(`x_0`, `R^n`, `\sum`), which pandoc reads as emphasis delimiters, plain text, or raw TeX
+that HTML output drops, and `math/unicode-symbol` for Unicode math symbols (`⊗`, `→`,
+`α`). `pandoc/ambiguous-input`
 adds the high-confidence ambiguity checks from Flowmark's preflight, while
 `format/canonical` reports remaining source ranges that differ from Flowmark's canonical
 rendering. The linter does not edit files.

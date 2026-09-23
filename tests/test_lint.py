@@ -13,8 +13,8 @@ from flowmark.lint_cli import main
 
 def test_math_and_raw_tex_are_not_markdown_style_findings() -> None:
     source = (
-        "Subscripts $x_i y_j$, \\(u_i v_j\\), and \\[a_i b_j\\] stay mathematical; "
-        "so does \\underline{x_i} and \\mathcal{M}_{1}.\n"
+        "Subscripts $x_i y_j$ and $$a_i b_j$$ stay mathematical; "
+        "so does \\underline{x_i} and \\mathcal{M_{1}}.\n"
     )
     assert lint_text(source) == []
 
@@ -30,9 +30,9 @@ def test_genuine_markdown_emphasis_is_normalized_semantically() -> None:
 
 def test_preflight_ambiguity_wins_over_secondary_formatting() -> None:
     diagnostics = lint_text("An unterminated $x_i expression.\n")
-    assert len(diagnostics) == 1
-    assert diagnostics[0].rule == "pandoc/ambiguous-input"
-    assert diagnostics[0].severity is Severity.ERROR
+    ambiguous = [d for d in diagnostics if d.rule == "pandoc/ambiguous-input"]
+    assert [d.severity for d in ambiguous] == [Severity.ERROR]
+    assert not any(d.rule == "format/canonical" for d in diagnostics)
 
 
 def test_format_check_can_be_disabled() -> None:

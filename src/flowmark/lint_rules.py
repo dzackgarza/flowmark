@@ -149,6 +149,21 @@ _LATEX_BEGIN = re.compile(r"\\begin\{(?P<name>[A-Za-z*]+)\}")
 _LATEX_END_TEMPLATE = r"\\end\{%s\}"
 _EXPLICIT_ID = re.compile(r"\{[^{}\n]*#(?P<id>[A-Za-z][A-Za-z0-9_.:-]*)[^{}\n]*\}")
 _BARE_URL = re.compile(r"(?<![<\w])(https?://[^\s<>]+)")
+# One block for inline scanning: a table row or heading line alone, or a run of
+# other non-blank lines.
+_INLINE_BLOCK = re.compile(
+    r"^[ \t]*[|#][^\n]*"
+    r"|^(?:[ \t]*[^\s|#][^\n]*(?:\n(?![ \t]*(?:\n|$|[|#]))|$))+",
+    re.MULTILINE,
+)
+_ANY_URL = re.compile(r"https?://[^\s<>)\]]+")
+# TeX written in prose: a control word (`\sum`), or a sub/superscript on a base
+# character (`x_0`, `x_{n-1}`, `R^n`, `H^*`). A script is one braced group or one
+# character that ends the token, so `is_simple` and pandoc's `x^2^` are left alone.
+_TEX_IN_PROSE = re.compile(
+    r"\\[A-Za-z]+"
+    r"|(?<=[^\s_^~`*\\])[_^](?:\{[^{}\n]*\}|[A-Za-z0-9*](?![A-Za-z0-9_^~]))"
+)
 _INLINE_HTML = re.compile(r"</?[A-Za-z][^>\n]*>")
 _UNORDERED_MARKER = re.compile(r"^(?P<indent> *)(?P<marker>[*+-])[ \t]+")
 _TOP_LEVEL_YAML_KEY = re.compile(r"^(?P<key>[A-Za-z0-9_.-]+)[ \t]*:")
@@ -311,9 +326,15 @@ def _build_protected_map(
             continue
         index += 1
 
-    for span in iter_atomic_spans(text, _PROTECTED_INLINE_PATTERNS):
-        if span.is_atomic:
-            _mark(protected, span.start, span.end)
+    # The inline patterns match across newlines, as a code span may within one
+    # paragraph. Scanning the whole document at once let a stray backtick pair with
+    # one in a later block and invert every code span after it, so each block --
+    # a run of lines between blank lines, with every table row and heading its
+    # own block -- is scanned separately.
+    for block in _INLINE_BLOCK.finditer(text):
+        for span in iter_atomic_spans(block.group(0), _PROTECTED_INLINE_PATTERNS):
+            if span.is_atomic:
+                _mark(protected, block.start() + span.start, block.start() + span.end)
 
     raw_tex_pattern = CustomRawInlineTex.pattern
     if isinstance(raw_tex_pattern, re.Pattern):
@@ -1136,6 +1157,66 @@ def _malformed_inline_findings(text: str, protected: bytearray) -> list[RuleFind
     return findings
 
 
+def _is_math_symbol(char: str) -> bool:
+    """A non-ASCII character that writes mathematics: `⊗`, `→`, `α`, `ℓ`, `²`, `𝔤`."""
+    if char.isascii():
+        return False
+    code = ord(char)
+    return (
+        unicodedata.category(char) == "Sm"
+        or 0x0370 <= code <= 0x03FF  # Greek and Coptic
+        or 0x2070 <= code <= 0x209F  # Superscripts and Subscripts
+        or 0x2100 <= code <= 0x214F  # Letterlike Symbols
+        or 0x1D400 <= code <= 0x1D7FF  # Mathematical Alphanumeric Symbols
+        or char in "²³¹"
+    )
+
+
+def _math_notation_findings(text: str, protected: bytearray) -> list[RuleFinding]:
+    """
+    Report mathematics written outside math mode.
+
+    Outside `$...$`, pandoc reads TeX notation as Markdown: `_` delimits emphasis,
+    and a bare control word such as `\\sum` is raw TeX, which HTML output drops.
+    Unicode symbols render as text, not as mathematics, and fail under pdflatex.
+    """
+    urls = bytearray(len(text))
+    for match in _ANY_URL.finditer(text):
+        _mark(urls, match.start(), match.end())
+    for match in _INLINE_LINK.finditer(text):
+        _mark(urls, match.start("dest"), match.end("dest"))
+
+    findings: list[RuleFinding] = []
+    for match in _TEX_IN_PROSE.finditer(text):
+        start, end = match.start(), match.end()
+        if _overlaps(protected, start, end) or _overlaps(urls, start, end):
+            continue
+        findings.append(
+            RuleFinding(
+                "math/outside-math-mode",
+                "warning",
+                f"TeX notation {match.group(0)!r} is outside math mode; put the "
+                "expression in `$...$`.",
+                start,
+                end,
+            )
+        )
+    for offset, char in enumerate(text):
+        if not _is_math_symbol(char) or protected[offset] or urls[offset]:
+            continue
+        findings.append(
+            RuleFinding(
+                "math/unicode-symbol",
+                "warning",
+                f"Unicode math symbol {char!r} (U+{ord(char):04X}); write it as TeX "
+                "inside `$...$`.",
+                offset,
+                offset + 1,
+            )
+        )
+    return findings
+
+
 def _target_heading_ids(path: Path) -> set[str] | None:
     try:
         target_text = path.read_text()
@@ -1470,6 +1551,7 @@ def lint_rule_findings(
         *_attribute_findings(lines, protected),
         *_unclosed_construct_findings(lines, protected),
         *_malformed_inline_findings(text, protected),
+        *_math_notation_findings(text, protected),
         *_link_findings(text, headings, definitions, protected, styles, source_path),
         *_table_boundary_findings(lines, protected),
         *_style_findings(text, lines, protected, styles, max_line_length),

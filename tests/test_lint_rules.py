@@ -163,3 +163,71 @@ def test_reference_labels_are_case_and_whitespace_normalized() -> None:
 def test_duplicate_ids_inside_math_or_code_are_not_pandoc_attribute_ids() -> None:
     source = "$\\{#same\\}$\n\n```text\n{#same}\n{#same}\n```\n"
     assert "pandoc/duplicate-identifier" not in rule_ids(source)
+
+
+# Plain-text cells from a real research document, with no `$` anywhere.
+MATH_IN_PROSE = (
+    "Passage from bilinear form b: M⊗_R M→R on free M≅R^n to polynomial "
+    "b(x,x)∈R[x_0..x_{n-1}]; Lambert series \\sum a_n q^n/(1-q^n) and "
+    "Mobius inversion \\mu(n/d), graded \\[a_i\\].\n"
+)
+
+
+def _findings(source: str, rule: str) -> list[str]:
+    return [
+        source.splitlines()[d.line - 1][d.column - 1 : d.end_column - 1]
+        for d in lint_text(source)
+        if d.rule == rule and d.line == d.end_line
+    ]
+
+
+def test_tex_notation_outside_math_mode_is_reported() -> None:
+    """
+    Outside `$...$`, `_` is an emphasis delimiter (here marko and pandoc disagree
+    on whether `_R ... x_` is one span), and `\\sum` is raw TeX that pandoc drops
+    from HTML output. Each site is named where it stands.
+    """
+    assert _findings(MATH_IN_PROSE, "math/outside-math-mode") == [
+        "_R",
+        "^n",
+        "_0",
+        "_{n-1}",
+        "\\sum",
+        "_n",
+        "^n",
+        "^n",
+        "\\mu",
+        # Pandoc's `markdown` reads `\[` as an escaped bracket, not display math.
+        "_i",
+    ]
+
+
+def test_unicode_math_symbols_outside_math_mode_are_reported() -> None:
+    assert _findings(MATH_IN_PROSE, "math/unicode-symbol") == ["⊗", "→", "≅", "∈"]
+
+
+def test_an_unmatched_backtick_does_not_unprotect_later_code_spans() -> None:
+    """
+    A code span cannot cross a blank line or a table row, so a stray backtick in
+    one block must not pair with the first backtick of the next and turn every
+    later code span inside out.
+    """
+    source = (
+        "| a | b |\n| --- | --- |\n| stray ` | y |\n| `x_0` | `R^n` |\n\n"
+        "A stray ` backtick.\n\nThen `x_0 ∈ R^n` in code.\n"
+    )
+    rules = rule_ids(source)
+    assert "math/outside-math-mode" not in rules
+    assert "math/unicode-symbol" not in rules
+
+
+def test_math_notation_rules_are_quiet_on_prose_code_math_and_urls() -> None:
+    source = (
+        "Prose with an em dash — and is_simple, __init__, snake_case_name.\n\n"
+        "Pandoc sub/superscript: H~2~O and x^2^. Emphasis: _word_ and *word*.\n\n"
+        "Math $M \\otimes_R M \\to R$, $x_{n-1}$, and code `x_0 ∈ R^n`.\n\n"
+        "See https://example.com/a_b/x_1 and [doc](notes/file_1.md).\n"
+    )
+    rules = rule_ids(source)
+    assert "math/outside-math-mode" not in rules
+    assert "math/unicode-symbol" not in rules
