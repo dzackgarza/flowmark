@@ -214,18 +214,26 @@ def test_an_unmatched_backtick_does_not_unprotect_later_code_spans() -> None:
     """
     source = (
         "| a | b |\n| --- | --- |\n| stray ` | y |\n| `x_0` | `R^n` |\n\n"
-        "A stray ` backtick.\n\nThen `x_0 ∈ R^n` in code.\n"
+        "A stray ` backtick.\n\nThen `x_0 in R^n` in code.\n"
     )
-    rules = rule_ids(source)
-    assert "math/outside-math-mode" not in rules
-    assert "math/unicode-symbol" not in rules
+    assert "math/outside-math-mode" not in rule_ids(source)
+
+
+def test_unicode_math_symbols_are_reported_in_code_and_math_too() -> None:
+    """Only a fence that names its language keeps Unicode: Lean's syntax uses it."""
+    source = (
+        "Code `x ∈ M`, math $α$.\n\n"
+        "```\nψ_p(∇): T → End(E)\n```\n\n"
+        "```lean\ntheorem t : ∀ n : ℕ, n = n := fun _ => rfl\n```\n"
+    )
+    assert _findings(source, "math/unicode-symbol") == ["∈", "α", "ψ", "∇", "→"]
 
 
 def test_math_notation_rules_are_quiet_on_prose_code_math_and_urls() -> None:
     source = (
         "Prose with an em dash — and is_simple, __init__, snake_case_name.\n\n"
         "Pandoc sub/superscript: H~2~O and x^2^. Emphasis: _word_ and *word*.\n\n"
-        "Math $M \\otimes_R M \\to R$, $x_{n-1}$, and code `x_0 ∈ R^n`.\n\n"
+        "Math $M \\otimes_R M \\to R$, $x_{n-1}$, and code `x_0 in R^n`.\n\n"
         "See https://example.com/a_b/x_1 and [doc](notes/file_1.md).\n"
     )
     rules = rule_ids(source)

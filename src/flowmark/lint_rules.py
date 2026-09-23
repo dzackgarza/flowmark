@@ -1172,14 +1172,26 @@ def _is_math_symbol(char: str) -> bool:
     )
 
 
-def _math_notation_findings(text: str, protected: bytearray) -> list[RuleFinding]:
+def _math_notation_findings(
+    text: str, protected: bytearray, fences: list[_Fence]
+) -> list[RuleFinding]:
     """
-    Report mathematics written outside math mode.
+    Report mathematics written outside math mode, and Unicode math symbols.
 
     Outside `$...$`, pandoc reads TeX notation as Markdown: `_` delimits emphasis,
     and a bare control word such as `\\sum` is raw TeX, which HTML output drops.
-    Unicode symbols render as text, not as mathematics, and fail under pdflatex.
+    Unicode symbols render as text, not as mathematics, and fail under pdflatex,
+    so they are reported everywhere -- prose, code spans and math alike -- except
+    in a fenced block that declares a language, whose own syntax may use them
+    (Lean's `∀` and `→`).
     """
+    in_language = bytearray(len(text))
+    for fence in fences:
+        if fence.info:
+            last = fence.closing or (
+                fence.content[-1] if fence.content else fence.opening
+            )
+            _mark(in_language, fence.opening.start, last.raw_end)
     urls = bytearray(len(text))
     for match in _ANY_URL.finditer(text):
         _mark(urls, match.start(), match.end())
@@ -1202,7 +1214,7 @@ def _math_notation_findings(text: str, protected: bytearray) -> list[RuleFinding
             )
         )
     for offset, char in enumerate(text):
-        if not _is_math_symbol(char) or protected[offset] or urls[offset]:
+        if not _is_math_symbol(char) or in_language[offset] or urls[offset]:
             continue
         findings.append(
             RuleFinding(
@@ -1551,7 +1563,7 @@ def lint_rule_findings(
         *_attribute_findings(lines, protected),
         *_unclosed_construct_findings(lines, protected),
         *_malformed_inline_findings(text, protected),
-        *_math_notation_findings(text, protected),
+        *_math_notation_findings(text, protected, fences),
         *_link_findings(text, headings, definitions, protected, styles, source_path),
         *_table_boundary_findings(lines, protected),
         *_style_findings(text, lines, protected, styles, max_line_length),
