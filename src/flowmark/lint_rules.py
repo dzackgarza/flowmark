@@ -24,7 +24,6 @@ from urllib.parse import unquote, urlsplit
 
 from flowmark.atomic_spans import (
     INLINE_CODE_SPAN,
-    INLINE_MATH,
     PAIRED_HTML_COMMENT,
     PAIRED_JINJA_COMMENT,
     PAIRED_JINJA_TAG,
@@ -36,6 +35,11 @@ from flowmark.atomic_spans import (
     iter_atomic_spans,
 )
 from flowmark.formats.flowmark_markdown import CustomRawInlineTex
+from flowmark.linewrapping.atomic_patterns import DOLLAR_MATH, AtomicPattern
+
+# Math as pandoc's `markdown` reads it: `$...$` and `$$...$$` only. It leaves
+# `tex_math_single_backslash` off, so `\(...\)` and `\[...\]` are prose.
+_DOLLAR_MATH_SPAN = AtomicPattern(name="dollar_math", pattern=DOLLAR_MATH)
 
 
 class StyleRule(StrEnum):
@@ -164,13 +168,17 @@ _TEX_IN_PROSE = re.compile(
     r"\\[A-Za-z]+"
     r"|(?<=[^\s_^~`*\\])[_^](?:\{[^{}\n]*\}|[A-Za-z0-9*](?![A-Za-z0-9_^~]))"
 )
+_BACKSLASH_PAREN = re.compile(r"(?<!\\)\\[()]")
+_BACKSLASH_BRACKET_PAIR = re.compile(
+    r"(?<!\\)\\\[(?P<body>(?:(?!\\\]|\n[ \t]*\n).)*?)\\\]", re.DOTALL
+)
 _INLINE_HTML = re.compile(r"</?[A-Za-z][^>\n]*>")
 _UNORDERED_MARKER = re.compile(r"^(?P<indent> *)(?P<marker>[*+-])[ \t]+")
 _TOP_LEVEL_YAML_KEY = re.compile(r"^(?P<key>[A-Za-z0-9_.-]+)[ \t]*:")
 
 _PROTECTED_INLINE_PATTERNS = (
     INLINE_CODE_SPAN,
-    INLINE_MATH,
+    _DOLLAR_MATH_SPAN,
     SINGLE_HTML_COMMENT,
     PAIRED_HTML_COMMENT,
     SINGLE_JINJA_TAG,
@@ -299,11 +307,10 @@ def _build_protected_map(
     while index < len(lines):
         line = lines[index]
         stripped = line.text.strip()
-        if stripped in {"$$", "\\["}:
-            closer = "$$" if stripped == "$$" else "\\]"
+        if stripped == "$$":
             probe = index + 1
             while probe < len(lines):
-                if lines[probe].text.rstrip().endswith(closer):
+                if lines[probe].text.rstrip().endswith("$$"):
                     _mark(protected, line.start, lines[probe].raw_end)
                     index = probe + 1
                     break
@@ -1052,23 +1059,6 @@ def _unclosed_construct_findings(
             )
         )
 
-    # Standalone bracket display math and inline \(...\) math.
-    display_open: _Line | None = None
-    for line in lines:
-        if display_open is None and line.text.strip() == "\\[":
-            display_open = line
-        elif display_open is not None and line.text.rstrip().endswith("\\]"):
-            display_open = None
-    if display_open is not None:
-        findings.append(
-            RuleFinding(
-                "math/unclosed-display",
-                "error",
-                "Display math opens with '\\[' but has no closing '\\]'.",
-                display_open.start,
-                display_open.end,
-            )
-        )
     # Raw TeX environments: a begin with no later matching end is an error.
     source = "\n".join(line.text for line in lines)
     for match in _LATEX_BEGIN.finditer(source):
@@ -1090,17 +1080,6 @@ def _unclosed_construct_findings(
                 )
             )
     return findings
-
-
-def _find_unprotected(
-    text: str, needle: str, protected: bytearray | None, start: int = 0
-) -> int | None:
-    index = text.find(needle, start)
-    while index >= 0:
-        if protected is None or not _overlaps(protected, index, index + len(needle)):
-            return index
-        index = text.find(needle, index + len(needle))
-    return None
 
 
 def _malformed_inline_findings(text: str, protected: bytearray) -> list[RuleFinding]:
@@ -1134,26 +1113,28 @@ def _malformed_inline_findings(text: str, protected: bytearray) -> list[RuleFind
                 RuleFinding(rule, "warning", message, match.start(), match.end())
             )
 
-    # Inline \(...\) delimiters may span lines.  Scan balanced pairs without
-    # interpreting anything inside protected code/fence regions.
-    position = 0
-    while True:
-        opener = _find_unprotected(text, "\\(", protected, position)
-        if opener is None:
-            break
-        closer = _find_unprotected(text, "\\)", protected, opener + 2)
-        if closer is None:
-            findings.append(
-                RuleFinding(
-                    "math/unclosed-inline",
-                    "error",
-                    "Inline math opens with '\\(' but has no closing '\\)'.",
-                    opener,
-                    opener + 2,
-                )
+    # Pandoc's `markdown` reads `\(` as a literal parenthesis and `\[` as a literal
+    # bracket. Markdown never needs a parenthesis escaped, so every `\(`/`\)` is a
+    # math delimiter that did not work. A lone `\[` is the usual escape for a
+    # literal bracket, so brackets count only as a pair around TeX-looking text.
+    delimiters = [m.start() for m in _BACKSLASH_PAREN.finditer(text)]
+    for match in _BACKSLASH_BRACKET_PAIR.finditer(text):
+        if re.search(r"[\\^_]", match.group("body")):
+            delimiters += [match.start(), match.end() - 2]
+    for start in sorted(delimiters):
+        if _overlaps(protected, start, start + 2):
+            continue
+        findings.append(
+            RuleFinding(
+                "math/backslash-delimiter",
+                "warning",
+                f"Pandoc's markdown reads {text[start : start + 2]!r} as a literal "
+                f"{text[start + 1]!r}, not a math delimiter; write math as `$...$` "
+                "or `$$...$$`.",
+                start,
+                start + 2,
             )
-            break
-        position = closer + 2
+        )
     return findings
 
 

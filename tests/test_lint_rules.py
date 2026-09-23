@@ -55,8 +55,8 @@ def rule_ids(
         ("# A {#x .foo\n", "pandoc/malformed-attributes"),
         ("::: theorem\nText\n", "pandoc/unclosed-fenced-div"),
         ("\\begin{align}\nx &= y\n", "tex/unclosed-environment"),
-        ("\\[\nx_i\n", "math/unclosed-display"),
-        ("Inline \\(x_i with no closer.\n", "math/unclosed-inline"),
+        ("\\[\nx^2\n\\]\n", "math/backslash-delimiter"),
+        ("Inline \\(x^2\\) math.\n", "math/backslash-delimiter"),
     ],
 )
 def test_default_rules_cover_common_structural_and_semantic_failures(
@@ -75,7 +75,7 @@ def test_canonical_format_rule_is_suppressed_when_specific_rule_owns_same_line()
 
 def test_math_code_and_raw_tex_are_opaque_to_markdown_rules() -> None:
     source = (
-        "Math $[x][missing] * text * x_i$, \\(y_j [bad](url]\\), "
+        "Math $[x][missing] * text * x_i$, $$y_j [bad](url]$$, "
         "and \\underline{z_k}.\n\n"
         "```text\n#Heading\n[text][missing]\nhttps://example.com\n```\n"
     )
@@ -227,6 +227,17 @@ def test_unicode_math_symbols_are_reported_in_code_and_math_too() -> None:
         "```lean\ntheorem t : ∀ n : ℕ, n = n := fun _ => rfl\n```\n"
     )
     assert _findings(source, "math/unicode-symbol") == ["∈", "α", "ψ", "∇", "→"]
+
+
+def test_backslash_delimiters_are_prose_to_pandoc() -> None:
+    """
+    Pandoc's `markdown` leaves `tex_math_single_backslash` off, so `\\(x_i\\)` reads
+    as the text `(x_i)` and a `\\[ ... \\]` block as `[ ... ]`. The delimiters are
+    reported, and what they enclose is checked as the prose it is.
+    """
+    source = "Inline \\(x_i\\) here.\n\n\\[\ny^n\n\\]\n"
+    assert _findings(source, "math/backslash-delimiter") == ["\\(", "\\)", "\\[", "\\]"]
+    assert _findings(source, "math/outside-math-mode") == ["_i", "^n"]
 
 
 def test_math_notation_rules_are_quiet_on_prose_code_math_and_urls() -> None:
