@@ -95,6 +95,25 @@ def test_verify_failure_on_ambiguous_input_does_not_blame_flowmark() -> None:
     assert "ambiguous" in message.lower(), message
 
 
+@pandocless
+def test_a_finding_outside_the_changed_block_is_not_blamed() -> None:
+    """
+    The unterminated `$` in block 0 is real, but block 0 formats and verifies on
+    its own. The refusal comes from block 1, where marko reads `_R ... [x_` as one
+    emphasis span and pandoc does not. Naming block 0's finding as the cause sent
+    the writer to a line that was not the problem.
+    """
+    source = "The cost $x_1 grows with y.\n\nPassage a _R b [x_ c] d.\n"
+    assert [f.line for f in preflight(source)] == [1]
+
+    with pytest.raises(MeaningChangedError) as excinfo:
+        reformat_text(source, verify=True, verify_label="doc.md")
+
+    message = str(excinfo.value)
+    assert "flowmark bug" in message, message
+    assert "doc.md:1" not in message, message
+
+
 def test_verify_failure_on_clean_input_keeps_the_original_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

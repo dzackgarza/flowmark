@@ -14,6 +14,7 @@ from flowmark.pandoc_verify import (
     SMART_QUOTES,
     UNBOLD_HEADING,
     MeaningChangedError,
+    block_indices,
     check_meaning_preserved,
     describe,
 )
@@ -77,9 +78,18 @@ def reformat_text(
                 applied = check_meaning_preserved(text, result, verify_label)
             except MeaningChangedError as changed:
                 # The gate can only ask "did flowmark break this?". Before answering
-                # yes, ask the other question -- "was this already broken?" -- because
-                # in #17 the answer was yes and the misattribution cost a bisection.
+                # yes, ask the other question -- "was this already broken?" -- of the
+                # block that changed. A suspect construct anywhere else in the
+                # document is not the cause, and naming it sends the reader to a
+                # line that is fine (#38).
                 findings = preflight(text)
+                if findings and changed.block is not None:
+                    blocks = block_indices(text, [f.line for f in findings])
+                    findings = [
+                        finding
+                        for finding, block in zip(findings, blocks, strict=True)
+                        if block == changed.block
+                    ]
                 if not findings:
                     raise
                 named = "; ".join(
@@ -93,6 +103,7 @@ def reformat_text(
                     f"looks ambiguous, so this is probably not a flowmark defect -- "
                     f"{named}{more}. Fix the input, or pass --no-verify to format anyway.",
                     detail=changed.detail,
+                    block=changed.block,
                 ) from changed
             # Asking for a normalization and getting it is not news; getting one
             # without asking is, so only the latter is reported.

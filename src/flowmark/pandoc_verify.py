@@ -53,6 +53,7 @@ degrades when pandoc is missing: callers asking to verify get an error.
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -101,10 +102,15 @@ class MeaningChangedError(ValueError):
     """
 
     detail: str
+    block: int | None
+    """The 0-based top-level block of the source that pandoc reads differently."""
 
-    def __init__(self, message: str, detail: str = "") -> None:
+    def __init__(
+        self, message: str, detail: str = "", block: int | None = None
+    ) -> None:
         super().__init__(message)
         self.detail = detail
+        self.block = block
 
 
 def _pandoc_exe() -> str:
@@ -151,6 +157,27 @@ def pandoc_ast(markdown_text: str) -> list[PandocJson]:
         PandocParseError: if pandoc ran but could not parse the document.
     """
     return _collect_blocks(_spawn_pandoc(_pandoc_exe()), markdown_text)
+
+
+def block_indices(markdown_text: str, lines: list[int]) -> list[int]:
+    """
+    The 0-based top-level block that each 1-based line of `markdown_text` is in.
+
+    Pandoc's `markdown` reader records no source positions, so a line's block is
+    found by parsing the text up to and including that line: the line belongs to
+    the last block of that prefix. The prefixes parse concurrently, a few at a time.
+    """
+    text_lines = markdown_text.split("\n")
+    pandoc_exe = _pandoc_exe()
+    batch = os.cpu_count() or 1
+    indices: list[int] = []
+    for start in range(0, len(lines), batch):
+        running = [
+            (_spawn_pandoc(pandoc_exe), "\n".join(text_lines[:line]) + "\n")
+            for line in lines[start : start + batch]
+        ]
+        indices += [len(_collect_blocks(proc, prefix)) - 1 for proc, prefix in running]
+    return indices
 
 
 def _pandoc_ast_pair(
@@ -806,9 +833,12 @@ def _block_type(block: PandocJson) -> str:
     return str(block.get("t", "?")) if isinstance(block, dict) else "?"
 
 
-def _first_difference(before: list[PandocJson], after: list[PandocJson]) -> str:
+def _first_difference(
+    before: list[PandocJson], after: list[PandocJson]
+) -> tuple[int, str]:
     """
-    Locate the first block the two documents disagree about.
+    Locate the first block the two documents disagree about: its index, and a
+    description of what changed.
 
     The whole block list used to be printed on both sides.  That is unbounded in
     the document's size, and flowmark runs inside a `pre-commit` gate where the
@@ -827,16 +857,18 @@ def _first_difference(before: list[PandocJson], after: list[PandocJson]) -> str:
             continue
         before_type, after_type = _block_type(before_block), _block_type(after_block)
         if before_type == after_type:
-            return f"block {index}: {before_type} content differs"
-        return f"block {index}: {before_type} -> {after_type}"
+            return index, f"block {index}: {before_type} content differs"
+        return index, f"block {index}: {before_type} -> {after_type}"
 
     # Every block they have in common matched, so the documents differ in length:
     # one gained or lost trailing blocks.
     index = min(len(before), len(after))
     counts = f"{len(after)} blocks vs {len(before)}"
     if len(after) > len(before):
-        return f"block {index}: (absent) -> {_block_type(after[index])}, {counts}"
-    return f"block {index}: {_block_type(before[index])} -> (absent), {counts}"
+        return index, (
+            f"block {index}: (absent) -> {_block_type(after[index])}, {counts}"
+        )
+    return index, f"block {index}: {_block_type(before[index])} -> (absent), {counts}"
 
 
 def check_meaning_preserved(
@@ -883,7 +915,9 @@ def check_meaning_preserved(
         )
 
     # Canonicalizing or normalizing a block list always yields a block list.
-    detail = _first_difference(
+    # The normalizations rewrite `before` only inside blocks, so its block indices
+    # are still the source document's.
+    block, detail = _first_difference(
         cast("list[PandocJson]", permissive_before),
         cast("list[PandocJson]", permissive_after),
     )
@@ -893,4 +927,5 @@ def check_meaning_preserved(
         f"This is a flowmark bug -- please report it with the input document. To skip this "
         f"check and format anyway, pass --no-verify.",
         detail=detail,
+        block=block,
     )
