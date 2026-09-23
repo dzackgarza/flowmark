@@ -283,6 +283,12 @@ def test_backslash_delimiters_are_prose_to_pandoc() -> None:
     assert _findings(source, "math/outside-math-mode") == ["_i", "^n"]
 
 
+def test_escaped_list_markers_are_not_math_delimiters() -> None:
+    """Flowmark writes `1\\)`, `A\\)` and `\\(1)` so a wrapped line is not a list."""
+    source = "- Bounds (Thms. 3.4, App.\n  A\\) give enclosures, step\n  \\(1) holds.\n"
+    assert "math/backslash-delimiter" not in rule_ids(source)
+
+
 def test_math_notation_rules_are_quiet_on_prose_code_math_and_urls() -> None:
     source = (
         "Prose with an em dash — and is_simple, __init__, snake_case_name.\n\n"

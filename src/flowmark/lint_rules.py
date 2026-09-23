@@ -175,9 +175,9 @@ _TEX_IN_PROSE = re.compile(
     r"\\[A-Za-z]+"
     r"|(?<=[^\s_^~`*\\])[_^](?:\{[^{}\n]*\}|[A-Za-z0-9*](?![A-Za-z0-9_^~]))"
 )
-_BACKSLASH_PAREN = re.compile(r"(?<!\\)\\[()]")
-_BACKSLASH_BRACKET_PAIR = re.compile(
-    r"(?<!\\)\\\[(?P<body>(?:(?!\\\]|\n[ \t]*\n).)*?)\\\]", re.DOTALL
+_BACKSLASH_DELIMITER_PAIRS = (
+    re.compile(r"(?<!\\)\\\((?P<body>(?:(?!\\\)|\n[ \t]*\n).)*?)\\\)", re.DOTALL),
+    re.compile(r"(?<!\\)\\\[(?P<body>(?:(?!\\\]|\n[ \t]*\n).)*?)\\\]", re.DOTALL),
 )
 _INLINE_HTML = re.compile(r"</?[A-Za-z][^>\n]*>")
 _UNORDERED_MARKER = re.compile(r"^(?P<indent> *)(?P<marker>[*+-])[ \t]+")
@@ -1150,13 +1150,14 @@ def _malformed_inline_findings(text: str, protected: bytearray) -> list[RuleFind
             )
 
     # Pandoc's `markdown` reads `\(` as a literal parenthesis and `\[` as a literal
-    # bracket. Markdown never needs a parenthesis escaped, so every `\(`/`\)` is a
-    # math delimiter that did not work. A lone `\[` is the usual escape for a
-    # literal bracket, so brackets count only as a pair around TeX-looking text.
-    delimiters = [m.start() for m in _BACKSLASH_PAREN.finditer(text)]
-    for match in _BACKSLASH_BRACKET_PAIR.finditer(text):
-        if re.search(r"[\\^_]", match.group("body")):
-            delimiters += [match.start(), match.end() - 2]
+    # bracket. A lone escape is ordinary: `\[1\]` is a literal bracket, and the
+    # wrapper writes `1\)`, `A\)` and `\(1)` so a line does not start a list. So a
+    # delimiter counts only as a pair, within one block, around TeX-looking text.
+    delimiters: list[int] = []
+    for pair in _BACKSLASH_DELIMITER_PAIRS:
+        for match in pair.finditer(text):
+            if re.search(r"[\\^_]", match.group("body")):
+                delimiters += [match.start(), match.end() - 2]
     for start in sorted(delimiters):
         if _overlaps(protected, start, start + 2):
             continue
