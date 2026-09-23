@@ -277,6 +277,31 @@ def test_toc_end_marker_after_a_list_is_formattable() -> None:
     assert result.endswith("- [Leads](#leads)\n\n<!--toc:end-->\n")
 
 
+# Markdoc tags wrapped around a tight list, with no blank lines. Pandoc reads all
+# three lines as one paragraph; flowmark writes a tag, a list, and a tag.
+MARKDOC_WRAPPED_LIST = "{% field %}\n- a\n- b\n{% /field %}\n"
+
+
+@pandocless
+def test_markdoc_tags_around_a_tight_list_verify() -> None:
+    result = reformat_text(MARKDOC_WRAPPED_LIST, verify=True)
+
+    assert result == "{% field %}\n\n- a\n\n- b\n\n{% /field %}\n"
+    # No list spacing is reported: the source has no list whose spacing changed.
+    assert set(check_meaning_preserved(MARKDOC_WRAPPED_LIST, result)) == {
+        LAZY_LIST,
+        TAG_LINE_SPLIT,
+    }
+
+
+@pandocless
+def test_prose_in_place_of_the_closing_tag_still_raises() -> None:
+    with pytest.raises(MeaningChangedError):
+        check_meaning_preserved(
+            "{% field %}\n- a\ntext\n", "{% field %}\n\n- a\n\ntext\n"
+        )
+
+
 def _many_block_document(count: int = 40) -> list[str]:
     return [
         f"Paragraph number {i} with enough words in it to be realistic."
