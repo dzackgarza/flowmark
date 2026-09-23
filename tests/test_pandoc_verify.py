@@ -246,6 +246,21 @@ def test_paragraph_then_tight_list_is_formattable() -> None:
 
 
 @pandocless
+def test_paragraph_then_nested_tight_list_is_formattable() -> None:
+    """
+    An indented sub-bullet under a lazy line is more of the same paragraph to
+    pandoc, so the list flowmark materializes may nest.
+    """
+    source = (
+        "**2. Fundamental matrix**\n"
+        "* Hard: `phi1..4` for this GKZ\n"
+        "* General: enclose the matrix by a truncated sum.\n"
+        "  * Needs: a coefficient growth estimate.\n"
+    )
+    reformat_text(source, verify=True)
+
+
+@pandocless
 def test_paragraph_then_tight_list_writes_the_file(tmp_path: Path) -> None:
     """
     The acceptance criterion as the reporter stated it: the file is written, not

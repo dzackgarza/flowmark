@@ -407,43 +407,53 @@ def _flatten_list_into_paragraph(
     per candidate marker set.
 
     Each marker is emitted surrounded by `Space`, which is what a line join between
-    the paragraph and the marker actually produces.  Items containing anything but
-    a single `Para`/`Plain` are refused: a lazy continuation cannot produce nested
-    blocks, so a list that has them was not made this way.
+    the paragraph and the marker actually produces.  An item may hold paragraphs
+    and nested lists: an indented sub-bullet under a lazy line is more of the same
+    paragraph to pandoc.  Any other block is refused, since a lazy continuation
+    cannot produce it.  One bullet character is tried for the whole nest.
     """
     para_inlines = para.get("c")
     if not isinstance(para_inlines, list):
         return []
-
-    items, marker_candidates = _list_items_and_markers(list_block)
     candidates: list[list[PandocJson]] = []
-    for markers in marker_candidates:
-        flat: list[PandocJson] = list(para_inlines)
-        usable = True
-        for marker, item in zip(markers, items, strict=False):
-            if not isinstance(item, list):
-                usable = False
-                break
-            flat.append({"t": "Space"})
-            flat.append({"t": "Str", "c": marker})
-            for inner in item:
-                if (
-                    not isinstance(inner, dict)
-                    or inner.get("t") not in _PARAGRAPH_BLOCKS
-                ):
-                    usable = False
-                    break
-                inner_inlines = inner.get("c")
-                if not isinstance(inner_inlines, list):
-                    usable = False
-                    break
+    for bullet in _BULLET_MARKERS:
+        flat = _flatten_list(list_block, bullet)
+        if flat is not None and [*para_inlines, *flat] not in candidates:
+            candidates.append([*para_inlines, *flat])
+    return candidates
+
+
+def _flatten_list(
+    list_block: dict[str, PandocJson], bullet: str
+) -> list[PandocJson] | None:
+    """`list_block` spelled as the inlines of lazy paragraph lines, or None."""
+    items, marker_candidates = _list_items_and_markers(list_block)
+    if not marker_candidates:
+        return None
+    markers = (
+        [bullet] * len(items)
+        if list_block.get("t") == "BulletList"
+        else marker_candidates[0]
+    )
+    flat: list[PandocJson] = []
+    for marker, item in zip(markers, items, strict=False):
+        if not isinstance(item, list):
+            return None
+        flat.append({"t": "Space"})
+        flat.append({"t": "Str", "c": marker})
+        for inner in item:
+            if not isinstance(inner, dict):
+                return None
+            inner_inlines = inner.get("c")
+            if inner.get("t") in _PARAGRAPH_BLOCKS and isinstance(inner_inlines, list):
                 flat.append({"t": "Space"})
                 flat.extend(inner_inlines)
-            if not usable:
-                break
-        if usable:
-            candidates.append(flat)
-    return candidates
+                continue
+            nested = _flatten_list(inner, bullet)
+            if nested is None:
+                return None
+            flat += nested
+    return flat
 
 
 def _collapse_lazy_lists_at_level(
