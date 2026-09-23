@@ -247,6 +247,19 @@ def test_headings_with_inline_math_or_code_are_still_headings() -> None:
     assert "heading/duplicate" in rules
 
 
+def test_intraword_underscores_stay_in_heading_identifiers() -> None:
+    """Pandoc's `intraword_underscores` keeps `is_simple`'s `_` as text, and in the id."""
+    source = "## The is_simple check\n\n[a](#the-is_simple-check)\n"
+    assert "link/invalid-fragment" not in rule_ids(source)
+
+
+def test_a_fragment_after_bracketed_link_text_is_not_prose() -> None:
+    """Link text holding `$R[[t]]$` still ends in a destination, not prose."""
+    source = "## Operators on $R[[t]]$ and $\\partial_t$\n\n"
+    source += "- [Operators on $R[[t]]$](#operators-on-rt-and-partial_t)\n"
+    assert "math/outside-math-mode" not in rule_ids(source)
+
+
 def test_emphasis_padding_ignores_bullets_and_adjacent_strong_spans() -> None:
     """
     A `*` bullet is not an emphasis opener, and the words between two bold spans

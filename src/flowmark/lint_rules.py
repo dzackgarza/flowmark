@@ -166,6 +166,7 @@ _INLINE_BLOCK = re.compile(
     r"|^(?:[ \t]*[^\s|#][^\n]*(?:\n(?![ \t]*(?:\n|$|[|#]))|$))+",
     re.MULTILINE,
 )
+_FRAGMENT_DESTINATION = re.compile(r"\]\((?P<dest>#[^()\s]+)\)")
 _ANY_URL = re.compile(r"https?://[^\s<>)\]]+")
 # TeX written in prose: a control word (`\sum`), or a sub/superscript on a base
 # character (`x_0`, `x_{n-1}`, `R^n`, `H^*`). A script is one braced group or one
@@ -467,7 +468,9 @@ def _plain_inline_text(text: str) -> str:
 def _strip_inline_markup(text: str) -> str:
     text = re.sub(r"!?(?:\[([^\]]*)\])\([^)]*\)", r"\1", text)
     text = re.sub(r"!?(?:\[([^\]]*)\])\[[^\]]*\]", r"\1", text)
-    text = re.sub(r"[*_~]", "", text)
+    text = re.sub(r"[*~]", "", text)
+    # Pandoc's `intraword_underscores`: an `_` between alphanumerics is text.
+    text = re.sub(r"(?<![^\W_])_|_(?![^\W_])", "", text)
     return re.sub(r"<[^>]+>", "", text)
 
 
@@ -1210,6 +1213,10 @@ def _math_notation_findings(
     for match in _ANY_URL.finditer(text):
         _mark(urls, match.start(), match.end())
     for match in _INLINE_LINK.finditer(text):
+        _mark(urls, match.start("dest"), match.end("dest"))
+    # `_INLINE_LINK` does not match link text that holds brackets (`$R[[t]]$`), but
+    # a `](#fragment)` destination is recognizable on its own.
+    for match in _FRAGMENT_DESTINATION.finditer(text):
         _mark(urls, match.start("dest"), match.end("dest"))
 
     findings: list[RuleFinding] = []
