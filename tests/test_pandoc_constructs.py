@@ -14,6 +14,8 @@ and #8 (raw inline TeX). Fenced div attribute specs are in test_fenced_div.py
 (#3).
 """
 
+import pytest
+
 from flowmark.reformat_api import reformat_text
 
 # --- #5: footnote definitions ---------------------------------------------
@@ -260,6 +262,20 @@ def test_bar_inside_a_code_span_or_math_stays_in_its_cell() -> None:
     asserts that pandoc reads the same table before and after.
     """
     assert reformat_text(BARS_IN_SPANS_TABLE) == BARS_IN_SPANS_TABLE
+
+
+@pytest.mark.parametrize("marker", ["(1)", "a.", "a)", "(a)", "#.", "(@)", "A)"])
+def test_wrapping_never_starts_a_line_with_a_pandoc_list_marker(marker: str) -> None:
+    """
+    Inside a list item, pandoc's `fancy_lists` and `example_lists` start a nested
+    list at any of these markers at the start of a line. A wrap that lands one
+    there changes the document, so the default verify gate would refuse it.
+    """
+    source = f"- Transport step (4) is fully general; step {marker} is next.\n"
+
+    result = reformat_text(source, width=45, semantic=False)
+
+    assert result.count("\n") == 2, result
 
 
 def test_bars_only_inside_math_do_not_start_a_table() -> None:
