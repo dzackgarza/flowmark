@@ -395,8 +395,11 @@ def _headings(
 
     consumed_setext_underlines: set[int] = set()
     for index, line in enumerate(lines):
+        # A line inside a fence or math block is protected from its first
+        # character. A heading that merely contains `$...$` or a code span is
+        # protected only in the middle, and is still a heading.
         if line.number in frontmatter_lines or _overlaps(
-            protected, line.start, line.end
+            protected, line.start, line.start + 1
         ):
             continue
         match = _ATX_HEADING.match(line.text)
@@ -417,7 +420,7 @@ def _headings(
             continue
         underline = lines[index + 1]
         if underline.number in frontmatter_lines or _overlaps(
-            protected, underline.start, underline.end
+            protected, underline.start, underline.start + 1
         ):
             continue
         underline_match = _SETEXT_UNDERLINE.match(underline.text)
@@ -442,13 +445,30 @@ def _headings(
     return result
 
 
+_VERBATIM_INLINE = re.compile(rf"`+(?P<code>[^`]+)`+|(?P<math>{DOLLAR_MATH})")
+
+
 def _plain_inline_text(text: str) -> str:
-    text = re.sub(r"`+([^`]+)`+", r"\1", text)
+    """
+    The text pandoc's `stringify` gives an inline run: markup removed, while code
+    and math keep their text verbatim (`$\\pi_1$` is `\\pi_1`, underscore included).
+    """
+    parts: list[str] = []
+    position = 0
+    for match in _VERBATIM_INLINE.finditer(text):
+        parts.append(_strip_inline_markup(text[position : match.start()]))
+        math = match.group("math")
+        parts.append(match.group("code") if math is None else math.strip("$"))
+        position = match.end()
+    parts.append(_strip_inline_markup(text[position:]))
+    return " ".join("".join(parts).split())
+
+
+def _strip_inline_markup(text: str) -> str:
     text = re.sub(r"!?(?:\[([^\]]*)\])\([^)]*\)", r"\1", text)
     text = re.sub(r"!?(?:\[([^\]]*)\])\[[^\]]*\]", r"\1", text)
     text = re.sub(r"[*_~]", "", text)
-    text = re.sub(r"<[^>]+>", "", text)
-    return " ".join(text.split())
+    return re.sub(r"<[^>]+>", "", text)
 
 
 def _pandoc_auto_identifier(text: str) -> str:

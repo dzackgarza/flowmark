@@ -229,6 +229,24 @@ def test_unicode_math_symbols_are_reported_in_code_and_math_too() -> None:
     assert _findings(source, "math/unicode-symbol") == ["∈", "α", "ψ", "∇", "→"]
 
 
+def test_headings_with_inline_math_or_code_are_still_headings() -> None:
+    """
+    A heading that contains `$...$` or a code span is a heading: its explicit and
+    automatic identifiers resolve fragments, and it counts for duplicates.
+    """
+    source = (
+        "## Plain $x\\to y$ heading {#custom-id}\n\n"
+        "## The `run_all` command\n\n"
+        "## Sets $A_i \\otimes B$ and $\\pi_1$\n\n"
+        "[x](#custom-id), [y](#the-run_all-command), "
+        "[z](#sets-a_i-otimes-b-and-pi_1)\n\n"
+        "## The `run_all` command\n"
+    )
+    rules = rule_ids(source)
+    assert "link/invalid-fragment" not in rules
+    assert "heading/duplicate" in rules
+
+
 def test_emphasis_padding_ignores_bullets_and_adjacent_strong_spans() -> None:
     """
     A `*` bullet is not an emphasis opener, and the words between two bold spans
