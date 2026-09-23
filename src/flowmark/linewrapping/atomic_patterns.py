@@ -86,13 +86,21 @@ _INLINE_MATH_DOUBLE = r"(?<!\\)(?<!\$)\$\$(?!\$)(?:\\.|[^\n\\$])+?(?<!\\)\$\$(?!
 _INLINE_MATH_SINGLE = r"(?<!\\)(?<!\$)\$(?![\s$])(?:\\.|[^\n\\$])+?(?<![\s\\])\$(?!\$)"
 _INLINE_MATH_PAREN = r"\\\((?:\\.|[^\n\\])*?\\\)"
 
+DOLLAR_MATH = f"{_INLINE_MATH_DOUBLE}|{_INLINE_MATH_SINGLE}"
+"""`$...$` and same-line `$$...$$` spans, as pandoc's `tex_math_dollars` reads them.
+
+The single-`$` rule above is pandoc's own: no whitespace just inside either
+delimiter. `\\(...\\)` is left out because pandoc's `markdown` reads it as an
+escaped parenthesis, not math.
+"""
+
 INLINE_MATH = AtomicPattern(
     name="inline_math",
     # No capturing groups, so nothing here depends on its position in the combined
     # alternation `_combined_pattern` builds. `INLINE_CODE_SPAN` gets away with a
     # numbered backreference only because it happens to be first; that is not a
     # property a second pattern can rely on.
-    pattern="|".join((_INLINE_MATH_DOUBLE, _INLINE_MATH_SINGLE, _INLINE_MATH_PAREN)),
+    pattern=f"{DOLLAR_MATH}|{_INLINE_MATH_PAREN}",
 )
 
 # Markdown links: [text](url) or [text][ref] or [text]

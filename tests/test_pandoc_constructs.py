@@ -233,3 +233,48 @@ def test_definition_marker_mid_paragraph_stays_prose() -> None:
     result = reformat_text("Some text\nTerm\n:   Def\n")
 
     assert ":" in result
+
+
+# --- #17: `|` inside a pipe-table cell's code span or math -----------------
+
+
+# Rows from a real research document. Pandoc's `markdown` reader parses a cell's
+# inlines before it looks for the next `|`, so a bar inside a code span or `$...$`
+# math is cell content, not a cell boundary: every row here has two cells.
+BARS_IN_SPANS_TABLE = (
+    "| construct | status |\n"
+    "| --- | --- |\n"
+    "| closed forms via explicit `|X(F_{q^r})|` for `A^n` | proposed |\n"
+    "| `Ann_R(x) = {r∈R | r·x=0} ⊲ R` | proposed |\n"
+    "| $|-2K_{\\widetilde V}|=\\{C\\}$ generically | established |\n"
+    "| `Tr(Frob^r \\| H)` and $\\int_M \\|F_A\\|^2$ | proposed |\n"
+    "| an escaped a \\| b outside spans | proposed |\n"
+)
+
+
+def test_bar_inside_a_code_span_or_math_stays_in_its_cell() -> None:
+    """
+    Splitting on every bar cut each row at the span and dropped the overflow
+    cells, so the cell text after the span was lost; unescaping every `\\|` turned
+    TeX's norm `\\|F\\|` into `|F|`. The default verify gate runs here, so this also
+    asserts that pandoc reads the same table before and after.
+    """
+    assert reformat_text(BARS_IN_SPANS_TABLE) == BARS_IN_SPANS_TABLE
+
+
+def test_row_wider_than_its_header_keeps_its_text() -> None:
+    """
+    A bare `d|N` splits the row, and pandoc drops the cells past the header's
+    width. Its reading is the same whatever flowmark writes there, so the gate is
+    blind to those cells: writing them back is what keeps their text in the file.
+    """
+    header = "| lead | capability |\n| --- | --- |\n"
+    source = (
+        header + "| Lambert series | b_N = \\sum_{d|N} a_d and Mobius inversion |\n"
+    )
+    # Every cell boundary is written padded, the accidental one included.
+    written = (
+        header + "| Lambert series | b_N = \\sum_{d | N} a_d and Mobius inversion |\n"
+    )
+
+    assert reformat_text(source) == written

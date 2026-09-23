@@ -17,6 +17,7 @@ from marko.helpers import partition_by_spaces
 from marko.parser import Parser
 from marko.source import Source
 
+from flowmark.linewrapping.atomic_patterns import DOLLAR_MATH, INLINE_CODE_SPAN
 from flowmark.linewrapping.line_wrappers import (
     line_wrap_by_sentence,
     line_wrap_to_width,
@@ -204,6 +205,180 @@ class CustomStrikethrough(gfm_elements.Strikethrough):
     def get_type(cls, snake_case: bool = False) -> str:
         # Ensure renderer dispatch uses "strikethrough" not "custom_strikethrough".
         return "strikethrough" if snake_case else "Strikethrough"
+
+
+# One token of a pipe-table row: a code span, `$` math, a backslash escape, or a
+# cell-separating bar. Alternation order matters only for the code span, whose
+# backreference needs group 1.
+_PIPE_ROW_TOKEN = re.compile(
+    rf"{INLINE_CODE_SPAN.pattern}|{DOLLAR_MATH}|\\.|(?P<bar>\|)"
+)
+
+
+def split_pipe_table_row(line: str) -> list[str]:
+    """
+    The cells of a pipe-table row, split where pandoc splits them.
+
+    Pandoc's `markdown` reader parses a cell's inlines before it looks for the
+    `|` that ends the cell (`pipeTableCell` in `Text.Pandoc.Readers.Markdown`), so
+    a bar inside a code span or `$...$` math is cell content. GFM's rule, which
+    marko implements, splits on every unescaped bar instead.
+    """
+    stripped = line.strip()
+    bars = [m.start() for m in _PIPE_ROW_TOKEN.finditer(stripped) if m.group("bar")]
+    edges = [-1, *bars, len(stripped)]
+    cells = [stripped[a + 1 : b].strip() for a, b in zip(edges, edges[1:])]
+    if cells and stripped.startswith("|"):
+        cells.pop(0)
+    if cells and not cells[-1] and stripped.endswith("|"):
+        cells.pop()
+    return cells
+
+
+def escape_cell_bars(text: str) -> str:
+    """Escape each bar in rendered cell `text` that pandoc would read as a separator."""
+    return _PIPE_ROW_TOKEN.sub(lambda m: "\\|" if m.group("bar") else m.group(0), text)
+
+
+def _unescape_cell_bars(text: str) -> str:
+    """
+    Turn each escaped bar outside a code span or math into a plain `|`.
+
+    Inside a span pandoc keeps `\\|` as written: it is TeX's norm `\\|x\\|` or code.
+    """
+    return _PIPE_ROW_TOKEN.sub(
+        lambda m: "|" if m.group(0) == "\\|" else m.group(0), text
+    )
+
+
+class CustomTableCell(gfm_elements.TableCell):
+    """A GFM table cell that unescapes `\\|` only where pandoc does."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        # marko's `TableCell.__init__` replaces every `\|`, spans included.
+        self.inline_body: str = _unescape_cell_bars(text.strip())
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "table_cell" if snake_case else "TableCell"
+
+
+class CustomTableRow(gfm_elements.TableRow):
+    """A GFM table row whose cells are split by `split_pipe_table_row`."""
+
+    @override
+    @classmethod
+    def match(cls, source: Source) -> bool:
+        # marko's `TableRow.match` with its splitter replaced
+        # (marko/ext/gfm/elements.py, marko 2.2.2).
+        line = _next_line(source)
+        if not line or not re.match(r" {,3}\S", line):
+            return False
+        cells = split_pipe_table_row(line)
+        if not cells:
+            return False
+        source.context.cells = cells
+        source.context.is_delimiter = all(cls.delimiter.match(cell) for cell in cells)
+        return True
+
+    @override
+    @classmethod
+    def parse(cls, source: Source) -> CustomTableRow:
+        # marko's `TableRow.parse` building `CustomTableCell`s
+        # (marko/ext/gfm/elements.py, marko 2.2.2). A row keeps cells past the
+        # header's width: pandoc drops them from its reading, so the gate cannot
+        # see their text, and writing them back is the only thing preserving it.
+        source.consume()
+        table = cast("gfm_elements.Table", source.state)
+        texts: list[str] = source.context.cells[:]
+        texts.extend("" for _ in range(table.num_of_cols - len(texts)))
+        cells: list[gfm_elements.TableCell] = [CustomTableCell(t) for t in texts]
+        for head, cell in zip(table.head.children, cells):
+            cell.align = cast("gfm_elements.TableCell", head).align
+        return cls(cells)
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "table_row" if snake_case else "TableRow"
+
+
+class CustomTable(gfm_elements.Table):
+    """
+    A GFM table built from `CustomTableRow` and `CustomTableCell`.
+
+    `match` and `parse` are marko's `Table.match` and `Table.parse`
+    (marko/ext/gfm/elements.py, marko 2.2.2) with the row and cell classes
+    replaced: marko names them directly rather than looking them up in the parser.
+    """
+
+    @override
+    @classmethod
+    def match(cls, source: Source) -> bool:
+        source.anchor()
+        if not CustomTableRow.match(source) or source.context.is_delimiter:
+            return False
+        # The row just matched is a non-empty line, so reading it again succeeds.
+        head_line = cast("str", _next_line(source))
+        if CustomTableRow.splitter.search(head_line) is None:
+            return False
+        source.pos = cast("re.Match[str]", source.match).end()
+        head = CustomTableRow([CustomTableCell(cell) for cell in source.context.cells])
+        if (
+            not CustomTableRow.match(source)
+            or not source.context.is_delimiter
+            or len(source.context.cells) != len(head.children)
+        ):
+            source.reset()
+            return False
+        source.context.table_info = {
+            "children": [head],
+            "delimiters": source.context.cells,
+        }
+        source.consume()
+        return True
+
+    @override
+    @classmethod
+    def parse(cls, source: Source) -> CustomTable:
+        table = cls(**source.context.table_info)
+        rows = cast("list[gfm_elements.TableRow]", table.children)
+        # marko's `Parser._build_block_element_list`, through public attributes.
+        interrupters = sorted(
+            (
+                element
+                for element in source.parser.block_elements.values()
+                if not element.virtual
+                and not issubclass(element, (gfm_elements.Table, block.Paragraph))
+            ),
+            key=lambda element: element.priority,
+            reverse=True,
+        )
+        with source.under_state(table):
+            for delimiter, head_cell in zip(table.delimiters, table.head.children):
+                th = cast("gfm_elements.TableCell", head_cell)
+                stripped = delimiter.strip()
+                th.header = True
+                if stripped[0] == ":" and stripped[-1] == ":":
+                    th.align = "center"
+                elif stripped[0] == ":":
+                    th.align = "left"
+                elif stripped[-1] == ":":
+                    th.align = "right"
+            while not source.exhausted:
+                if any(element.match(source) for element in interrupters):
+                    break
+                if not CustomTableRow.match(source):
+                    break
+                rows.append(CustomTableRow.parse(source))
+        return table
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "table" if snake_case else "Table"
 
 
 class CustomFencedCode(block.FencedCode):
@@ -1393,7 +1568,7 @@ class MarkdownNormalizer(Renderer):
         """Render a cell within a GFM table row."""
         # render_children (inherited from marko) returns Any; pin it to str.
         rendered: str = self.render_children(element)
-        return rendered.replace("|", "\\|")
+        return escape_cell_bars(rendered)
 
     def render_url(self, element: gfm_elements.Url) -> str:
         """For GFM autolink URLs, just output the URL directly."""
@@ -1475,9 +1650,14 @@ def flowmark_markdown(
             # to do this manually.
             custom_parser = CustomParser()
             # Add GFM support, using our fixed Strikethrough with proper flanking rules.
+            replacements: dict[type[Element], type[Element]] = {
+                gfm_elements.Strikethrough: CustomStrikethrough,
+                gfm_elements.Table: CustomTable,
+                gfm_elements.TableRow: CustomTableRow,
+                gfm_elements.TableCell: CustomTableCell,
+            }
             for e in GFM.elements:
-                if e is gfm_elements.Strikethrough:
-                    e = CustomStrikethrough
+                e = replacements.get(e, e)
                 assert (
                     e not in custom_parser.block_elements
                     and e not in custom_parser.inline_elements

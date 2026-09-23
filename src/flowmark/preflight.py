@@ -3,9 +3,8 @@ Cheap checks for input that was already ambiguous before flowmark touched it.
 
 When verification fails there are two different questions: *did flowmark break
 this?* and *was this already broken?*  The pandoc gate can only ask the first, so
-it answered the second one wrong -- in #17 the reporter's pipe table held an
-unescaped `|` from a linear system inside inline math, pandoc already mis-parsed
-the row, and the gate reported a flowmark bug.  That cost a bisection to attribute.
+on input that was already broken -- a fence never closed, a table row with more
+cells than its header -- it reports a flowmark bug that no report can fix.
 
 So these run only when verification has already failed, and only to say "here is
 something in your input that pandoc reads differently than you probably meant".
@@ -15,7 +14,8 @@ They never gate a run on their own and they never fire on a document that verifi
 every real flowmark defect as the user's fault, which is worse than the message it
 replaces.  Each check below is written to be quiet unless it is fairly sure, and
 `test_preflight_is_quiet_on_clean_input` is what holds that line.  Missing a
-malformed document costs today's message; a false positive costs the truth.
+malformed document costs today's message; a false positive costs the truth.  A
+check must state a rule pandoc actually applies, verified against pandoc itself.
 
 The same checks are importable on their own, so a document can be checked without
 reformatting it -- problem 3 in #17 was breaking the reporter's pandoc build before
@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+
+from flowmark.formats.flowmark_markdown import split_pipe_table_row
 
 
 @dataclass(frozen=True)
@@ -42,55 +44,30 @@ class Finding:
 _TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
 _DELIMITER_ROW = re.compile(r"^\s*\|(\s*:?-+:?\s*\|)+\s*$")
 
-# Inline math and code spans, for finding a bar *inside* one. Deliberately simple:
-# this runs on a single table row, where the constructs cannot span lines.
-_SPANS_IN_ROW = re.compile(r"\$[^$\n]+\$|`+[^`\n]+`+")
-
 _FENCE = re.compile(r"^ {,3}(`{3,}|~{3,})(.*)$")
 
 
-def _split_cells(row: str) -> list[str]:
-    """
-    The cells of a pipe-table row, as pandoc splits them: on every unescaped `|`.
-
-    This is the naive split *on purpose*. Its disagreement with the author's intent
-    is the defect being detected -- pandoc splits the same way, which is why the
-    reporter's three logical cells became five.
-    """
-    inner = row.strip().strip("|")
-    return re.split(r"(?<!\\)\|", inner)
-
-
 def _check_table(lines: list[str], start: int, end: int) -> list[Finding]:
-    """Check one run of consecutive table rows, `lines[start:end]`."""
-    findings: list[Finding] = []
-    expected = len(_split_cells(lines[start]))
+    """
+    Report each row of `lines[start:end]` whose cell count differs from the header's.
 
+    Pandoc pads a short row and drops the cells past the header's count, so the
+    text of an extra cell never reaches the output.
+    """
+    expected = len(split_pipe_table_row(lines[start]))
+    findings: list[Finding] = []
     for offset in range(start, end):
         row = lines[offset]
-        number = offset + 1
-
-        for span in _SPANS_IN_ROW.finditer(row):
-            if "|" in span.group(0):
-                findings.append(
-                    Finding(
-                        number,
-                        f"unescaped `|` inside {span.group(0)!r} in a pipe-table row; pandoc splits the row there, so this cell is read as two",
-                    )
-                )
-                break
-
         if _DELIMITER_ROW.match(row):
             continue
-        count = len(_split_cells(row))
-        if count != expected and not any(f.line == number for f in findings):
+        count = len(split_pipe_table_row(row))
+        if count != expected:
             findings.append(
                 Finding(
-                    number,
+                    offset + 1,
                     f"this row has {count} cells; the header row has {expected}",
                 )
             )
-
     return findings
 
 
