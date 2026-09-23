@@ -278,6 +278,20 @@ def test_wrapping_never_starts_a_line_with_a_pandoc_list_marker(marker: str) -> 
     assert result.count("\n") == 2, result
 
 
+@pytest.mark.parametrize("width", [0, 88])
+def test_a_sentence_break_never_starts_a_line_with_a_list_marker(width: int) -> None:
+    """
+    Semantic line breaks put each sentence on its own line, so a sentence that
+    begins with a marker-like word (`A)` after `App.`) starts a line too.
+    """
+    source = (
+        "- Truncation bounds via majorants (Thms. 3.4-3.7, App. A) give interval "
+        "enclosures of the solutions.\n"
+    )
+
+    reformat_text(source, semantic=True, width=width)
+
+
 def test_bars_only_inside_math_do_not_start_a_table() -> None:
     """
     A pipe-table row needs a `|` outside code and math, and a delimiter cell is

@@ -13,12 +13,21 @@ from flowmark.linewrapping.tag_handling import (
 from flowmark.linewrapping.text_filling import DEFAULT_WRAP_WIDTH
 from flowmark.linewrapping.text_wrapping import (
     DEFAULT_LEN_FUNCTION,
+    markdown_escape_word,
     wrap_paragraph,
     wrap_paragraph_lines,
 )
 
 DEFAULT_MIN_LINE_LEN = 20
 """Default minimum line length for sentence breaking."""
+
+
+def _escape_line_start(line: str, is_markdown: bool) -> str:
+    """Escape `line`'s first word if, at the start of a line, Markdown reads it as syntax."""
+    if not is_markdown:
+        return line
+    first, space, rest = line.partition(" ")
+    return markdown_escape_word(first) + space + rest
 
 
 class SentenceSplitter(Protocol):
@@ -129,7 +138,10 @@ def line_wrap_by_sentence(
 
         # Handle width <= 0 as "semantic-only: split sentences, no column wrapping"
         if width <= 0:
-            result = "\n".join(s.strip() for s in sentences if s.strip())
+            result = "\n".join(
+                _escape_line_start(s.strip(), is_markdown) if index else s.strip()
+                for index, s in enumerate(s for s in sentences if s.strip())
+            )
             if initial_indent and result:
                 indented_lines = result.split("\n")
                 indented_lines[0] = initial_indent + indented_lines[0]
@@ -169,6 +181,10 @@ def line_wrap_by_sentence(
                 lines[-1] += " " + wrapped[0]
                 wrapped.pop(0)
 
+            # A sentence's first line is a first line to the wrapper, which does
+            # not escape it, but in the paragraph it follows a line break.
+            if lines and wrapped:
+                wrapped[0] = _escape_line_start(wrapped[0], is_markdown)
             lines.extend(wrapped)
 
             first_line = False
