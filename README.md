@@ -190,6 +190,9 @@ Smart quotes are applied conservatively and won’t affect code blocks, so they 
 break code snippets.
 It only applies them within single paragraphs of text, and only applies to \' and \"
 quote marks around regular text.
+An apostrophe that pandoc pairs with a later quote mark stays straight.
+In `the '90s, rock 'n' roll`, pandoc reads everything from the quote before `90s` to
+the quote after `n` as one quoted span, and curling either quote would remove that span.
 
 This feature is enabled with the `--smartquotes` flag or the `--auto` convenience flag.
 
