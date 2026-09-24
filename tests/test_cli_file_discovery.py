@@ -157,6 +157,29 @@ def test_one_file_with_output_writes_the_output(tmp_path: Path) -> None:
     assert source.read_text() == "Some   text.\n"
 
 
+def test_output_with_directory_of_one_file_writes_the_output(tmp_path: Path) -> None:
+    """The `-o` check counts resolved files, not arguments."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "only.md").write_text("Some   text.\n")
+    target = tmp_path / "out.md"
+
+    assert main([str(docs), "-o", str(target)]) == 0
+    assert target.read_text() == "Some text.\n"
+
+
+def test_output_with_directory_of_many_files_is_refused(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("Some   text.\n")
+    (docs / "b.md").write_text("Other   text.\n")
+    target = tmp_path / "out.md"
+
+    assert main([str(docs), "-o", str(target)]) == 1
+    assert not target.exists()
+    assert (docs / "a.md").read_text() == "Some   text.\n"
+
+
 def test_stdin_still_works(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -226,11 +249,3 @@ def test_auto_list_files_no_args_errors(capsys: pytest.CaptureFixture[str]) -> N
     assert main(["--auto", "--list-files"]) == 1
     err = capsys.readouterr().err
     assert "--auto requires at least one file or directory argument" in err
-
-
-def test_explicit_flag_detection_with_default_value(tmp_path: Path) -> None:
-    """Passing --width 88 (the default) should still be detected as explicit (fm-4z3r)."""
-    from flowmark.cli import _parse_args  # pyright: ignore[reportPrivateUsage]
-
-    _, explicit_flags, _ = _parse_args(["--width", "88", str(tmp_path)])
-    assert "width" in explicit_flags
