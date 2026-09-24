@@ -274,7 +274,6 @@ def test_reference_rules_consume_context_data() -> None:
                 "lem:wrong": {"status": "resolved"},
                 "thm:missing": {"status": "missing"},
             },
-            "citation_keys": [],
         }
     }
     rules = {diagnostic.rule for diagnostic in lint_text(source, options(context))}
@@ -302,7 +301,6 @@ def test_reference_div_semantics_are_derived_from_pandoc_ast() -> None:
             "theorem_class_to_prefix": {"theorem": "thm", "lemma": "lem"},
             "snapshot": {"definitions": [], "occurrences": []},
             "resolutions": {},
-            "citation_keys": [],
         }
     }
     diagnostics = lint_text(source, options(context))
@@ -340,7 +338,6 @@ def test_duplicate_workspace_definition_lists_all_sites() -> None:
                     ],
                 }
             },
-            "citation_keys": [],
         }
     }
     diagnostic = next(
@@ -382,7 +379,6 @@ def test_missing_reference_reports_real_cross_family_match() -> None:
                     "definition": {"key": "fig:main"},
                 },
             },
-            "citation_keys": [],
         }
     }
     diagnostic = next(
@@ -395,25 +391,75 @@ def test_missing_reference_reports_real_cross_family_match() -> None:
     assert diagnostic.data["cross_family_candidates"] == ("fig:main",)
 
 
-def test_citation_rules_use_pandoc_ast_and_context_authority() -> None:
-    source = "See [@Known; @Missing; @thm:main].\n"
+KNOWN_BIB = (
+    "@article{FS86, author={Friedman, Robert and Scattone, Francesco}, "
+    "title={Type {III} degenerations of {K3} surfaces}, journal={Invent. Math.}, "
+    "year={1986}}\n"
+)
+
+
+def test_missing_citations_are_checked_against_the_host_bibliography_files(
+    tmp_path: Path,
+) -> None:
+    bibliography = tmp_path / "references.bib"
+    bibliography.write_text(KNOWN_BIB)
+    source = "See [@FS86; @Missing; @thm:main].\n"
     context: dict[str, object] = {
         "references": {
             "reference_families": ["thm"],
             "theorem_families": ["thm"],
             "family_aliases": {},
-            "citation_keys": ["Known"],
+            "bibliographies": [str(bibliography)],
         }
     }
     diagnostics = lint_text(source, options(context))
     rules = {item.rule for item in diagnostics}
     assert "citation/mixed-reference-types" in rules
-    missing = next(
-        item
+    missing = [
+        item.data
         for item in diagnostics
         if item.rule == "citation/missing-bibliography-entry"
+    ]
+    assert missing == [{"key": "Missing"}]
+
+
+def test_document_bibliography_metadata_is_read_relative_to_the_document(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "bib").mkdir()
+    (tmp_path / "bib" / "references.bib").write_text(KNOWN_BIB)
+    document = tmp_path / "chapter.md"
+    source = (
+        "---\nbibliography: bib/references.bib\n---\n\nFollowing @FS86 and @FS87.\n"
     )
-    assert missing.data == {"key": "Missing"}
+    missing = [
+        item.data
+        for item in lint_text(source, options({}), source_path=document)
+        if item.rule == "citation/missing-bibliography-entry"
+    ]
+    assert missing == [{"key": "FS87"}]
+
+
+def test_editing_the_bibliography_file_changes_the_known_keys(tmp_path: Path) -> None:
+    bibliography = tmp_path / "references.bib"
+    bibliography.write_text(KNOWN_BIB)
+    context: dict[str, object] = {"references": {"bibliographies": [str(bibliography)]}}
+    source = "Following @Nikulin80.\n"
+
+    def missing() -> list[str]:
+        return [
+            item.rule
+            for item in lint_text(source, options(context))
+            if item.rule == "citation/missing-bibliography-entry"
+        ]
+
+    assert missing() == ["citation/missing-bibliography-entry"]
+    bibliography.write_text(
+        KNOWN_BIB
+        + "@article{Nikulin80, author={Nikulin, V. V.}, title={Integral forms}, "
+        + "journal={Izv.}, year={1980}}\n"
+    )
+    assert missing() == []
 
 
 def test_tikz_compile_diagnostic_is_extension_context() -> None:

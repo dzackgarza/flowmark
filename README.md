@@ -588,8 +588,13 @@ packages = ["amsmath", "amssymb"]
 - `document/authorial-residue` reports TODO, FIXME, `???` and citation placeholders.
 - `reference/*`, `citation/*` and `tikz/compile-error` check theorem/proof divs,
   cross-references, citation keys and TikZ compiler output. Workspace reference
-  resolutions, bibliography keys and compiler findings arrive under
-  `[lint.context.references]` and `[lint.context.compiler]`.
+  resolutions and compiler findings arrive under `[lint.context.references]` and
+  `[lint.context.compiler]`.
+- `citation/missing-bibliography-entry` reads the bibliography files themselves, with
+  Pandoc's own readers (`.bib` BibLaTeX, `.bibtex`, CSL `.json`/`.yaml`, `.ris`): the
+  files listed in `lint.context.references.bibliographies` when given, otherwise the
+  document's `bibliography` metadata. Keys are cached per file under the user cache
+  directory and re-read when the file changes.
 
 `macro_sources` accepts files, directories (searched recursively) and glob patterns.
 Relative paths resolve from the linted document's directory. `.tex`, `.sty` and `.cls`

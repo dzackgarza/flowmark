@@ -126,11 +126,16 @@ def test_undefined_reference_fix_uses_the_same_label_under_its_defined_prefix() 
     assert apply_fix(source, diagnostic, "Use `@fig:main`") == "See @fig:main.\n"
 
 
-def test_missing_citation_fix_uses_the_nearest_bibliography_key() -> None:
+def test_missing_citation_fix_uses_the_nearest_bibliography_key(tmp_path: Path) -> None:
+    bibliography = tmp_path / "refs.bib"
+    bibliography.write_text(
+        "@article{Nikulin1980, author={Nikulin, V. V.}, title={Integral symmetric "
+        "bilinear forms}, journal={Math. USSR Izv.}, year={1980}}\n"
+        "@book{Conway1999, author={Conway, J. H. and Sloane, N. J. A.}, "
+        "title={Sphere Packings}, publisher={Springer}, year={1999}}\n"
+    )
     source = "As shown in [@Nikulin1979; @Conway1999].\n"
-    context: dict[str, object] = {
-        "references": {"citation_keys": ["Nikulin1980", "Conway1999"]}
-    }
+    context: dict[str, object] = {"references": {"bibliographies": [str(bibliography)]}}
     diagnostic = only(
         lint_text(source, LintOptions(context=context, discover_plugins=False)),
         "citation/missing-bibliography-entry",
@@ -160,9 +165,7 @@ def test_cli_reports_suggestions_in_json_and_as_help_lines(
 
 
 def _mixed_citation(source: str) -> LintDiagnostic:
-    context: dict[str, object] = {
-        "references": {"reference_families": ["fig"], "citation_keys": ["smith2020"]}
-    }
+    context: dict[str, object] = {"references": {"reference_families": ["fig"]}}
     return only(
         lint_text(source, LintOptions(context=context, discover_plugins=False)),
         "citation/mixed-reference-types",

@@ -23,6 +23,7 @@ from rapidfuzz import process
 from rapidfuzz.distance import OSA
 
 import flowmark.lint_rules as core
+from flowmark.bibliography import bibliography_keys
 from flowmark.lint_engine import (
     LintRule,
     RuleCheck,
@@ -1528,11 +1529,39 @@ def _cite_source(node: Mapping[str, object]) -> str:
     return pandoc_plain(cast(PandocJson, typed_content[1]))
 
 
+def _citation_keys(context: RuleContext) -> frozenset[str] | None:
+    """Keys of the document's bibliography, or None when it has none to check against.
+
+    The files are ``references.bibliographies`` from the lint context when the
+    host supplies them (the host's citation renderer uses the same list), else
+    the document's own ``bibliography`` metadata. Relative paths resolve from
+    the document's directory. A metadata file that does not exist is reported
+    by ``pandoc/missing-resource``; with it missing, no key can be judged.
+    """
+
+    base = context.source_path.parent if context.source_path is not None else Path.cwd()
+    configured = _reference_data(context).get("bibliographies")
+    if configured is not None:
+        paths = [base / Path(item).expanduser() for item in _strings(configured)]
+    else:
+        value = _mapping(context.pandoc_document.get("meta")).get("bibliography")
+        authored = (
+            core.meta_strings(cast(PandocJson, value)) if value is not None else []
+        )
+        paths = [base / Path(item).expanduser() for item in authored]
+        if any(not path.is_file() for path in paths):
+            return None
+    if not paths:
+        return None
+    return frozenset[str]().union(*(bibliography_keys(path) for path in paths))
+
+
 def _citation_findings(context: RuleContext, rule: str) -> list[RuleFinding]:
     data = _reference_data(context)
-    citation_keys_value = data.get("citation_keys")
     citation_keys = (
-        None if citation_keys_value is None else set(_strings(citation_keys_value))
+        _citation_keys(context)
+        if rule == "citation/missing-bibliography-entry"
+        else None
     )
     findings: list[RuleFinding] = []
     cursor = 0

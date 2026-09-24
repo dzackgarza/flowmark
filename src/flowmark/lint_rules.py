@@ -1529,6 +1529,10 @@ def locate_after(
     return _locate_after(text, needles, start)
 
 
+def meta_strings(value: PandocJson) -> list[str]:
+    return _meta_strings(value)
+
+
 def _cached_correctness_findings(context: RuleContext) -> list[RuleFinding]:
     key = "flowmark/core-correctness-findings"
     cached = context.cache.get(key)
