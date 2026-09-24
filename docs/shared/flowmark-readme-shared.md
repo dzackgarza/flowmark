@@ -58,12 +58,16 @@ The main ways to use Flowmark are:
 > For an example of what an auto-formatted Markdown doc looks with semantic line breaks looks like, see [the Markdown source](https://github.com/jlevy/flowmark/blob/main/README.md?plain=1) of this readme file.
 
 Some Markdown auto-formatters never wrap lines, while others wrap at a fixed width.
-Flowmark supports both, via the `--width` option.
-
-Default line wrapping behavior is **88 columns**. The “[90-ish columns](https://youtu.be/esZLCuWs_2Y?si=lUj055ROI--6tVU8&t=1288)” compromise was popularized by Black and also works well for Markdown.
-
-However, in addition, unlike traditional formatters, Flowmark also offers the option to use a heuristic that prefers line breaks at sentence boundaries.
+By default, Flowmark does neither: it puts each sentence on its own line and sets no column limit.
 This is a small change that can dramatically improve diff readability when collaborating or working with AI tools.
+
+With `--width N`, sentences are split first, and a sentence longer than N is then wrapped to N.
+A line shorter than 20 characters is joined with the next sentence when both fit in N.
+
+Pass `--no-semantic` to wrap paragraphs at a fixed width instead, as traditional formatters do.
+The width is then **88 columns** unless `--width` is given.
+The “[90-ish columns](https://youtu.be/esZLCuWs_2Y?si=lUj055ROI--6tVU8&t=1288)” compromise was popularized by Black and also works well for Markdown.
+`--width 0` disables column wrapping in both modes.
 
 This idea of **semantic line breaks**, which is breaking lines in ways that make sense logically when possible (much like with code) is an old one.
 But it usually requires people to agree on how to break lines, which is both difficult and sometimes controversial.
@@ -77,7 +81,8 @@ It should work fine for English and many other Latin/Cyrillic languages, but has
 
 While this approach to line wrapping may not be familiar, I suggest you just try `flowmark --auto` on a document and you will begin to see the benefits as you edit/commit documents.
 
-This feature is enabled with the `--semantic` flag or the `--auto` convenience flag.
+Semantic line breaks are the default.
+Turn them off with `--no-semantic`.
 
 ## Typographic Cleanups
 
@@ -151,17 +156,19 @@ The main flags:
 
 | Flag | Description |
 | --- | --- |
-| `-o, --output FILE` | Output file (use `-` for stdout) |
-| `-w, --width WIDTH` | Line width (default: 88, 0 = disable wrapping) |
+| `-o, --output FILE` | Output file (use `-` for stdout); only one input file may be given |
+| `-w, --width WIDTH` | Line width. When not given: no limit with semantic line breaks, 88 with `--no-semantic` or `--plaintext`. 0 disables wrapping |
 | `-p, --plaintext` | Process as plaintext (no Markdown parsing) |
-| `-s, --semantic` | Semantic (sentence-based) line breaks |
-| `-c, --cleanups` | Safe cleanups (unbold headings, etc.) |
-| `--smartquotes` | Convert straight quotes to typographic quotes |
-| `--ellipses` | Convert `...` to `…` |
-| `--list-spacing` | Control list spacing: `preserve`, `loose`, `tight` |
+| `-s, --semantic` | Semantic (sentence-based) line breaks (default: on; `--no-semantic` wraps to a column width) |
+| `-c, --cleanups` | Safe cleanups (unbold headings, etc.) (default: off) |
+| `--smartquotes` | Convert straight quotes to typographic quotes (default: off) |
+| `--ellipses` | Convert `...` to `…` (default: off) |
+| `--list-spacing` | List spacing: `loose` (default), `tight`, or `preserve`. Flowmark normalizes list spacing to one style, as it normalizes other formatting |
 | `-i, --inplace` | Edit in place |
 | `--nobackup` | Skip `.orig` backup with `--inplace` |
-| `--auto` | All auto-formatting: `--inplace --nobackup --semantic --cleanups --smartquotes --ellipses`. Requires file/directory args (use `.` for current directory) |
+| `--auto` | All auto-formatting: `--inplace --nobackup --semantic --cleanups --smartquotes --ellipses`, beneath the config file and explicit flags. Requires file/directory args (use `.` for current directory) |
+
+Each on/off flag also has a `--no-` form, for example `--no-smartquotes`, to override a config file or `--auto`.
 
 File discovery flags:
 
@@ -245,6 +252,9 @@ It searches for config files in this order (first match wins, walking up directo
 
 3. `pyproject.toml` (only if it has a `[tool.flowmark]` section)
 
+A config key is the long name of a CLI flag, for example `list-spacing` for `--list-spacing`.
+Unparsable TOML, an unknown key, or a value of the wrong type is an error: Flowmark names the file and key and formats nothing.
+
 ### Example Config
 
 ```toml
@@ -272,13 +282,14 @@ semantic = true
 extend-exclude = ["drafts/"]
 ```
 
-### Config vs `--auto`
+### Precedence
 
-The `--auto` flag is a fixed formatting preset that always enables `--semantic`, `--cleanups`, `--smartquotes`, and `--ellipses`. It ignores formatting settings from config files.
+An explicit flag overrides the config file.
+The config file overrides the `--auto` preset.
+The `--auto` preset overrides the built-in defaults.
 
-However, `width` and file discovery settings (excludes, max size, etc.) are always read from config regardless of `--auto`.
-
-When not using `--auto`, all formatting settings can be configured via the config file and overridden by explicit CLI flags.
+So a config file with `list-spacing = "preserve"` or `smartquotes = false` keeps that setting under `--auto`, and `flowmark --auto --no-smartquotes README.md` formats without smart quotes.
+Repeatable list flags (`--extend-include`, `--exclude`, `--extend-exclude`) add to the lists in the config file.
 
 ## Use in VSCode/Cursor
 
@@ -297,7 +308,7 @@ Then add to your `settings.json`:
   }
 ```
 
-The `--auto` option is just the same as `--inplace --nobackup --semantic --cleanups --smartquotes --ellipses`.
+The `--auto` option sets `--inplace --nobackup --semantic --cleanups --smartquotes --ellipses`; a config file or an explicit flag overrides any of them.
 
 For batch formatting an entire project, use `flowmark --auto .` from the terminal.
 
@@ -338,7 +349,7 @@ flowmark --auto README.md
 flowmark README.md
 
 # Format LLM output (use '-' for stdin)
-echo "$llm_output" | flowmark --semantic -
+echo "$llm_output" | flowmark -
 ```
 
 ## Why Another Markdown Formatter?
