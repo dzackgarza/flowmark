@@ -21,6 +21,9 @@ make install
 # Run uv sync, lint, and test (and also generate agent rules):
 make
 
+# Regenerate README.md from docs/shared/flowmark-readme-shared.md and format it:
+make readme
+
 # Build wheel:
 make build
 

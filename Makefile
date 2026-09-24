@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := default
 
-.PHONY: default install lint test test-golden test-golden-coverage upgrade build clean format format-docs benchmark profile
+.PHONY: default install lint test test-golden test-golden-coverage upgrade build clean format format-docs readme benchmark profile
 
 default: format install lint test
 
@@ -40,8 +40,13 @@ clean:
 	-rm -rf .venv/
 	-find . -type d -name "__pycache__" -exec rm -rf {} +
 
-format-docs:
+format-docs: readme
 	uv run flowmark --auto .
+
+# README.md is generated: edit docs/shared/flowmark-readme-shared.md, then run this.
+readme:
+	uv run --script scripts/generate-python-readme.py
+	uv run flowmark --auto README.md
 
 benchmark:
 	uv run devtools/benchmark.py --compare 0.6.0

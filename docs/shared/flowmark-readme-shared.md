@@ -267,7 +267,7 @@ width = 100
 semantic = true
 smartquotes = true
 ellipses = true
-list-spacing = "preserve"
+list-spacing = "preserve"  # opt out of the loose-spacing default
 
 [file-discovery]
 extend-include = ["*.mdx", "*.markdown"]
@@ -373,6 +373,46 @@ There are several other Markdown auto-formatters:
   You can build auto-formatters with it but there isn’t one that’s broadly used as a CLI tool.
 
 All of these are worth looking at, but none offer the more advanced line breaking features of Flowmark or seemed to have the “just works” CLI defaults and library usage I found most useful.
+
+## Pandoc-aware linting
+
+Flowmark also ships a standalone linter over the same semantic Markdown parser used by
+the formatter. It understands Flowmark's Pandoc-oriented constructs (including math, raw
+TeX, fenced divs, definition lists, tables, and footnotes) before applying style checks,
+so TeX underscores and asterisks are not reinterpreted as Markdown emphasis.
+
+```bash
+flowmark-lint README.md
+flowmark-lint --format json --exit-zero - < document.md
+```
+
+The Python API is `flowmark.lint_text()`. Diagnostics use 1-based source coordinates and
+stable rule ids. The default rule layer checks structural/semantic failures that a
+formatter cannot safely infer away: heading hierarchy/duplicates, reference and footnote
+integrity, malformed or empty links, local fragments and local-file targets, image alt
+text, fenced-code language/tabs/boundaries, frontmatter integrity, duplicate Pandoc ids,
+malformed attributes, and unclosed fenced-div/math/TeX constructs. It also reports
+mathematics written outside `$...$`: `math/outside-math-mode` for TeX notation in prose
+(`x_0`, `R^n`, `\sum`), which pandoc reads as emphasis delimiters, plain text, or raw TeX
+that HTML output drops, and `math/unicode-symbol` for Unicode math symbols (`⊗`, `→`,
+`α`) anywhere except a fenced block that names its language. `math/backslash-delimiter`
+reports `\(...\)` and `\[...\]`, which pandoc's `markdown` reads as a literal
+parenthesis or bracket, not math. `pandoc/ambiguous-input`
+adds the high-confidence ambiguity checks from Flowmark's preflight, while
+`format/canonical` reports remaining source ranges that differ from Flowmark's canonical
+rendering. The linter does not edit files.
+
+Pure house-style policies are opt-in instead of being treated as Markdown correctness:
+
+```bash
+flowmark-lint --style bare-url --style heading-punctuation README.md
+flowmark-lint --style unordered-list-marker --style fence-marker README.md
+flowmark-lint --style require-h1 --style no-inline-html README.md
+flowmark-lint --max-line-length 100 README.md
+```
+
+Editor/stdin clients can supply `--source-path PATH` so relative links and cross-file
+Markdown fragments are checked against the document's real location.
 
 ## Project Docs
 
