@@ -216,6 +216,25 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s*…\s*", "…", re.sub(r"\s+", " ", text))
 
 
+_TEX_COMMENT = re.compile(r"(?<!\\)%")
+
+
+def _canonical_math(node: dict[str, PandocJson]) -> PandocJson:
+    """
+    Collapse whitespace runs in a `Math` node's TeX to one space.
+
+    TeX reads the end of a line as a space and a run of spaces as one (The TeXbook,
+    chapter 8), so `a +\\nb` and `a + b` are the same formula; rewrapping a paragraph
+    turns the first into the second. A `%` comment is the exception -- it runs to
+    the end of the line, so joining that line would comment out what follows -- and
+    such a node is compared exactly.
+    """
+    kind, tex = cast("list[PandocJson]", node["c"])
+    if not isinstance(tex, str) or _TEX_COMMENT.search(tex):
+        return node
+    return {"t": "Math", "c": [kind, re.sub(r"\s+", " ", tex)]}
+
+
 def _canonical(node: PandocJson) -> PandocJson:
     """
     Rewrite `node` so that inline whitespace differences compare equal.
@@ -225,6 +244,8 @@ def _canonical(node: PandocJson) -> PandocJson:
     changed element type, a changed nesting, or changed words.
     """
     if isinstance(node, dict):
+        if node.get("t") == "Math":
+            return _canonical_math(node)
         return {key: _canonical(value) for key, value in node.items()}
     if not isinstance(node, list):
         return node
@@ -727,6 +748,7 @@ formatter does, and a rule the formatter applies but the gate refuses is a docum
 that cannot be written.  `test_hyphen_join_scope_matches_the_cleanup` pins them.
 """
 
+
 def _joinable_space(text: str, start: int, followed: bool) -> bool:
     """
     Whether the space at `text[start]`, right after a hyphen, is in #18's scope.
@@ -757,7 +779,11 @@ def _join_hyphen_text_toward(text: str, target: str, followed: bool) -> str:
         if j < len(target) and text[i] == target[j]:
             i += 1
             j += 1
-        elif text[i] == " " and text[i - 1 : i] == "-" and _joinable_space(text, i, followed):
+        elif (
+            text[i] == " "
+            and text[i - 1 : i] == "-"
+            and _joinable_space(text, i, followed)
+        ):
             i += 1
         else:
             return text
@@ -773,15 +799,29 @@ def _join_hyphens_toward(node: PandocJson, target: PandocJson) -> PandocJson:
     hyphen and a space and the next inline is structure (`degree- ` followed by a
     `Math`, from `degree-` / `$4$`). Trees that differ in shape are left alone.
     """
-    if isinstance(node, dict) and isinstance(target, dict) and node.keys() == target.keys():
-        return {key: _join_hyphens_toward(value, target[key]) for key, value in node.items()}
-    if not (isinstance(node, list) and isinstance(target, list) and len(node) == len(target)):
+    if (
+        isinstance(node, dict)
+        and isinstance(target, dict)
+        and node.keys() == target.keys()
+    ):
+        return {
+            key: _join_hyphens_toward(value, target[key]) for key, value in node.items()
+        }
+    if not (
+        isinstance(node, list) and isinstance(target, list) and len(node) == len(target)
+    ):
         return node
 
     out: list[PandocJson] = []
     for index, (item, goal) in enumerate(zip(node, target, strict=True)):
-        if isinstance(item, dict) and isinstance(goal, dict) and item.get("t") == goal.get("t") == "Str":
-            text = _join_hyphen_text_toward(str(item.get("c", "")), str(goal.get("c", "")), index + 1 < len(node))
+        if (
+            isinstance(item, dict)
+            and isinstance(goal, dict)
+            and item.get("t") == goal.get("t") == "Str"
+        ):
+            text = _join_hyphen_text_toward(
+                str(item.get("c", "")), str(goal.get("c", "")), index + 1 < len(node)
+            )
             out.append({"t": "Str", "c": text})
             continue
         out.append(_join_hyphens_toward(item, goal))

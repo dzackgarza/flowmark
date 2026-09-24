@@ -5,7 +5,10 @@ from collections.abc import Callable
 from functools import cache
 from typing import Protocol
 
-from flowmark.linewrapping.atomic_patterns import ATOMIC_PATTERNS, iter_atomic_words
+from flowmark.linewrapping.atomic_patterns import (
+    TEMPLATE_TAG_PATTERNS,
+    iter_atomic_words,
+)
 from flowmark.linewrapping.tag_handling import (
     denormalize_adjacent_tags,
     normalize_adjacent_tags,
@@ -39,15 +42,15 @@ class _HtmlMdWordSplitter:
       rules, converts line breaks to spaces per CommonMark spec
     - Line wrapping (this code): Decides where to break lines in source text
 
-    Splits on whitespace via `iter_atomic_words`, which treats all atomic constructs
-    (template tags, code spans, markdown links, HTML tags) as indivisible tokens that are
-    never broken across lines.
+    Splits on whitespace via `iter_atomic_words`, which keeps template and HTML tags
+    whole. Code spans, math, raw TeX and links reach this already free of whitespace:
+    the renderer writes each parsed element `unbreakable`.
     """
 
     def __call__(self, text: str) -> list[str]:
         # Normalize adjacent tags so paired tags tokenize as separate words.
         text = normalize_adjacent_tags(text)
-        return [word.text for word in iter_atomic_words(text, ATOMIC_PATTERNS)]
+        return [word.text for word in iter_atomic_words(text, TEMPLATE_TAG_PATTERNS)]
 
 
 @cache

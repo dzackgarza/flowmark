@@ -28,6 +28,7 @@ import re
 from dataclasses import dataclass
 
 from flowmark.formats.flowmark_markdown import split_pipe_table_row
+from flowmark.linewrapping.atomic_patterns import DOLLAR_MATH
 
 
 @dataclass(frozen=True)
@@ -109,33 +110,50 @@ def _fence_findings(lines: list[str]) -> list[Finding]:
     return [Finding(open_at + 1, f"fence `{fence}` is opened here and never closed")]
 
 
+_NOT_MATH = re.compile(rf"`+[^`\n]*`+|\\\$|{DOLLAR_MATH}")
+
+
+def _stray_dollars(lines: list[str], paragraph: list[int]) -> list[Finding]:
+    """
+    Lines of `paragraph` holding a `$` that pandoc reads as no math span.
+
+    The paragraph is matched as a whole, because inline math may continue onto the
+    next line. Code spans, escaped `\\$` and every span pandoc's rule (`DOLLAR_MATH`)
+    reads as math are blanked first; a `$` left before a digit is currency.
+    """
+    text = "\n".join(lines[offset] for offset in paragraph)
+    bare = _NOT_MATH.sub(lambda match: re.sub(r"[^\n]", " ", match.group(0)), text)
+    stray = {
+        paragraph[bare.count("\n", 0, match.start())]
+        for match in re.finditer(r"\$(?!\d)", bare)
+    }
+    return [
+        Finding(offset + 1, "unterminated `$` math delimiter on this line")
+        for offset in sorted(stray)
+    ]
+
+
 def _math_findings(lines: list[str], fenced: frozenset[int]) -> list[Finding]:
     """
-    Report a line with an odd number of `$` delimiters.
+    Report a `$` that opens no math span pandoc would read.
 
-    Escaped `\\$` and lines inside a fenced code block are excluded, and so is a
-    lone `$` that is plainly currency -- a digit right after it with no closer.
-    Display math legitimately spans lines, so a line that is exactly `$$` is a
-    delimiter rather than an unterminated span.
+    Lines inside a fenced code block are excluded. Display math legitimately spans
+    lines, so a line that is exactly `$$` is a delimiter rather than an unterminated
+    span.
     """
     findings: list[Finding] = []
     display_open = False
+    paragraph: list[int] = []
     for offset, line in enumerate(lines):
-        if offset in fenced:
+        in_prose = not (offset in fenced or display_open or line.strip() in ("", "$$"))
+        if in_prose:
+            paragraph.append(offset)
             continue
-        if line.strip() == "$$":
+        findings.extend(_stray_dollars(lines, paragraph))
+        paragraph = []
+        if offset not in fenced and line.strip() == "$$":
             display_open = not display_open
-            continue
-        if display_open:
-            continue
-        bare = re.sub(r"\\\$", "", re.sub(r"`+[^`\n]*`+", "", line))
-        if bare.count("$") % 2 == 0:
-            continue
-        if re.fullmatch(r"[^$]*\$\d[^$]*", bare):
-            continue  # a single price, not an opened span
-        findings.append(
-            Finding(offset + 1, "unterminated `$` math delimiter on this line")
-        )
+    findings.extend(_stray_dollars(lines, paragraph))
     if display_open:
         findings.append(Finding(len(lines), "unterminated `$$` display math"))
     return findings

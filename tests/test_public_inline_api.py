@@ -59,10 +59,9 @@ def test_inline_math_is_atomic_in_both_pattern_sets() -> None:
 
 def test_inline_math_spans_are_kept_whole_but_prose_currency_is_not() -> None:
     """
-    The wrapping pattern is deliberately stricter than the parser's: a single-`$`
-    span needs non-whitespace just inside both delimiters. Without that,
-    `their $420K ... paying $` matches as one 48-character atomic token and wraps
-    ordinary prose far worse than not knowing about math at all.
+    The pattern is pandoc's rule: a single-`$` span needs non-whitespace just
+    inside both delimiters. Without that, `their $420K ... paying $` matches as one
+    48-character atomic token, though pandoc reads it as prose.
     """
     math = [
         s.text

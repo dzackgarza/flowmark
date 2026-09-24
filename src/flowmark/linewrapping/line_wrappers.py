@@ -5,7 +5,8 @@ from collections.abc import Callable
 from typing import Protocol
 
 from flowmark.linewrapping.protocols import LineWrapper
-from flowmark.linewrapping.sentence_split_regex import split_sentences_atomic
+from flowmark.linewrapping.atomic_patterns import TEMPLATE_TAG_PATTERNS
+from flowmark.linewrapping.sentence_split_regex import split_sentences_with_spans
 from flowmark.linewrapping.tag_handling import (
     add_tag_newline_handling,
     denormalize_adjacent_tags,
@@ -37,9 +38,16 @@ class SentenceSplitter(Protocol):
 
 
 def split_sentences_no_min_length(text: str) -> list[str]:
-    # Atomic-aware: never break a sentence inside a link/code span/URL (e.g. a "St."
-    # inside link text must not trip the end-of-sentence heuristic).
-    return split_sentences_atomic(text, min_length=0)
+    # A link, code span or math span arrives with no whitespace in it (the renderer
+    # writes parsed elements `unbreakable`), so a "St." inside link text is not a word
+    # end and cannot trip the end-of-sentence heuristic. Tags have no parse node, so
+    # they are kept whole by pattern.
+    return [
+        span.text
+        for span in split_sentences_with_spans(
+            text, min_length=0, patterns=TEMPLATE_TAG_PATTERNS
+        )
+    ]
 
 
 _line_break_re = re.compile(r"\\\n|  \n")

@@ -1,5 +1,8 @@
 from textwrap import dedent
 
+import pytest
+
+from flowmark.linewrapping.markdown_filling import fill_markdown
 from flowmark.linewrapping.text_wrapping import (
     _HtmlMdWordSplitter,  # pyright: ignore
     get_html_md_word_splitter,
@@ -120,28 +123,35 @@ def test_smart_splitter() -> None:
         "link</a>.",
     ]
 
-    md_text = "Here's a [Markdown link](https://example.com) and [another one](https://test.com)."
-    assert splitter(md_text) == [
-        "Here's",
-        "a",
-        "[Markdown link](https://example.com)",
-        "and",
-        "[another one](https://test.com).",
-    ]
 
-    mixed_text = "Text with <b>bold</b> and [a link](https://example.com)."
-    assert splitter(mixed_text) == [
-        "Text",
-        "with",
-        "<b>bold</b>",
-        "and",
-        "[a link](https://example.com).",
-    ]
+@pytest.mark.parametrize(
+    "construct",
+    [
+        "`code with spaces`",
+        "`<!-- not a real comment -->`",
+        "(`<!--% ... -->`).",
+        "[Markdown-link](https://example.com)",
+        "![an image alt](https://example.com/a.png)",
+    ],
+)
+def test_wrapping_never_breaks_inside_a_parsed_inline_construct(construct: str) -> None:
+    """
+    A code span, link or image is one element to the parser, so at a width far
+    narrower than it the wrapper moves it whole rather than break at its spaces
+    (#28: what is unbreakable comes from the parse).
+    """
+    result = fill_markdown(
+        f"Some words before {construct} and some words after.\n",
+        width=12,
+        dedent_input=False,
+    )
+
+    assert any(construct in line for line in result.splitlines()), result
 
 
 def test_wrap_text() -> None:
     sample_text = (
-        "This is a sample text with a [Markdown link](https://example.com)"
+        "This is a sample text with a [Markdown-link](https://example.com)"
         " and an <a href='#'>tag</a>. It should demonstrate the functionality of "
         "our enhanced text wrapping implementation."
     )
@@ -157,9 +167,9 @@ def test_wrap_text() -> None:
     print(filled)
     filled_expected = dedent(
         """
-        >This is a sample text with a [Markdown
-        >>link](https://example.com) and an <a
-        >>href='#'>tag</a>. It should
+        >This is a sample text with a
+        >>[Markdown-link](https://example.com)
+        >>and an <a href='#'>tag</a>. It should
         >>demonstrate the functionality of our
         >>enhanced text wrapping implementation.
         """
@@ -177,7 +187,7 @@ def test_wrap_text() -> None:
     filled_smart_expected = dedent(
         """
         >This is a sample text with a
-        >>[Markdown link](https://example.com)
+        >>[Markdown-link](https://example.com)
         >>and an <a href='#'>tag</a>. It should
         >>demonstrate the functionality of our
         >>enhanced text wrapping implementation.
@@ -198,7 +208,7 @@ def test_wrap_text() -> None:
         """
         This
         >>is a sample text with a
-        >>[Markdown link](https://example.com)
+        >>[Markdown-link](https://example.com)
         >>and an <a href='#'>tag</a>. It should
         >>demonstrate the functionality of our
         >>enhanced text wrapping implementation.
@@ -393,38 +403,6 @@ def test_long_jinja_comments() -> None:
     assert long_comment in result
 
 
-def test_inline_code_with_spaces() -> None:
-    """Test that inline code spans with spaces are kept together."""
-    splitter = _HtmlMdWordSplitter()
-
-    # Simple inline code with spaces
-    code = "`code with spaces`"
-    text = f"Some {code} here."
-    result = splitter(text)
-    assert code in result
-
-    # Inline code with HTML-like content
-    code2 = "`<!-- not a real comment -->`"
-    text2 = f"Check {code2} for details."
-    result2 = splitter(text2)
-    assert code2 in result2
-
-
-def test_inline_code_with_surrounding_punctuation() -> None:
-    """Test that inline code with surrounding punctuation stays together."""
-    splitter = _HtmlMdWordSplitter()
-
-    # Inline code with parentheses
-    text = "syntax (`<!--% ... -->`)**"
-    result = splitter(text)
-    assert "(`<!--% ... -->`)**" in result
-
-    # Inline code followed by punctuation
-    text2 = "Use `foo bar`."
-    result2 = splitter(text2)
-    assert "`foo bar`." in result2
-
-
 def test_html_comments_kept_together() -> None:
     """Test that HTML comments are kept as atomic units."""
     splitter = _HtmlMdWordSplitter()
@@ -485,38 +463,6 @@ def test_multiple_single_word_inline_codes() -> None:
     # incorrectly coalesce with "via" or "and"
     assert "via" in result
     assert "and" in result
-
-
-def test_inline_code_in_table_cells() -> None:
-    """
-    Test that inline code in table cell content is tokenized correctly.
-
-    Tables are parsed by Marko as special blocks and don't go through line
-    wrapping, but the word splitter should still handle table cell content
-    correctly if it's ever processed.
-    """
-    splitter = _HtmlMdWordSplitter()
-
-    # Typical table cell with inline code
-    cell1 = "the field is `runId: v.id('experimentRuns')` or maybe `foo`?"
-    result1 = splitter(cell1)
-    # Single-word code spans should be separate tokens
-    assert "`foo`?" in result1 or any("`foo`" in r for r in result1)
-    # Code without spaces stays as one token
-    assert "`runId: v.id('experimentRuns')`" in result1
-
-    # Simple code-only cell
-    cell2 = "`detailedLogs`"
-    result2 = splitter(cell2)
-    assert result2 == ["`detailedLogs`"]
-
-    # Cell with multiple code spans
-    cell3 = "`a` and `b` and `c`"
-    result3 = splitter(cell3)
-    assert "`a`" in result3
-    assert "`b`" in result3
-    assert "`c`" in result3
-    assert "and" in result3
 
 
 def test_newline_after_opening_tag() -> None:

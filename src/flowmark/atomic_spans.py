@@ -16,9 +16,11 @@ Terminology used throughout this module:
 - **word** — a whitespace-delimited token, except that an atomic construct is kept whole
   (its internal spaces never split it, and it glues to adjacent non-space characters).
 
-These are the same patterns flowmark uses internally for line wrapping, exposed here as a
+They tokenize Markdown source that has not been parsed, and are exposed here as a
 stable, intentional surface so downstream tools can reuse them instead of copying
-flowmark internals.
+flowmark internals. Flowmark's own wrapper works on parsed documents: it keeps code
+spans, math, raw TeX and links whole because the parser read them as elements, and
+matches only template and HTML tags by pattern.
 
 **Heuristic, not a parser.** These patterns identify *unbreakable spans* for wrapping and
 tokenization. They are deliberately simpler than a real Markdown parser: ``MARKDOWN_LINK``

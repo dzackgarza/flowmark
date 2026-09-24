@@ -308,9 +308,8 @@ to $24,000, which means the tax benefit of buying is
 
 * When an investor is trying to get you to agree to a term you think is unfair, you need
   to protect your interests without sounding accusatory toward the investor: *“Sorry,
-  I’m just inexperienced, I read/was told that it’s not wise to
-  [term they want you to agree to].”*
-  [[Paul Graham, Y Combinator](http://paulgraham.com/fr.html)]
+  I’m just inexperienced, I read/was told that it’s not wise to [term they want you to
+  agree to].”* [[Paul Graham, Y Combinator](http://paulgraham.com/fr.html)]
 
 * When you want to test a VC’s interest to determine where to put your energy, you don’t
   want to sound desperate or pushy: *“I know that you’re not likely to give me a strong

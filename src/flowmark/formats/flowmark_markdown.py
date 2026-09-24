@@ -24,6 +24,11 @@ from flowmark.linewrapping.line_wrappers import (
 )
 from flowmark.linewrapping.protocols import LineWrapper
 from flowmark.linewrapping.text_filling import DEFAULT_WRAP_WIDTH
+from flowmark.linewrapping.unbreakable import (
+    refuse_if_present,
+    restore_spaces,
+    unbreakable,
+)
 
 
 def _next_line(source: Source) -> str | None:
@@ -549,11 +554,12 @@ class CustomDisplayMath(block.BlockElement):
 
 class CustomInlineMath(inline.InlineElement):
     """
-    Inline math span: ``$...$`` or same-line ``$$...$$``.
+    Inline math span: ``$...$`` or ``$$...$$`` inside a paragraph.
 
     Content between delimiters is preserved verbatim.  Parsed as a custom inline
     element so underscores and asterisks inside LaTeX are not interpreted as
-    Markdown emphasis and then re-rendered as ``*`` markers.
+    Markdown emphasis and then re-rendered as ``*`` markers.  What counts as math
+    is pandoc's rule, `DOLLAR_MATH`.
     """
 
     priority: int = 7
@@ -564,9 +570,7 @@ class CustomInlineMath(inline.InlineElement):
     parse_group: int = 0
     # The union annotation mirrors marko's `InlineElement.pattern`; attribute
     # overrides may not narrow it.
-    pattern: re.Pattern[str] | str = re.compile(
-        r"(?<!\\)(?<!\$)(\${1,2})(?!\$)((?:\\.|[^\n\\$])+?)(?<!\\)\1(?!\$)"
-    )
+    pattern: re.Pattern[str] | str = re.compile(DOLLAR_MATH)
 
     @override
     @classmethod
@@ -1005,6 +1009,11 @@ class CustomParser(Parser):
         assert "RawInlineTex" in reordered_inline_elements
         self.inline_elements = reordered_inline_elements
 
+    @override
+    def parse(self, text: str) -> block.Document:
+        refuse_if_present(text)
+        return super().parse(text)
+
 
 class MarkdownNormalizer(Renderer):
     """
@@ -1051,6 +1060,12 @@ class MarkdownNormalizer(Renderer):
         self._second_prefix += second_prefix
         yield
         self._prefix, self._second_prefix = old_prefix, old_second_prefix
+
+    def render_document(self, element: block.Document) -> str:
+        # Inline elements are rendered `unbreakable` so the line wrapper cannot split
+        # them; the whole document is wrapped by now.
+        rendered: str = self.render_children(element)
+        return restore_spaces(rendered)
 
     def _can_be_tight(self, element: block.List) -> bool:
         """
@@ -1253,12 +1268,12 @@ class MarkdownNormalizer(Renderer):
         return "\n".join(lines) + "\n"
 
     def render_inline_math(self, element: CustomInlineMath) -> str:
-        text = cast(str, element.children)
+        text = unbreakable(cast(str, element.children))
         self._current_inline_text += text
         return text
 
     def render_raw_inline_tex(self, element: CustomRawInlineTex) -> str:
-        text = cast(str, element.children)
+        text = unbreakable(cast(str, element.children))
         self._current_inline_text += text
         return text
 
@@ -1399,9 +1414,14 @@ class MarkdownNormalizer(Renderer):
         return f"**{self.render_children(element)}**"
 
     def render_inline_html(self, element: inline.InlineHTML) -> str:
+        # Left breakable: HTML tags and comments are template tags to the wrapper,
+        # which pairs them by `TEMPLATE_TAG_PATTERNS` and needs their spaces intact.
         return cast(str, element.children)
 
     def render_link(self, element: inline.Link) -> str:
+        return unbreakable(self._render_link(element))
+
+    def _render_link(self, element: inline.Link) -> str:
         link_text = self.render_children(element)
         link_title = _normalize_title_quotes(element.title) if element.title else None
         assert self.root_node
@@ -1426,12 +1446,14 @@ class MarkdownNormalizer(Renderer):
         return f"[{link_text}]({element.dest}{title})"
 
     def render_auto_link(self, element: inline.AutoLink) -> str:
-        return f"<{element.dest}>"
+        return unbreakable(f"<{element.dest}>")
 
     def render_image(self, element: inline.Image) -> str:
         template = "![{}]({}{})"
         title = f" {_normalize_title_quotes(element.title)}" if element.title else ""
-        return template.format(self.render_children(element), element.dest, title)
+        return unbreakable(
+            template.format(self.render_children(element), element.dest, title)
+        )
 
     def render_literal(self, element: inline.Literal) -> str:
         """
@@ -1498,8 +1520,8 @@ class MarkdownNormalizer(Renderer):
     def render_code_span(self, element: inline.CodeSpan) -> str:
         text = element.children
         if text and (text[0] == "`" or text[-1] == "`"):
-            return f"`` {text} ``"
-        return f"`{element.children}`"
+            return unbreakable(f"`` {text} ``")
+        return unbreakable(f"`{text}`")
 
     # --- GFM Renderer Methods ---
 
@@ -1578,7 +1600,7 @@ class MarkdownNormalizer(Renderer):
 
     def render_url(self, element: gfm_elements.Url) -> str:
         """For GFM autolink URLs, just output the URL directly."""
-        return element.dest
+        return unbreakable(element.dest)
 
     def render_alert(
         self,

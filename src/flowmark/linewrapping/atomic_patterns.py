@@ -60,38 +60,25 @@ INLINE_CODE_SPAN = AtomicPattern(
     close_re="",
 )
 
-# Inline math: $...$ or $$...$$ on one line, and \(...\).
+# Inline math: $...$ or $$...$$, and \(...\).
 #
-# Wrapping inside a math span changes what pandoc reads -- `$H^1(X,\mathcal O_X)=0$`
-# broken at its space becomes `Math InlineMath "H^1(X,\mathcal\nO_X)=0"` -- so the
-# span has to be one token to the wrapper, exactly like a code span (#17 part 2).
-#
-# This is deliberately *stricter* than `CustomInlineMath.pattern` in
-# `formats/flowmark_markdown.py`, which decides whether a run is math for parsing.
-# A single-`$` span here must have no whitespace just inside either delimiter, which
-# is the usual TeX-ish rule and is what keeps prose currency out. Without it,
-# `their $420K at the 20% discount, they would be paying $` matches as one span --
-# 48 characters of ordinary prose turned into an unbreakable token, which wraps far
-# worse than not knowing about math at all. That exact sentence is in
-# `tests/testdocs/testdoc.orig.md`.
-#
-# Erring strict is the safe direction for a *wrapping* pattern specifically: a missed
-# span reverts to today's behaviour for that one construct, while a false positive
-# degrades wrapping for prose that has nothing to do with math.
-#
-# `$$...$$` keeps the loose rule, because same-line display math is conventionally
-# written with the spaces (`$$ \operatorname{GL}_n = G_\beta $$`) and `$$` does not
-# occur in prose the way a lone `$` does.
-_INLINE_MATH_DOUBLE = r"(?<!\\)(?<!\$)\$\$(?!\$)(?:\\.|[^\n\\$])+?(?<!\\)\$\$(?!\$)"
-_INLINE_MATH_SINGLE = r"(?<!\\)(?<!\$)\$(?![\s$])(?:\\.|[^\n\\$])+?(?<![\s\\])\$(?!\$)"
+# The dollar forms are pandoc's `tex_math_dollars` rule (pandoc manual, "Math"): a
+# single-`$` span needs a non-space character just inside both delimiters and its
+# closer must not be followed by a digit, which is what keeps prose currency out
+# (`their $420K at the 20% discount, they would be paying $` is not math); `$$`
+# allows the spaces. Either may continue across a line break, but not a blank line.
+# `CustomInlineMath` in `formats/flowmark_markdown.py` parses with this pattern, so
+# the parser and everything else here read math the way pandoc does.
+_MATH_CHAR = r"(?:\\.|[^\\$\n]|\n(?![ \t]*\n))"
+_INLINE_MATH_DOUBLE = rf"(?<!\\)(?<!\$)\$\$(?!\$){_MATH_CHAR}+?(?<!\\)\$\$(?!\$)"
+_INLINE_MATH_SINGLE = rf"(?<!\\)(?<!\$)\$(?![\s$]){_MATH_CHAR}*?(?<![\s\\])\$(?![\d$])"
 _INLINE_MATH_PAREN = r"\\\((?:\\.|[^\n\\])*?\\\)"
 
 DOLLAR_MATH = f"{_INLINE_MATH_DOUBLE}|{_INLINE_MATH_SINGLE}"
-"""`$...$` and same-line `$$...$$` spans, as pandoc's `tex_math_dollars` reads them.
+"""`$...$` and `$$...$$` spans, as pandoc's `tex_math_dollars` reads them.
 
-The single-`$` rule above is pandoc's own: no whitespace just inside either
-delimiter. `\\(...\\)` is left out because pandoc's `markdown` reads it as an
-escaped parenthesis, not math.
+`\\(...\\)` is left out because pandoc's `markdown` reads it as an escaped
+parenthesis, not math.
 """
 
 INLINE_MATH = AtomicPattern(
@@ -226,7 +213,27 @@ HTML_CLOSE_TAG = AtomicPattern(
     close_re="",
 )
 
-# All patterns in priority order (more specific patterns first).
+# Template and HTML tags, in priority order: paired before single.
+#
+# These are what flowmark's own wrapper matches by pattern. They have no Markdown
+# element behind them -- marko reads a Jinja or Markdoc tag as paragraph text -- so
+# nothing else can say they are one unit. Code spans, math, raw TeX and links are
+# kept whole by the parse instead (`flowmark.linewrapping.unbreakable`, #28).
+TEMPLATE_TAG_PATTERNS: tuple[AtomicPattern, ...] = (
+    PAIRED_JINJA_TAG,
+    PAIRED_JINJA_COMMENT,
+    PAIRED_JINJA_VAR,
+    PAIRED_HTML_COMMENT,
+    SINGLE_JINJA_TAG,
+    SINGLE_JINJA_COMMENT,
+    SINGLE_JINJA_VAR,
+    SINGLE_HTML_COMMENT,
+    HTML_OPEN_TAG,
+    HTML_CLOSE_TAG,
+)
+
+# All patterns in priority order (more specific patterns first), for tokenizing
+# Markdown source that has not been parsed.
 # Paired tag patterns must come before single tag patterns to match correctly.
 ATOMIC_PATTERNS: tuple[AtomicPattern, ...] = (
     INLINE_CODE_SPAN,
