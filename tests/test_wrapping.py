@@ -130,7 +130,7 @@ def test_smart_splitter() -> None:
         "`code with spaces`",
         "`<!-- not a real comment -->`",
         "(`<!--% ... -->`).",
-        "[Markdown-link](https://example.com)",
+        "[Markdown link](https://example.com)",
         "![an image alt](https://example.com/a.png)",
     ],
 )
