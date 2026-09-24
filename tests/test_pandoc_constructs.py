@@ -324,3 +324,16 @@ def test_row_wider_than_its_header_keeps_its_text() -> None:
     )
 
     assert reformat_text(source) == written
+
+
+def test_a_multiline_html_comment_block_is_kept_verbatim() -> None:
+    """
+    Pandoc reads an HTML comment at the start of a block, through its `-->`, as one
+    `RawBlock` whose text includes the line breaks, so reflowing it changes that
+    text. The README's generated-file banner is this shape (#41).
+    """
+    source = "<!-- Generated from a file via\nscripts/gen.py.\n-->\n\n# Title\n\nText.\n"
+
+    result = reformat_text(source, semantic=False, verify=True)
+
+    assert result.startswith("<!-- Generated from a file via\nscripts/gen.py.\n-->\n")
