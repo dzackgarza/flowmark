@@ -140,7 +140,9 @@ def line_wrap_by_sentence(
     """
 
     def line_wrapper(text: str, initial_indent: str, subsequent_indent: str) -> str:
-        text = text.replace("\n", " ")
+        # Whitespace between words is spelling, normalized as every other mode does;
+        # whitespace inside a code span or math was hidden by the renderer.
+        text = re.sub(r"\s+", " ", text)
 
         sentences = split_sentences(text)
 
