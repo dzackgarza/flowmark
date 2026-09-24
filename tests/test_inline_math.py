@@ -1,5 +1,7 @@
 """Test inline math preservation."""
 
+import pytest
+
 from flowmark.formats.flowmark_markdown import flowmark_markdown
 from flowmark.linewrapping.markdown_filling import fill_markdown
 from flowmark.reformat_api import reformat_text
@@ -76,3 +78,55 @@ def test_verify_accepts_the_math_reproducer_at_the_default_width() -> None:
     than being unformattable.
     """
     reformat_text(MATH_WRAP_SOURCE, verify=True)
+
+
+# --- #28: what is unbreakable comes from the parse, and the parse follows pandoc ---
+#
+# Pandoc's `tex_math_dollars` (pandoc manual, "Math"): a single-`$` span needs a
+# non-space character just inside both delimiters, the closer must not be followed
+# by a digit, and the span may continue across a line break inside its paragraph.
+# `$$...$$` allows the spaces.
+
+
+def test_inline_math_across_a_line_break_formats_with_verify() -> None:
+    """
+    Pandoc reads `$a_1 +\\nb_1 = c$` as one `InlineMath`. Joining the line puts a
+    space where the newline was, which TeX reads identically.
+    """
+    result = reformat_text(
+        "Some text with $a_1 +\nb_1 = c$ and more text here.\n", verify=True
+    )
+
+    assert "$a_1 + b_1 = c$" in result, result
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["A $ a _b_ c $ d.\n", "A $x _y_ z$1 d.\n"],
+    ids=["space-padded", "digit-after-closer"],
+)
+def test_dollars_pandoc_does_not_read_as_math_are_markdown(source: str) -> None:
+    """
+    Pandoc reads the `_..._` in both as emphasis, so flowmark must too: it renders
+    emphasis with `*`, and leaves math verbatim.
+    """
+    result = reformat_text(source, verify=True)
+
+    assert "*" in result and "_" not in result, result
+
+
+RAW_TEX_WRAP_SOURCE = (
+    "The compactification of the moduli space is written as the closure "
+    "\\overline{ \\mathcal{M}_{1} } in the literature.\n"
+)
+
+
+def test_wrapping_never_breaks_inside_a_raw_tex_command() -> None:
+    """
+    Pandoc reads `\\overline{ \\mathcal{M}_{1} }` as one `RawInline tex`, so a break
+    at one of its spaces changes that string. At width 78 the command straddles the
+    limit: no regex describes it, only the parser knows it is one construct.
+    """
+    result = reformat_text(RAW_TEX_WRAP_SOURCE, width=78, semantic=False, verify=True)
+
+    assert "\\overline{ \\mathcal{M}_{1} }" in result, result

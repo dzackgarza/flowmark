@@ -153,3 +153,8 @@ def test_verify_failure_on_clean_input_keeps_the_original_message(
     message = str(excinfo.value)
     assert "flowmark bug" in message, message
     assert "ambiguous" not in message.lower(), message
+
+
+def test_preflight_accepts_inline_math_that_continues_on_the_next_line() -> None:
+    """Pandoc reads `$a +\\nb$` as one span; neither line is an unterminated one."""
+    assert preflight("A span $a +\nb$ across two lines.\n") == []
