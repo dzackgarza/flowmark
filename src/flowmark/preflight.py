@@ -31,6 +31,10 @@ from flowmark.formats.flowmark_parser import split_pipe_table_row
 from flowmark.linewrapping.atomic_patterns import DOLLAR_MATH
 
 
+class MalformedInputError(ValueError):
+    """Raised when the document has an error flowmark will not format around."""
+
+
 @dataclass(frozen=True)
 class Finding:
     """One suspect construct, at the 1-based line where it appears."""

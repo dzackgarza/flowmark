@@ -4,6 +4,7 @@ import pytest
 
 from flowmark.formats.flowmark_markdown import flowmark_markdown
 from flowmark.linewrapping.markdown_filling import fill_markdown
+from flowmark.preflight import MalformedInputError
 from flowmark.reformat_api import reformat_text
 
 
@@ -102,17 +103,24 @@ def test_inline_math_across_a_line_break_formats_with_verify() -> None:
 
 @pytest.mark.parametrize(
     "source",
-    ["A $ a _b_ c $ d.\n", "A $x _y_ z$1 d.\n"],
-    ids=["space-padded", "digit-after-closer"],
+    ["A $ a _b_ c $ d.\n", "A $x _y_ z$1 d.\n", "First line $a +\nb $ here.\n"],
+    ids=["space-padded", "digit-after-closer", "padded-across-lines"],
 )
-def test_dollars_pandoc_does_not_read_as_math_are_markdown(source: str) -> None:
+def test_math_pandoc_rejects_is_refused_not_reformatted(source: str) -> None:
     """
-    Pandoc reads the `_..._` in both as emphasis, so flowmark must too: it renders
-    emphasis with `*`, and leaves math verbatim.
+    Each is meant as math, but pandoc reads it as text (with `_b_` as emphasis).
+    That is an error in the document: flowmark refuses to write it and names the
+    line, rather than format the intended TeX as prose.
     """
-    result = reformat_text(source, verify=True)
+    with pytest.raises(MalformedInputError):
+        reformat_text(source, verify=True)
 
-    assert "*" in result and "_" not in result, result
+
+def test_prices_are_not_malformed_math() -> None:
+    """A `$` before a digit is currency, and two prices are not a padded math span."""
+    source = "It costs $5 and $10, and they would be paying $ later.\n"
+
+    assert reformat_text(source, verify=True) == source
 
 
 RAW_TEX_WRAP_SOURCE = (

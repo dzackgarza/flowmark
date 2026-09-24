@@ -3,6 +3,7 @@ from textwrap import dedent
 import pytest
 
 from flowmark.linewrapping.markdown_filling import fill_markdown
+from flowmark.reformat_api import reformat_text
 from flowmark.linewrapping.text_wrapping import (
     _HtmlMdWordSplitter,  # pyright: ignore
     get_html_md_word_splitter,
@@ -132,13 +133,17 @@ def test_smart_splitter() -> None:
         "(`<!--% ... -->`).",
         "[Markdown link](https://example.com)",
         "![an image alt](https://example.com/a.png)",
+        "[@coble1919, p. 33]",
+        "[see @dolgachev2016; @cossec1989, ch. 2]",
+        "[[Moduli of Enriques Surfaces]]",
+        "[[Enriques surfaces#Coble surfaces|the Coble case]]",
     ],
 )
 def test_wrapping_never_breaks_inside_a_parsed_inline_construct(construct: str) -> None:
     """
-    A code span, link or image is one element to the parser, so at a width far
-    narrower than it the wrapper moves it whole rather than break at its spaces
-    (#28: what is unbreakable comes from the parse).
+    A code span, link, image, pandoc citation or wikilink is one element to the
+    parser, so at a width far narrower than it the wrapper moves it whole rather
+    than break at its spaces (#28: what is unbreakable comes from the parse).
     """
     result = fill_markdown(
         f"Some words before {construct} and some words after.\n",
@@ -1243,3 +1248,18 @@ def test_paragraph_only_content_various_tags() -> None:
     long = "{% tip %}\nThis is a longer paragraph with more text that spans across multiple sentences. It should all be wrapped normally.\n{% /tip %}"
     long_result = wrapper(long, "", "")
     assert "\n\n{% /tip %}" not in long_result
+
+
+def test_a_citation_at_a_wrap_boundary_formats_with_verify() -> None:
+    """
+    Pandoc reads `[@coble1919, p. 33]` as one `Cite`; at width 40 it straddles the
+    limit, and breaking inside it must not be how the line is filled.
+    """
+    source = (
+        "See the argument in [[Moduli of Enriques Surfaces]] and the bound in "
+        "[@coble1919, p. 33] for details.\n"
+    )
+
+    result = reformat_text(source, width=40, semantic=False, verify=True)
+
+    assert "[@coble1919, p. 33]" in result, result
