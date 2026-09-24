@@ -43,8 +43,8 @@ class ListSpacing(StrEnum):
     """
     Controls how list item spacing is handled during Markdown normalization.
 
-    - preserve: Keep lists tight or loose as authored (default)
-    - loose: Convert all lists to loose format (blank lines between items)
+    - preserve: Keep lists tight or loose as authored
+    - loose: Convert all lists to loose format (blank lines between items) (default)
     - tight: Convert all lists to tight format where possible
     """
 

@@ -12,7 +12,7 @@ before: |
 # Auto Mode Tests
 
 Tests for --auto mode which enables --inplace --nobackup --semantic --cleanups
---smartquotes --ellipses.
+--smartquotes --ellipses, as defaults beneath the config file and explicit flags.
 
 ## A1: Auto on single file with typography and semantic
 
@@ -64,12 +64,19 @@ $ printf '# Normal\n\n## **Bold Heading**\n\nParagraph.\n' > cleanup-test.md && 
 Paragraph.
 ```
 
-## A6: Auto mode overrides config semantic=false
+## A6: Config semantic=false overrides the --auto preset
 
 ```console
 $ mkdir -p auto-cfg && printf 'semantic = false\n' > auto-cfg/flowmark.toml && printf '# Test\n\nFirst sentence here. Second sentence follows it.\n' > auto-cfg/test.md && cd auto-cfg && flowmark --auto test.md && cat test.md
 # Test
 
-First sentence here.
-Second sentence follows it.
+First sentence here. Second sentence follows it.
+```
+
+## A7: An explicit flag overrides the --auto preset
+
+```console
+$ printf 'He said "hello". And then... nothing.\n' > auto-flag.md && flowmark --auto --no-smartquotes auto-flag.md && cat auto-flag.md
+He said "hello".
+And then … nothing.
 ```

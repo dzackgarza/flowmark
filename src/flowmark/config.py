@@ -1,190 +1,113 @@
 """
-TOML-based config file loading for Flowmark.
+TOML config file loading for Flowmark.
 
 Searches for `.flowmark.toml`, `flowmark.toml`, or `pyproject.toml [tool.flowmark]`
-walking up from the current directory. Config values are merged with CLI flags
-using three-way precedence: explicit CLI flags > config file > built-in defaults.
+in the current directory and then in each parent. A config key is the long name of a
+CLI flag (`list-spacing` for `--list-spacing`). The CLI applies the config as argparse
+defaults, so an explicit flag always overrides it.
 """
 
 from __future__ import annotations
 
-import sys
-from dataclasses import dataclass, fields
+import tomllib
 from pathlib import Path
-from typing import Any, TypeVar, cast
 
-if sys.version_info >= (3, 11):
-    import tomllib  # pyright: ignore[reportUnreachable]
-else:
-    import tomli as tomllib  # type: ignore[no-redef]  # pyright: ignore[reportUnreachable]
+from flowmark.formats.flowmark_markdown import ListSpacing
 
+ConfigValue = int | bool | str | list[str]
 
-@dataclass
-class FlowmarkConfig:
-    """
-    Parsed config from a TOML file. Fields are `None` when not set in the config,
-    allowing the merge logic to distinguish "not configured" from "explicitly set
-    to default value".
-    """
+type TomlTable = dict[str, TomlTable | ConfigValue]
 
+# The keys a config file may set, by argparse destination, with the TOML type each
+# must hold.
+CONFIG_KEYS: dict[str, type[ConfigValue]] = {
     # Formatting
-    width: int | None = None
-    semantic: bool | None = None
-    cleanups: bool | None = None
-    smartquotes: bool | None = None
-    ellipses: bool | None = None
-    list_spacing: str | None = None
+    "width": int,
+    "semantic": bool,
+    "cleanups": bool,
+    "smartquotes": bool,
+    "ellipses": bool,
+    "list_spacing": str,
     # File discovery
-    include: list[str] | None = None
-    extend_include: list[str] | None = None
-    exclude: list[str] | None = None
-    extend_exclude: list[str] | None = None
-    files_max_size: int | None = None
-    respect_gitignore: bool | None = None
-    force_exclude: bool | None = None
+    "extend_include": list,
+    "exclude": list,
+    "extend_exclude": list,
+    "files_max_size": int,
+    "respect_gitignore": bool,
+    "force_exclude": bool,
+}
 
+# Tables that only group keys: their keys are read as top-level keys.
+_SECTIONS = ("formatting", "file-discovery")
 
 # Config file search order (first match wins within each directory level)
 _CONFIG_FILENAMES = [".flowmark.toml", "flowmark.toml", "pyproject.toml"]
 
-# Mapping from TOML kebab-case keys to Python snake_case field names
-_KEBAB_TO_SNAKE: dict[str, str] = {
-    "list-spacing": "list_spacing",
-    "extend-include": "extend_include",
-    "extend-exclude": "extend_exclude",
-    "files-max-size": "files_max_size",
-    "respect-gitignore": "respect_gitignore",
-    "force-exclude": "force_exclude",
-}
 
-_VALID_FIELDS = {f.name for f in fields(FlowmarkConfig)}
+class ConfigError(ValueError):
+    """A config file that cannot be read as Flowmark settings."""
 
 
 def find_config_file(start_dir: Path) -> Path | None:
     """
-    Walk up from `start_dir` looking for a config file. Returns the first
-    found, or `None`. Search order per directory: `.flowmark.toml` >
-    `flowmark.toml` > `pyproject.toml` (only if it has `[tool.flowmark]`).
+    Return the first config file in `start_dir` or a parent directory, or `None`.
+    Search order per directory: `.flowmark.toml` > `flowmark.toml` >
+    `pyproject.toml` (only if it has `[tool.flowmark]`).
     """
-    current = start_dir.resolve()
-    while True:
+    start = start_dir.resolve()
+    for directory in [start, *start.parents]:
         for filename in _CONFIG_FILENAMES:
-            candidate = current / filename
-            if candidate.is_file():
-                if filename == "pyproject.toml":
-                    # Only use pyproject.toml if it has [tool.flowmark]
-                    if _pyproject_has_flowmark_section(candidate):
-                        return candidate
-                else:
-                    return candidate
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
+            candidate = directory / filename
+            if candidate.is_file() and _flowmark_table(candidate) is not None:
+                return candidate
     return None
 
 
-def _pyproject_has_flowmark_section(path: Path) -> bool:
-    """Check if a pyproject.toml has a [tool.flowmark] section."""
-    try:
-        data = tomllib.loads(path.read_text())
-        return "flowmark" in data.get("tool", {})
-    except tomllib.TOMLDecodeError, OSError:
-        return False
-
-
-def load_config(config_path: Path) -> FlowmarkConfig:
+def load_config(config_path: Path) -> dict[str, ConfigValue]:
     """
-    Load a `FlowmarkConfig` from a TOML file. Supports both standalone
-    `flowmark.toml` / `.flowmark.toml` and `pyproject.toml` (extracts
-    `[tool.flowmark]`). TOML kebab-case keys are mapped to Python snake_case.
-
-    Returns a default (empty) config if the file cannot be read or parsed.
+    Read the settings in a config file, keyed by argparse destination. Raises
+    `ConfigError`, naming the file, for unparsable TOML, an unknown key, or a
+    value of the wrong type.
     """
-    try:
-        data = tomllib.loads(config_path.read_text())
-    except tomllib.TOMLDecodeError, OSError:
-        import sys
+    table = _flowmark_table(config_path)
+    if table is None:
+        raise ConfigError(f"{config_path}: no [tool.flowmark] table")
 
-        print(f"Warning: could not parse config file {config_path}", file=sys.stderr)
-        return FlowmarkConfig()
-
-    if config_path.name == "pyproject.toml":
-        data = data.get("tool", {}).get("flowmark", {})
-
-    return _parse_config_data(data)
-
-
-def _parse_config_data(data: dict[str, Any]) -> FlowmarkConfig:
-    """Parse a flat or sectioned TOML dict into FlowmarkConfig."""
-    # Flatten sections: [formatting] and [file-discovery] merge into top level
-    flat: dict[str, Any] = {}
-    for key, value in data.items():
-        if isinstance(value, dict):
-            for sub_key, sub_value in cast(dict[str, Any], value).items():
-                flat[sub_key] = sub_value
+    flat: TomlTable = {}
+    for key, value in table.items():
+        if key in _SECTIONS and isinstance(value, dict):
+            flat.update(value)
         else:
             flat[key] = value
 
-    # Map kebab-case to snake_case
-    mapped: dict[str, Any] = {}
+    config: dict[str, ConfigValue] = {}
     for key, value in flat.items():
-        snake_key = _KEBAB_TO_SNAKE.get(key, key.replace("-", "_"))
-        if snake_key in _VALID_FIELDS:
-            mapped[snake_key] = value
-        else:
-            print(
-                f"Warning: unrecognized config key '{key}'",
-                file=sys.stderr,
+        dest = key.replace("-", "_")
+        expected = CONFIG_KEYS.get(dest)
+        if expected is None:
+            raise ConfigError(f"{config_path}: unknown config key '{key}'")
+        if isinstance(value, dict) or type(value) is not expected:
+            raise ConfigError(
+                f"{config_path}: config key '{key}' must be {expected.__name__}, "
+                f"not {type(value).__name__}"
             )
+        if dest == "list_spacing" and value not in ListSpacing:
+            raise ConfigError(
+                f"{config_path}: config key '{key}' must be one of "
+                f"{', '.join(ListSpacing)}, not '{value}'"
+            )
+        config[dest] = value
+    return config
 
-    return FlowmarkConfig(**mapped)
 
-
-_T = TypeVar("_T")
-
-
-def merge_cli_with_config(
-    cli_opts: _T,
-    config: FlowmarkConfig | None,
-    is_auto: bool,
-    explicit_flags: set[str],
-) -> _T:
-    """
-    Merge CLI options with config file settings.
-
-    Precedence: explicit CLI flags > config file > built-in defaults.
-    In `--auto` mode, formatting settings are fixed by the preset;
-    only `width` and file discovery settings come from config.
-    """
-    if config is None:
-        return cli_opts
-
-    # Fields that --auto locks (these come from the preset, not config)
-    auto_locked = {
-        "semantic",
-        "cleanups",
-        "smartquotes",
-        "ellipses",
-        "inplace",
-        "nobackup",
-    }
-
-    for cfg_field in fields(FlowmarkConfig):
-        cfg_value = getattr(config, cfg_field.name)
-        if cfg_value is None:
-            continue  # Not set in config
-
-        # Skip if CLI explicitly set this flag
-        if cfg_field.name in explicit_flags:
-            continue
-
-        # In auto mode, don't override formatting preset
-        if is_auto and cfg_field.name in auto_locked:
-            continue
-
-        # Apply config value to CLI options
-        if hasattr(cli_opts, cfg_field.name):
-            setattr(cli_opts, cfg_field.name, cfg_value)
-
-    return cli_opts
+def _flowmark_table(path: Path) -> TomlTable | None:
+    """The Flowmark settings in `path`, or `None` for a pyproject.toml without them."""
+    try:
+        table: TomlTable = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(f"{path}: {e}") from e
+    if path.name != "pyproject.toml":
+        return table
+    tool = table.get("tool")
+    flowmark = tool.get("flowmark") if isinstance(tool, dict) else None
+    return flowmark if isinstance(flowmark, dict) else None

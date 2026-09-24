@@ -149,12 +149,35 @@ def test_explicit_file_still_works(
 def test_one_file_with_output_writes_the_output(tmp_path: Path) -> None:
     """`-o` names where one input goes; it was refused as a multi-file request."""
     source = tmp_path / "in.md"
-    source.write_text("Some   text.\n")
+    source.write_text("One sentence. Two sentence.\n")
     target = tmp_path / "out.md"
 
     assert main([str(source), "-o", str(target)]) == 0
-    assert target.read_text() == "Some text.\n"
-    assert source.read_text() == "Some   text.\n"
+    assert target.read_text() == "One sentence.\nTwo sentence.\n"
+    assert source.read_text() == "One sentence. Two sentence.\n"
+
+
+def test_output_with_directory_of_one_file_writes_the_output(tmp_path: Path) -> None:
+    """The `-o` check counts resolved files, not arguments."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "only.md").write_text("One sentence. Two sentence.\n")
+    target = tmp_path / "out.md"
+
+    assert main([str(docs), "-o", str(target)]) == 0
+    assert target.read_text() == "One sentence.\nTwo sentence.\n"
+
+
+def test_output_with_directory_of_many_files_is_refused(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("One sentence. Two sentence.\n")
+    (docs / "b.md").write_text("Three sentence. Four sentence.\n")
+    target = tmp_path / "out.md"
+
+    assert main([str(docs), "-o", str(target)]) == 1
+    assert not target.exists()
+    assert (docs / "a.md").read_text() == "One sentence. Two sentence.\n"
 
 
 def test_stdin_still_works(
@@ -226,11 +249,3 @@ def test_auto_list_files_no_args_errors(capsys: pytest.CaptureFixture[str]) -> N
     assert main(["--auto", "--list-files"]) == 1
     err = capsys.readouterr().err
     assert "--auto requires at least one file or directory argument" in err
-
-
-def test_explicit_flag_detection_with_default_value(tmp_path: Path) -> None:
-    """Passing --width 88 (the default) should still be detected as explicit (fm-4z3r)."""
-    from flowmark.cli import _parse_args  # pyright: ignore[reportPrivateUsage]
-
-    _, explicit_flags, _ = _parse_args(["--width", "88", str(tmp_path)])
-    assert "width" in explicit_flags
