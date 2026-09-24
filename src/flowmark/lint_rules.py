@@ -109,11 +109,31 @@ _DIV_FENCE_OPEN = re.compile(
 )
 _LATEX_BEGIN = re.compile(r"\\begin\{(?P<name>[A-Za-z*]+)\}")
 _LATEX_END_TEMPLATE = r"\\end\{%s\}"
-_BARE_URL = re.compile(r"(?<![<\w])(https?://[^\s<>]+)")
+# A URL not already inside `<...>` or a link target `](...)`.
+_BARE_URL = re.compile(r"(?<![<\w])(?<!\]\()(https?://[^\s<>]+)")
+
+
+def _bare_url_end(url: str) -> int:
+    """Length of ``url`` without trailing punctuation, per the GFM spec's extended
+    autolink rule (section 6.9): ``?!.,:*_~`` and an unbalanced ``)`` at the end
+    are not part of the URL."""
+
+    end = len(url)
+    while end > 0:
+        last = url[end - 1]
+        if last in "?!.,:*_~" or (
+            last == ")" and url[:end].count(")") > url[:end].count("(")
+        ):
+            end -= 1
+            continue
+        break
+    return end
+
+
 _INLINE_HTML = re.compile(r"</?[A-Za-z][^>\n]*>")
 _UNORDERED_MARKER = re.compile(r"^(?P<indent> *)(?P<marker>[*+-])[ \t]+")
 _REPEATED_MATH_SCRIPT = re.compile(
-    r"(?<!\\)(?P<script>[_^])(?:\\[A-Za-z@]+|\\.|[A-Za-z0-9])[ \t]*(?P=script)"
+    r"(?<!\\)(?P<script>[_^])(?:\\[A-Za-z@]+|\\.|\{[^{}]*\}|[A-Za-z0-9])[ \t]*(?P=script)"
 )
 
 _MATH_OPERATOR_NAMES = (
@@ -211,6 +231,8 @@ _LATEX_OPERATOR_COMMANDS = frozenset(
         "tanh",
     }
 )
+# One TeX argument token: a control word, a brace group, or a character.
+_TEX_TOKEN = re.compile(r"\\[A-Za-z@]+|\{[^{}]*\}|\S")
 _BARE_MATH_OPERATOR = re.compile(
     r"(?<![A-Za-z\\])(?P<name>"
     + "|".join(re.escape(name) for name in _MATH_OPERATOR_NAMES)
@@ -549,12 +571,15 @@ def _mathematical_findings(
             script = match.group("script")
             second = start + match.end() - 1
             kind = "subscript" if script == "_" else "superscript"
+            # Quote the authored scripts, including the second one's argument.
+            argument = _TEX_TOKEN.match(source, match.end())
+            authored = match.group(0) + (argument.group(0) if argument else "")
             findings.append(
                 RuleFinding(
                     f"math/repeated-{kind}",
                     "error",
-                    f"Double {kind}: TeX rejects `{script}` twice in a row. Add braces to "
-                    + f"show which {kind} is nested, e.g. `x{script}{{a{script}b}}`.",
+                    f"Double {kind} in `{authored}`: TeX rejects two `{script}` in a row. "
+                    + f"Add braces to show which {kind} is nested.",
                     second,
                     second + 1,
                 )
@@ -1018,8 +1043,8 @@ def _pandoc_semantic_findings(
             RuleFinding(
                 "structure/nested-fenced-div",
                 "warning",
-                "Fenced div is nested inside another fenced div. Move it outside the "
-                "enclosing div.",
+                f"`{text[start:end].strip()}` is nested inside another fenced div. "
+                "Move it outside the enclosing div.",
                 start,
                 end,
             )
@@ -1035,6 +1060,7 @@ def _pandoc_semantic_findings(
     previous_level: int | None = None
     seen_heading_text: dict[str, int] = {}
     h1_count = 0
+    first_h1 = 0
     for index, (level, title, _identifier, div_depth) in enumerate(headers_with_depth):
         start, end = header_locations[index]
         if div_depth > 0:
@@ -1042,9 +1068,9 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "structure/heading-in-fenced-div",
                     "warning",
-                    "Heading is inside a fenced div. To title the div, use its `title` "
-                    'attribute, e.g. `::: {.theorem title="…"}`. To start a section, '
-                    "move the heading outside the div.",
+                    f'Heading "{title}" is inside a fenced div. To title the div, use '
+                    'its `title` attribute, e.g. `::: {.theorem title="…"}`. To start a '
+                    "section, move the heading outside the div.",
                     start,
                     end,
                 )
@@ -1054,7 +1080,8 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "heading/increment",
                     "warning",
-                    f"Heading level jumps from H{previous_level} to H{level}. Use H{previous_level + 1}.",
+                    f'Heading "{title}" jumps from H{previous_level} to H{level}. '
+                    + f"Use H{previous_level + 1}.",
                     start,
                     end,
                 )
@@ -1077,12 +1104,15 @@ def _pandoc_semantic_findings(
                 seen_heading_text[normalized_title] = start
         if level == 1:
             h1_count += 1
-            if h1_count > 1:
+            if h1_count == 1:
+                first_h1 = start
+            else:
                 findings.append(
                     RuleFinding(
                         "heading/multiple-h1",
                         "warning",
-                        "Document contains more than one level-1 heading.",
+                        f'"{title}" is a second level-1 heading; the first is on line '
+                        + f"{_line_number(text, first_h1)}.",
                         start,
                         end,
                     )
@@ -1094,7 +1124,7 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "style/heading-punctuation",
                     "warning",
-                    "Heading ends in punctuation.",
+                    f'Heading "{title}" ends in punctuation.',
                     start,
                     end,
                 )
@@ -1117,7 +1147,8 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "code/missing-language",
                     "warning",
-                    "Code fence has no language.",
+                    "Code fence has no language. Name one after the opening "
+                    + "marker, e.g. `~~~python`.",
                     fence.opening.start,
                     fence.opening.end,
                 )
@@ -1130,7 +1161,7 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "code/hard-tab",
                     "warning",
-                    "Fenced code block contains a hard tab.",
+                    "Hard tab in a fenced code block. Use spaces.",
                     line.start + column,
                     line.start + column + 1,
                 )
@@ -1196,7 +1227,7 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "accessibility/image-alt",
                     "warning",
-                    "Image has empty alternative text.",
+                    f"Image `{destination}` has no alternative text.",
                     start,
                     end,
                 )
@@ -1206,7 +1237,7 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "link/empty-destination",
                     "warning",
-                    "Link has an empty destination.",
+                    f'Link "{label}" has an empty destination.',
                     start,
                     end,
                 )
@@ -1340,22 +1371,26 @@ def _style_findings(
                     RuleFinding(
                         "style/fence-marker",
                         "warning",
-                        f"Use one code-fence marker consistently; earlier fences use {seen_marker!r}.",
+                        f"Code fence uses `{marker}`, but earlier fences use "
+                        + f"`{seen_marker}`.",
                         fence.opening.start,
                         fence.opening.end,
                     )
                 )
     if StyleRule.BARE_URL in styles:
         for match in _BARE_URL.finditer(text):
-            if _overlaps(protected, match.start(), match.end()):
+            url = match.group(0)[: _bare_url_end(match.group(0))]
+            end = match.start() + len(url)
+            if _overlaps(protected, match.start(), end):
                 continue
             findings.append(
                 RuleFinding(
                     "style/bare-url",
                     "warning",
-                    "Use a Markdown link instead of a bare URL.",
+                    f"Bare URL `{url}`. Write it as a link: `<{url}>`.",
                     match.start(),
-                    match.end(),
+                    end,
+                    suggestions=(Suggestion(f"Use `<{url}>`", f"<{url}>"),),
                 )
             )
     if StyleRule.UNORDERED_LIST_MARKER in styles:
@@ -1374,9 +1409,11 @@ def _style_findings(
                     RuleFinding(
                         "style/unordered-list-marker",
                         "warning",
-                        f"Use one list marker at this indentation; earlier items use {expected!r}.",
+                        f"List item uses `{marker}`, but earlier items at this "
+                        + f"indentation use `{expected}`.",
                         line.start + match.start("marker"),
                         line.start + match.end("marker"),
+                        suggestions=(Suggestion(f"Use `{expected}`", expected),),
                     )
                 )
     if StyleRule.NO_INLINE_HTML in styles:
@@ -1387,7 +1424,8 @@ def _style_findings(
                 RuleFinding(
                     "style/no-inline-html",
                     "warning",
-                    "Inline HTML is not allowed by the configured style.",
+                    f"Inline HTML `{match.group(0)}` is not allowed by the configured "
+                    + "style.",
                     match.start(),
                     match.end(),
                 )
@@ -1666,13 +1704,13 @@ _BUILTIN_RULES = (
     ),
     LintRule(
         "math/repeated-subscript",
-        "TeX contains a repeated unbraced subscript.",
+        "A term has two subscripts in a row, which TeX rejects.",
         RuleLevel.ERROR,
         _correctness_check("math/repeated-subscript"),
     ),
     LintRule(
         "math/repeated-superscript",
-        "TeX contains a repeated unbraced superscript.",
+        "A term has two superscripts in a row, which TeX rejects.",
         RuleLevel.ERROR,
         _correctness_check("math/repeated-superscript"),
     ),

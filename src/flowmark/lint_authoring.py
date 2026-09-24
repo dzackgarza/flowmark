@@ -834,14 +834,18 @@ def _similar_names(
     return closest[:3]
 
 
+def _joined(items: Sequence[str], conjunction: str) -> str:
+    """``a``, ``a or b``, ``a, b or c``."""
+
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + f" {conjunction} " + items[-1]
+
+
 def _did_you_mean(names: Sequence[str]) -> str:
     if not names:
         return ""
-    quoted = [f"`{name}`" for name in names]
-    options = (
-        quoted[0] if len(quoted) == 1 else ", ".join(quoted[:-1]) + " or " + quoted[-1]
-    )
-    return f" Did you mean {options}?"
+    return f" Did you mean {_joined([f'`{name}`' for name in names], 'or')}?"
 
 
 def _command_offsets(source: str, offset: int, command: str) -> list[int]:
@@ -947,17 +951,20 @@ def _user_macro_candidates(
         ):
             continue
         names = sorted(candidates_by_name)
-        quoted = [f"`{name}`" for name in names]
-        if len(quoted) == 1:
-            message = f"This can be written with your macro {quoted[0]}."
-        else:
-            message = (
-                "This can be written with your macros "
-                + ", ".join(quoted[:-1])
-                + " or "
-                + quoted[-1]
-                + "."
-            )
+        # Name each macro by the call that would replace the matched text, or
+        # by its signature when an argument could not be recovered.
+        replacements = [
+            f"`{candidates_by_name[name][1] or _macro_invocation(candidates_by_name[name][0])}`"
+            for name in names
+        ]
+        matched = " ".join(context.text[authored_from:authored_to].split())
+        message = (
+            f"`{matched}` matches "
+            + ("a macro" if len(names) == 1 else f"{len(names)} macros")
+            + "; consider "
+            + _joined(replacements, "or")
+            + " instead."
+        )
         suggestions = tuple(
             Suggestion(f"Use `{invocation}`", invocation)
             for name in names
@@ -1611,9 +1618,9 @@ def _citation_findings(context: RuleContext, rule: str) -> list[RuleFinding]:
                 RuleFinding(
                     rule,
                     "warning",
-                    "These brackets combine a cross-reference and a bibliography "
-                    + "citation, so the output reads as if the referenced item comes "
-                    + f"from the cited work. Join them with a word: `{rewrite}`.",
+                    f"`{' '.join(cluster.split())}` combines a cross-reference and a "
+                    + "bibliography citation, so the output reads as if the referenced "
+                    + f"item comes from the cited work. Write `{rewrite}` instead.",
                     start,
                     end,
                     suggestions=(

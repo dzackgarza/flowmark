@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from flowmark.lint import LintDiagnostic, LintOptions, lint_text
+from flowmark.lint import LintDiagnostic, LintOptions, StyleRule, lint_text
 from flowmark.lint_cli import main
 
 
@@ -186,3 +186,23 @@ def test_cross_reference_and_citation_in_one_group_are_joined_with_a_word() -> N
 def test_group_with_a_locator_gets_no_automatic_rewrite() -> None:
     diagnostic = _mixed_citation("Compare [@fig:a; @smith2020, p. 3].\n")
     assert diagnostic.suggestions == ()
+
+
+def test_bare_url_fix_wraps_only_the_url() -> None:
+    source = (
+        "Visit https://en.wikipedia.org/wiki/K3_(surface), then (see https://x.org). "
+        "A [link](https://y.org) is fine.\n"
+    )
+    options = LintOptions(styles=frozenset({StyleRule.BARE_URL}))
+    fixed = source
+    # Apply right-to-left so earlier offsets stay valid.
+    for diagnostic in sorted(
+        (item for item in lint_text(source, options) if item.rule == "style/bare-url"),
+        key=lambda item: (item.line, item.column),
+        reverse=True,
+    ):
+        fixed = apply_fix(fixed, diagnostic, diagnostic.suggestions[0].title)
+    assert fixed == (
+        "Visit <https://en.wikipedia.org/wiki/K3_(surface)>, then (see <https://x.org>). "
+        "A [link](https://y.org) is fine.\n"
+    )

@@ -47,6 +47,7 @@ def rule_ids(
         ),
         ("Inline $x_i_j$.\n", "math/repeated-subscript"),
         ("Inline $x^2^3$.\n", "math/repeated-superscript"),
+        ("Inline $y^{2}^\\alpha$.\n", "math/repeated-superscript"),
         ("Inline $x_{i$.\n", "math/unclosed-group"),
         ("Inline $x_i}$.\n", "math/unmatched-group-close"),
         ("Inline $\\left(x$.\n", "math/unclosed-left"),
