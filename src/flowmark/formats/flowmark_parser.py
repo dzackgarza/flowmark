@@ -548,6 +548,53 @@ class CustomInlineMath(inline.InlineElement):
         return "inline_math" if snake_case else "InlineMath"
 
 
+# A citation key (pandoc manual, "Citations"): `@` then a letter, digit or `_`,
+# with internal punctuation allowed, or any key in braces; `-@` suppresses the author.
+_CITATION_KEY = r"-?@(?:\{[^{}\n]*\}|\w(?:[\w:.#$%&\-+?<>~/]*\w)?)"
+
+
+class CustomCitation(inline.InlineElement):
+    """
+    A bracketed pandoc citation, ``[see @doe99, p. 33; @smith04]``.
+
+    Pandoc reads it as one `Cite`, so it is kept verbatim and whole. Marko has no
+    citation syntax and would otherwise leave it as text the wrapper can break.
+    A bracket followed by ``(`` or ``[`` is a link, as in pandoc, and is left to
+    marko.
+    """
+
+    priority: int = 7
+    parse_children: bool = False
+    parse_group: int = 0
+    pattern: re.Pattern[str] | str = re.compile(
+        rf"\[[^\[\]]*?{_CITATION_KEY}[^\[\]]*\](?![(\[])"
+    )
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "citation" if snake_case else "Citation"
+
+
+class CustomWikilink(inline.InlineElement):
+    """
+    A wikilink, ``[[target]]`` or ``[[target|title]]``, kept verbatim and whole.
+
+    Pandoc reads it as a link under `wikilinks_title_after_pipe`, and Obsidian does
+    not resolve one broken across lines.
+    """
+
+    priority: int = 7
+    parse_children: bool = False
+    parse_group: int = 0
+    pattern: re.Pattern[str] | str = re.compile(r"\[\[[^\[\]\n]+\]\]")
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "wikilink" if snake_case else "Wikilink"
+
+
 class CustomRawInlineTex(inline.InlineElement):
     """
     A raw LaTeX command with brace arguments, e.g. ``\\overline{ \\mathcal{M}_{1} }``.
@@ -975,6 +1022,8 @@ class CustomParser(Parser):
             if name == "CodeSpan":
                 reordered_inline_elements["InlineMath"] = CustomInlineMath
                 reordered_inline_elements["RawInlineTex"] = CustomRawInlineTex
+                reordered_inline_elements["Citation"] = CustomCitation
+                reordered_inline_elements["Wikilink"] = CustomWikilink
         assert "InlineMath" in reordered_inline_elements
         assert "RawInlineTex" in reordered_inline_elements
         self.inline_elements = reordered_inline_elements

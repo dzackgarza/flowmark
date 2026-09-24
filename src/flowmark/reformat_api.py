@@ -18,7 +18,7 @@ from flowmark.pandoc_verify import (
     check_meaning_preserved,
     describe,
 )
-from flowmark.preflight import preflight
+from flowmark.preflight import MalformedInputError, preflight, rejected_math
 
 
 def reformat_text(
@@ -43,6 +43,10 @@ def reformat_text(
             document whose meaning changed. On by default; requires the pandoc
             binary on PATH. Markdown mode only.
         verify_label: How to name the document in a verification error.
+
+    Raises:
+        MalformedInputError: in Markdown mode, if the document has `$...$` meant as
+            math that pandoc reads as text (`rejected_math`).
     """
     if plaintext:
         # Plaintext mode
@@ -53,7 +57,14 @@ def reformat_text(
             word_splitter=get_html_md_word_splitter(),
         )
     else:
-        # Markdown mode
+        # Markdown mode. Math pandoc reads as text is an error in the document:
+        # formatting it would treat the author's TeX as prose.
+        rejected = rejected_math(text)
+        if rejected:
+            named = "; ".join(f"{verify_label}:{f.line}: {f.message}" for f in rejected)
+            raise MalformedInputError(
+                f"Refusing to write {verify_label}: {named}. The file is unchanged."
+            )
         result = fill_markdown(
             text,
             # A document is not a docstring: its common indentation is content.
@@ -218,9 +229,10 @@ def reformat_files(
     make_parents: bool = True,
     list_spacing: ListSpacing = ListSpacing.loose,
     verify: bool = True,
-) -> None:
+) -> int:
     """
-    Reformat multiple files with the same options.
+    Reformat multiple files with the same options, and return how many were left
+    unformatted because they were refused.
 
     Args:
         files: List of file paths to process, or ["-"] for stdin.
@@ -259,7 +271,7 @@ def reformat_files(
             list_spacing=list_spacing,
             verify=verify,
         )
-        return
+        return 0
 
     # Multiple files case
     if not inplace and output and output != "-":
@@ -291,16 +303,16 @@ def reformat_files(
                 list_spacing=list_spacing,
                 verify=verify,
             )
-        except MeaningChangedError as e:
-            # The guard already protected this document (it was left
-            # byte-identical); a per-file refusal must not abort the batch.
+        except (MeaningChangedError, MalformedInputError) as e:
+            # The document was left byte-identical; a per-file refusal must not
+            # abort the batch.
             print(f"Warning: {e}", file=sys.stderr)
             refused += 1
     if refused:
         print(
             f"Warning: {refused} file{'s' if refused != 1 else ''} left unformatted "
-            "because reformatting would have changed the pandoc-parsed meaning "
-            "(see warnings above; each is a flowmark bug or ambiguous markdown "
-            "worth reporting).",
+            "(see warnings above: each names an error in the input, or a change to "
+            "the pandoc-parsed meaning that is a flowmark bug worth reporting).",
             file=sys.stderr,
         )
+    return refused

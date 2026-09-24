@@ -116,17 +116,85 @@ def _fence_findings(lines: list[str]) -> list[Finding]:
 
 _NOT_MATH = re.compile(rf"`+[^`\n]*`+|\\\$|{DOLLAR_MATH}")
 
+# A `$` pair that pandoc does not read as math only because of how it is delimited
+# (pandoc manual, "Math"): whitespace just inside a delimiter, or a digit right after
+# the closer. An opener followed by a digit is currency, not a delimiter.
+_REJECTED_MATH = re.compile(r"\$(?![\d$])(?P<body>[^$]+?)\$(?P<digit>\d)?")
+
+
+def _blank(match: re.Match[str]) -> str:
+    """The match with every character but a line break replaced by a space."""
+    return re.sub(r"[^\n]", " ", match.group(0))
+
+
+def _prose_paragraphs(lines: list[str]) -> tuple[list[list[int]], bool]:
+    """
+    The 0-based line indices of each run of prose lines, and whether display math is
+    left open.
+
+    Lines inside a fenced code block and inside `$$` display math are not prose, and
+    a line that is exactly `$$` is a display-math delimiter.
+    """
+    fenced = _fenced_line_numbers(lines)
+    paragraphs: list[list[int]] = [[]]
+    display_open = False
+    for offset, line in enumerate(lines):
+        if not (offset in fenced or display_open or line.strip() in ("", "$$")):
+            paragraphs[-1].append(offset)
+            continue
+        paragraphs.append([])
+        if offset not in fenced and line.strip() == "$$":
+            display_open = not display_open
+    return [p for p in paragraphs if p], display_open
+
+
+def _rejected_in(lines: list[str], paragraph: list[int]) -> list[Finding]:
+    text = _NOT_MATH.sub(_blank, "\n".join(lines[offset] for offset in paragraph))
+    findings: list[Finding] = []
+    for match in _REJECTED_MATH.finditer(text):
+        body = match.group("body")
+        if match.group("digit"):
+            reason = "a digit follows the closing `$`"
+        elif body[0].isspace() or body[-1].isspace():
+            reason = "there is a space just inside a `$`"
+        else:
+            continue
+        line = paragraph[text.count("\n", 0, match.start())]
+        span = " ".join(match.group(0).split())
+        findings.append(
+            Finding(
+                line + 1,
+                f"`{span}` is not math to pandoc because {reason}; "
+                f"write `${' '.join(body.split())}$` if it is math",
+            )
+        )
+    return findings
+
+
+def rejected_math(text: str) -> list[Finding]:
+    """
+    Report each `$...$` that is meant as math but that pandoc reads as text.
+
+    Pandoc reads `$ x $` and `$x$1` as prose, so any TeX inside them becomes
+    emphasis or plain text. This is an error in the document, not something to
+    format around: `reformat_text` refuses a document with one.
+    """
+    lines = text.split("\n")
+    paragraphs, _display_open = _prose_paragraphs(lines)
+    return [f for p in paragraphs for f in _rejected_in(lines, p)]
+
 
 def _stray_dollars(lines: list[str], paragraph: list[int]) -> list[Finding]:
     """
     Lines of `paragraph` holding a `$` that pandoc reads as no math span.
 
     The paragraph is matched as a whole, because inline math may continue onto the
-    next line. Code spans, escaped `\\$` and every span pandoc's rule (`DOLLAR_MATH`)
-    reads as math are blanked first; a `$` left before a digit is currency.
+    next line. Code spans, escaped `\\$`, every span pandoc's rule (`DOLLAR_MATH`)
+    reads as math, and the pairs `rejected_math` reports are blanked first; a `$`
+    left before a digit is currency.
     """
     text = "\n".join(lines[offset] for offset in paragraph)
-    bare = _NOT_MATH.sub(lambda match: re.sub(r"[^\n]", " ", match.group(0)), text)
+    bare = _REJECTED_MATH.sub(_blank, _NOT_MATH.sub(_blank, text))
     stray = {
         paragraph[bare.count("\n", 0, match.start())]
         for match in re.finditer(r"\$(?!\d)", bare)
@@ -137,27 +205,10 @@ def _stray_dollars(lines: list[str], paragraph: list[int]) -> list[Finding]:
     ]
 
 
-def _math_findings(lines: list[str], fenced: frozenset[int]) -> list[Finding]:
-    """
-    Report a `$` that opens no math span pandoc would read.
-
-    Lines inside a fenced code block are excluded. Display math legitimately spans
-    lines, so a line that is exactly `$$` is a delimiter rather than an unterminated
-    span.
-    """
-    findings: list[Finding] = []
-    display_open = False
-    paragraph: list[int] = []
-    for offset, line in enumerate(lines):
-        in_prose = not (offset in fenced or display_open or line.strip() in ("", "$$"))
-        if in_prose:
-            paragraph.append(offset)
-            continue
-        findings.extend(_stray_dollars(lines, paragraph))
-        paragraph = []
-        if offset not in fenced and line.strip() == "$$":
-            display_open = not display_open
-    findings.extend(_stray_dollars(lines, paragraph))
+def _math_findings(lines: list[str]) -> list[Finding]:
+    """Report a `$` that opens no math span pandoc would read."""
+    paragraphs, display_open = _prose_paragraphs(lines)
+    findings = [f for p in paragraphs for f in _stray_dollars(lines, p)]
     if display_open:
         findings.append(Finding(len(lines), "unterminated `$$` display math"))
     return findings
@@ -193,10 +244,10 @@ def preflight(text: str) -> list[Finding]:
     say about it.
     """
     lines = text.split("\n")
-    fenced = _fenced_line_numbers(lines)
     findings = [
         *_table_findings(lines),
         *_fence_findings(lines),
-        *_math_findings(lines, fenced),
+        *rejected_math(text),
+        *_math_findings(lines),
     ]
     return sorted(findings, key=lambda finding: finding.line)

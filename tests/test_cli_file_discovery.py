@@ -249,3 +249,24 @@ def test_auto_list_files_no_args_errors(capsys: pytest.CaptureFixture[str]) -> N
     assert main(["--auto", "--list-files"]) == 1
     err = capsys.readouterr().err
     assert "--auto requires at least one file or directory argument" in err
+
+
+def test_a_refused_file_fails_the_run_and_names_its_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """
+    A batch formats every file it can, leaves a malformed one unchanged, names the
+    error's line, and exits non-zero: a commit hook shows output only on failure.
+    """
+    good = tmp_path / "good.md"
+    good.write_text("One sentence here. Another one.\n")
+    bad = tmp_path / "bad.md"
+    malformed = "Intro line.\nThe bound is $ n + 1 $ here.\n"
+    bad.write_text(malformed)
+
+    code = main(["--inplace", "--nobackup", str(good), str(bad)])
+
+    assert code == 1
+    assert good.read_text() == "One sentence here.\nAnother one.\n"
+    assert bad.read_text() == malformed
+    assert f"{bad}:2:" in capsys.readouterr().err

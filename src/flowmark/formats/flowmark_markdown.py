@@ -12,6 +12,7 @@ from marko.ext.gfm import elements as gfm_elements
 from marko.parser import Parser
 
 from flowmark.formats.flowmark_parser import (
+    CustomCitation,
     CustomDefinitionList,
     CustomDisplayMath,
     CustomFencedCode,
@@ -19,6 +20,7 @@ from flowmark.formats.flowmark_parser import (
     CustomInlineMath,
     CustomLatexEnvironment,
     CustomRawInlineTex,
+    CustomWikilink,
     escape_cell_bars,
     flowmark_parser,
 )
@@ -333,6 +335,16 @@ class MarkdownNormalizer(Renderer):
         return text
 
     def render_raw_inline_tex(self, element: CustomRawInlineTex) -> str:
+        text = unbreakable(cast(str, element.children))
+        self._current_inline_text += text
+        return text
+
+    def render_citation(self, element: CustomCitation) -> str:
+        text = unbreakable(cast(str, element.children))
+        self._current_inline_text += text
+        return text
+
+    def render_wikilink(self, element: CustomWikilink) -> str:
         text = unbreakable(cast(str, element.children))
         self._current_inline_text += text
         return text

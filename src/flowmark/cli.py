@@ -421,7 +421,7 @@ def main(args: list[str] | None = None) -> int:
         return 0
 
     try:
-        reformat_files(
+        refused = reformat_files(
             files=resolved_files,
             output=options.output,
             width=options.line_width,
@@ -445,7 +445,9 @@ def main(args: list[str] | None = None) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 2
 
-    return 0
+    # A refused file was left unchanged and named on stderr; the run still failed
+    # for it, and a commit hook shows that output only on a non-zero exit.
+    return 1 if refused else 0
 
 
 if __name__ == "__main__":
