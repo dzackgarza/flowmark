@@ -15,9 +15,11 @@ by the caller.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 from urllib.parse import unquote, urlsplit
 
 from flowmark.atomic_spans import (
@@ -33,6 +35,14 @@ from flowmark.atomic_spans import (
     iter_atomic_spans,
 )
 from flowmark.formats.flowmark_markdown import CustomRawInlineTex
+from flowmark.lint_engine import (
+    LintRule,
+    RuleCheck,
+    RuleContext,
+    RuleFinding,
+    RuleLevel,
+    RuleRegistry,
+)
 from flowmark.pandoc_lint import (
     PandocJson,
     pandoc_math_sequence,
@@ -52,18 +62,6 @@ class StyleRule(StrEnum):
     HEADING_PUNCTUATION = "heading-punctuation"
     REQUIRE_H1 = "require-h1"
     NO_INLINE_HTML = "no-inline-html"
-
-
-@dataclass(frozen=True)
-class RuleFinding:
-    """One lint finding at a half-open source range."""
-
-    rule: str
-    severity: str
-    message: str
-    start: int
-    end: int
-    replacement: str | None = None
 
 
 @dataclass(frozen=True)
@@ -105,6 +103,9 @@ _ATX_HEADING = re.compile(r"^(?P<indent> {0,3})(?P<marks>#+)(?:[ \t]+|$)(?P<body
 _SETEXT_UNDERLINE = re.compile(r"^ {0,3}(?P<marks>=+|-+)[ \t]*$")
 _ATTR_ID = re.compile(r"(?:^|\s)#(?P<id>[A-Za-z][A-Za-z0-9_.:-]*)")
 _FENCE_OPEN = re.compile(r"^(?P<indent> {0,3})(?P<marker>`{3,}|~{3,})(?P<info>.*)$")
+_DIV_FENCE_OPEN = re.compile(
+    r"^(?P<indent> {0,3})(?P<marker>:{3,})(?P<info>[ \t]+\S.*)$"
+)
 _LATEX_BEGIN = re.compile(r"\\begin\{(?P<name>[A-Za-z*]+)\}")
 _LATEX_END_TEMPLATE = r"\\end\{%s\}"
 _BARE_URL = re.compile(r"(?<![<\w])(https?://[^\s<>]+)")
@@ -515,7 +516,8 @@ def _mathematical_findings(
                 RuleFinding(
                     "math/bare-operator",
                     "warning",
-                    f"{name!r} is being typeset as variables. Use \\operatorname{{{name}}} or a defined operator macro.",
+                    f"{name!r} is currently typeset as separate variables. If it denotes "
+                    + f"an operator, write \\operatorname{{{name}}} or use an operator macro.",
                     start + match.start("name"),
                     start + match.end("name"),
                 )
@@ -642,17 +644,111 @@ def _pandoc_node_attr(node: dict[str, PandocJson]) -> tuple[str, list[str], list
     return _pandoc_attr(content[attr_index])
 
 
-def _pandoc_headers(document: dict[str, PandocJson]) -> list[tuple[int, str, str]]:
-    result: list[tuple[int, str, str]] = []
-    for node in walk_pandoc(document):
-        if node.get("t") != "Header":
+def _pandoc_headers_with_div_depth(
+    document: dict[str, PandocJson],
+) -> list[tuple[int, str, str, int]]:
+    """Headers in document order, carrying their enclosing Pandoc Div depth."""
+
+    result: list[tuple[int, str, str, int]] = []
+
+    def visit(value: PandocJson, div_depth: int) -> None:
+        if isinstance(value, list):
+            for item in value:
+                visit(item, div_depth)
+            return
+        if not isinstance(value, dict):
+            return
+
+        kind = value.get("t")
+        content = value.get("c")
+        if kind == "Header" and isinstance(content, list) and len(content) == 3:
+            level = content[0]
+            if isinstance(level, int):
+                attr = _pandoc_attr(content[1])
+                identifier = "" if attr is None else attr[0]
+                result.append(
+                    (
+                        level,
+                        " ".join(pandoc_plain(content[2]).split()),
+                        identifier,
+                        div_depth,
+                    )
+                )
+
+        child_depth = div_depth + 1 if kind == "Div" else div_depth
+        if content is not None:
+            visit(content, child_depth)
+        else:
+            for child in value.values():
+                visit(child, child_depth)
+
+    visit(document, 0)
+    return result
+
+
+def _pandoc_divs_with_depth(
+    document: dict[str, PandocJson],
+) -> list[tuple[tuple[str, list[str], list[tuple[str, str]]], int]]:
+    """Pandoc Div nodes in source order, carrying their enclosing Div depth."""
+
+    result: list[tuple[tuple[str, list[str], list[tuple[str, str]]], int]] = []
+
+    def visit(value: PandocJson, div_depth: int) -> None:
+        if isinstance(value, list):
+            for item in value:
+                visit(item, div_depth)
+            return
+        if not isinstance(value, dict):
+            return
+
+        kind = value.get("t")
+        content = value.get("c")
+        if kind == "Div" and isinstance(content, list) and len(content) == 2:
+            attr = _pandoc_attr(content[0])
+            if attr is not None:
+                result.append((attr, div_depth))
+
+        child_depth = div_depth + 1 if kind == "Div" else div_depth
+        if content is not None:
+            visit(content, child_depth)
+        else:
+            for child in value.values():
+                visit(child, child_depth)
+
+    visit(document, 0)
+    return result
+
+
+def _fenced_div_openers(
+    lines: list[_Line],
+    protected: bytearray,
+    frontmatter: _Frontmatter | None,
+) -> list[tuple[int, int]]:
+    """Source ranges for authored fenced-Div opener lines.
+
+    Pandoc decides which Div nodes exist. This locator only reconciles those
+    already-proven nodes to colon-fence opener lines for diagnostic placement.
+    """
+
+    frontmatter_lines: set[int] = set()
+    if frontmatter is not None:
+        end = (
+            frontmatter.closing.number
+            if frontmatter.closing is not None
+            else lines[-1].number
+        )
+        frontmatter_lines.update(range(frontmatter.opening.number, end + 1))
+
+    result: list[tuple[int, int]] = []
+    for line in lines:
+        if line.number in frontmatter_lines or _overlaps(
+            protected, line.start, line.end
+        ):
             continue
-        content = node.get("c")
-        if not isinstance(content, list) or len(content) != 3 or not isinstance(content[0], int):
+        match = _DIV_FENCE_OPEN.match(line.text)
+        if match is None:
             continue
-        attr = _pandoc_attr(content[1])
-        identifier = "" if attr is None else attr[0]
-        result.append((content[0], " ".join(pandoc_plain(content[2]).split()), identifier))
+        result.append((line.start, line.end))
     return result
 
 
@@ -808,6 +904,7 @@ def _pandoc_resource_findings(
                     f"Can't find {resource!r} relative to this document.",
                     start,
                     end,
+                    data={"resource": resource, "metadata_key": key},
                 )
             )
     return findings
@@ -826,14 +923,47 @@ def _pandoc_semantic_findings(
     """Semantic lint rules over constructs whose existence Pandoc already proved."""
     findings: list[RuleFinding] = []
 
-    headers = _pandoc_headers(pandoc_document)
+    divs_with_depth = _pandoc_divs_with_depth(pandoc_document)
+    div_openers = _fenced_div_openers(lines, protected, frontmatter)
+    for index, (_attr, div_depth) in enumerate(divs_with_depth):
+        if div_depth == 0:
+            continue
+        start, end = div_openers[index] if index < len(div_openers) else (0, 0)
+        findings.append(
+            RuleFinding(
+                "structure/nested-fenced-div",
+                "warning",
+                "This fenced div is nested inside another fenced div. Move one div "
+                "outside the other so the fenced blocks are not nested.",
+                start,
+                end,
+            )
+        )
+
+    headers_with_depth = _pandoc_headers_with_div_depth(pandoc_document)
+    headers = [
+        (level, title, identifier)
+        for level, title, identifier, _div_depth in headers_with_depth
+    ]
     local_headers = _headings(lines, protected, frontmatter)
     header_locations = _reconcile_heading_locations(headers, local_headers)
     previous_level: int | None = None
     seen_heading_text: dict[str, int] = {}
     h1_count = 0
-    for index, (level, title, _identifier) in enumerate(headers):
+    for index, (level, title, _identifier, div_depth) in enumerate(headers_with_depth):
         start, end = header_locations[index]
+        if div_depth > 0:
+            findings.append(
+                RuleFinding(
+                    "structure/heading-in-fenced-div",
+                    "warning",
+                    "Heading is inside a fenced div. If this text is intended to title "
+                    "the div, use the .title paradigm instead. If it delineates a "
+                    "section, move the heading outside all enclosing fenced divs.",
+                    start,
+                    end,
+                )
+            )
         if previous_level is not None and level > previous_level + 1:
             findings.append(
                 RuleFinding(
@@ -1210,13 +1340,334 @@ def lint_rule_findings(
     ]
     # Identical findings can arise when one malformed token is recognized by a
     # generic and a family-specific scan.  Preserve the most specific first one.
-    deduplicated: dict[tuple[str, int, int, str], RuleFinding] = {}
+    deduplicated: dict[tuple[str, int, int], RuleFinding] = {}
     for finding in findings:
-        deduplicated.setdefault((finding.rule, finding.start, finding.end, finding.message), finding)
+        deduplicated.setdefault((finding.rule, finding.start, finding.end), finding)
     return sorted(
         deduplicated.values(),
         key=lambda finding: (finding.start, finding.end, finding.rule),
     )
 
 
-__all__ = ("RuleFinding", "StyleRule", "lint_rule_findings")
+# Public source/Pandoc support surface for lint extensions. These helpers expose
+# source-location mechanics already used by the built-in rules without requiring
+# extensions to reach into private implementation names.
+def source_lines(text: str) -> list[_Line]:
+    return _lines(text)
+
+
+def source_frontmatter(lines: list[_Line]) -> _Frontmatter | None:
+    return _frontmatter(lines)
+
+
+def source_fences(
+    lines: list[_Line],
+    protected_line_numbers: set[int],
+) -> list[_Fence]:
+    return _fences(lines, protected_line_numbers)
+
+
+def source_protected_map(
+    text: str,
+    lines: list[_Line],
+    frontmatter: _Frontmatter | None,
+    fences: list[_Fence],
+) -> bytearray:
+    return _build_protected_map(text, lines, frontmatter, fences)
+
+
+def source_literal_protected_map(
+    text: str,
+    frontmatter: _Frontmatter | None,
+    fences: list[_Fence],
+) -> bytearray:
+    return _build_literal_protected_map(text, frontmatter, fences)
+
+
+def pandoc_math_regions(
+    text: str,
+    pandoc_document: dict[str, PandocJson],
+) -> list[tuple[int, int]]:
+    return _math_regions(text, pandoc_document)
+
+
+def mask_tex_comments(text: str) -> str:
+    return _mask_tex_comments(text)
+
+
+def protected_overlap(
+    protected: bytearray,
+    start: int,
+    end: int,
+) -> bool:
+    return _overlaps(protected, start, end)
+
+
+def pandoc_attr(
+    value: PandocJson,
+) -> tuple[str, list[str], list[tuple[str, str]]] | None:
+    return _pandoc_attr(value)
+
+
+def locate_after(
+    text: str,
+    needles: tuple[str, ...],
+    start: int = 0,
+) -> tuple[int, int]:
+    return _locate_after(text, needles, start)
+
+
+def _cached_correctness_findings(context: RuleContext) -> list[RuleFinding]:
+    key = "flowmark/core-correctness-findings"
+    cached = context.cache.get(key)
+    if isinstance(cached, list):
+        return cast(list[RuleFinding], cached)
+    findings = lint_rule_findings(
+        context.text,
+        pandoc_document=context.pandoc_document,
+        source_path=context.source_path,
+        styles=frozenset(),
+        max_line_length=None,
+    )
+    context.cache[key] = findings
+    return findings
+
+
+def _correctness_check(rule_name: str) -> RuleCheck:
+    def check(
+        context: RuleContext,
+        options: Mapping[str, object],
+        /,
+    ) -> Iterable[RuleFinding]:
+        del options
+        return [
+            finding
+            for finding in _cached_correctness_findings(context)
+            if finding.rule == rule_name
+        ]
+
+    return check
+
+
+def _style_check(rule_name: str, style: StyleRule) -> RuleCheck:
+    def check(
+        context: RuleContext,
+        options: Mapping[str, object],
+        /,
+    ) -> Iterable[RuleFinding]:
+        del options
+        return [
+            finding
+            for finding in lint_rule_findings(
+                context.text,
+                pandoc_document=context.pandoc_document,
+                source_path=context.source_path,
+                styles=frozenset({style}),
+                max_line_length=None,
+            )
+            if finding.rule == rule_name
+        ]
+
+    return check
+
+
+def _line_length_check(
+    context: RuleContext,
+    options: Mapping[str, object],
+    /,
+) -> Iterable[RuleFinding]:
+    maximum = options.get("max")
+    if not isinstance(maximum, int) or maximum <= 0:
+        return []
+    return [
+        finding
+        for finding in lint_rule_findings(
+            context.text,
+            pandoc_document=context.pandoc_document,
+            source_path=context.source_path,
+            styles=frozenset(),
+            max_line_length=maximum,
+        )
+        if finding.rule == "style/line-length"
+    ]
+
+
+_BUILTIN_RULES = (
+    LintRule(
+        "accessibility/image-alt",
+        "Image has empty alternative text.",
+        check=_correctness_check("accessibility/image-alt"),
+    ),
+    LintRule(
+        "code/hard-tab",
+        "Fenced code block contains a hard tab.",
+        check=_correctness_check("code/hard-tab"),
+    ),
+    LintRule(
+        "code/missing-language",
+        "Fenced code block has no language.",
+        check=_correctness_check("code/missing-language"),
+    ),
+    LintRule(
+        "heading/duplicate",
+        "Heading text duplicates an earlier heading.",
+        check=_correctness_check("heading/duplicate"),
+    ),
+    LintRule(
+        "heading/increment",
+        "Heading level skips one or more levels.",
+        check=_correctness_check("heading/increment"),
+    ),
+    LintRule(
+        "heading/multiple-h1",
+        "Document contains more than one H1.",
+        check=_correctness_check("heading/multiple-h1"),
+    ),
+    LintRule(
+        "link/empty-destination",
+        "Link has an empty destination.",
+        check=_correctness_check("link/empty-destination"),
+    ),
+    LintRule(
+        "link/invalid-fragment",
+        "Link fragment does not resolve.",
+        check=_correctness_check("link/invalid-fragment"),
+    ),
+    LintRule(
+        "link/missing-local-target",
+        "Linked local file does not exist.",
+        check=_correctness_check("link/missing-local-target"),
+    ),
+    LintRule(
+        "link/non-descriptive-text",
+        "Link text is non-descriptive.",
+        check=_correctness_check("link/non-descriptive-text"),
+    ),
+    LintRule(
+        "math/bare-operator",
+        "Operator-like math text is typeset as separate variables.",
+        check=_correctness_check("math/bare-operator"),
+    ),
+    LintRule(
+        "math/repeated-subscript",
+        "TeX contains a repeated unbraced subscript.",
+        RuleLevel.ERROR,
+        _correctness_check("math/repeated-subscript"),
+    ),
+    LintRule(
+        "math/repeated-superscript",
+        "TeX contains a repeated unbraced superscript.",
+        RuleLevel.ERROR,
+        _correctness_check("math/repeated-superscript"),
+    ),
+    LintRule(
+        "math/unclosed-group",
+        "TeX group is not closed.",
+        RuleLevel.ERROR,
+        _correctness_check("math/unclosed-group"),
+    ),
+    LintRule(
+        "math/unclosed-left",
+        "\\left has no matching \\right.",
+        RuleLevel.ERROR,
+        _correctness_check("math/unclosed-left"),
+    ),
+    LintRule(
+        "math/unmatched-group-close",
+        "TeX group closes without an opening group.",
+        RuleLevel.ERROR,
+        _correctness_check("math/unmatched-group-close"),
+    ),
+    LintRule(
+        "math/unmatched-right",
+        "\\right has no matching \\left.",
+        RuleLevel.ERROR,
+        _correctness_check("math/unmatched-right"),
+    ),
+    LintRule(
+        "pandoc/duplicate-identifier",
+        "Pandoc identifier is used more than once.",
+        RuleLevel.ERROR,
+        _correctness_check("pandoc/duplicate-identifier"),
+    ),
+    LintRule(
+        "pandoc/missing-resource",
+        "Pandoc resource does not exist.",
+        check=_correctness_check("pandoc/missing-resource"),
+    ),
+    LintRule(
+        "structure/heading-in-fenced-div",
+        "Heading is nested inside a fenced div.",
+        check=_correctness_check("structure/heading-in-fenced-div"),
+    ),
+    LintRule(
+        "structure/nested-fenced-div",
+        "Fenced div is nested inside another fenced div.",
+        check=_correctness_check("structure/nested-fenced-div"),
+    ),
+    LintRule(
+        "style/bare-url",
+        "Bare URL violates the selected style.",
+        RuleLevel.OFF,
+        _style_check("style/bare-url", StyleRule.BARE_URL),
+    ),
+    LintRule(
+        "style/fence-marker",
+        "Code-fence marker differs from the document convention.",
+        RuleLevel.OFF,
+        _style_check("style/fence-marker", StyleRule.FENCE_MARKER),
+    ),
+    LintRule(
+        "style/heading-punctuation",
+        "Heading punctuation violates the selected style.",
+        RuleLevel.OFF,
+        _style_check("style/heading-punctuation", StyleRule.HEADING_PUNCTUATION),
+    ),
+    LintRule(
+        "style/line-length",
+        "Line exceeds the configured maximum length.",
+        RuleLevel.OFF,
+        _line_length_check,
+    ),
+    LintRule(
+        "style/no-inline-html",
+        "Inline HTML is disabled by the selected style.",
+        RuleLevel.OFF,
+        _style_check("style/no-inline-html", StyleRule.NO_INLINE_HTML),
+    ),
+    LintRule(
+        "style/required-h1",
+        "Document must contain an H1.",
+        RuleLevel.OFF,
+        _style_check("style/required-h1", StyleRule.REQUIRE_H1),
+    ),
+    LintRule(
+        "style/unordered-list-marker",
+        "Unordered-list marker differs from the document convention.",
+        RuleLevel.OFF,
+        _style_check("style/unordered-list-marker", StyleRule.UNORDERED_LIST_MARKER),
+    ),
+)
+
+def register_builtin_rules(registry: RuleRegistry) -> None:
+    """Register Flowmark's built-in named rules."""
+
+    registry.register_many(_BUILTIN_RULES)
+
+
+__all__ = (
+    "RuleFinding",
+    "StyleRule",
+    "locate_after",
+    "lint_rule_findings",
+    "mask_tex_comments",
+    "pandoc_attr",
+    "pandoc_math_regions",
+    "protected_overlap",
+    "register_builtin_rules",
+    "source_fences",
+    "source_frontmatter",
+    "source_lines",
+    "source_literal_protected_map",
+    "source_protected_map",
+)

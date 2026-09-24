@@ -6,10 +6,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
+from flowmark.config import FlowmarkConfig, find_config_file, load_config
 from flowmark.file_resolver import FileResolver, FileResolverConfig
-from flowmark.lint import LintOptions, StyleRule, lint_text
+from flowmark.lint import LintOptions, RuleLevel, StyleRule, lint_rules, lint_text
+from flowmark.lint_engine import LintRule
 
 
 class LintFileResult(TypedDict):
@@ -24,9 +26,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="flowmark-lint",
         description="Lint Pandoc-flavoured Markdown with Flowmark's semantic parser.",
     )
-    parser.add_argument(
-        "files", nargs="+", help="Markdown files/directories, or '-' for stdin"
-    )
+    parser.add_argument("files", nargs="*", help="Markdown files/directories, or '-' for stdin")
     parser.add_argument(
         "--format", choices=("text", "json"), default="text", dest="output_format"
     )
@@ -57,6 +57,49 @@ def _parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Path context for stdin, used to resolve relative links",
     )
+    parser.add_argument(
+        "--rule",
+        action="append",
+        default=[],
+        metavar="RULE=LEVEL",
+        help="Override a named rule with off, info, warning, or error; may be repeated",
+    )
+    parser.add_argument(
+        "--plugin",
+        action="append",
+        default=[],
+        metavar="MODULE_OR_FILE",
+        help="Load a lint rule extension module/file; may be repeated",
+    )
+    parser.add_argument(
+        "--no-discover-plugins",
+        action="store_true",
+        help="Do not discover installed flowmark.lint_rules entry points",
+    )
+    parser.add_argument(
+        "--context",
+        type=str,
+        default=None,
+        metavar="JSON_FILE",
+        help="JSON object exposed to lint extensions as rule context",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        metavar="TOML_FILE",
+        help="Use this Flowmark config instead of searching parent directories",
+    )
+    parser.add_argument(
+        "--no-config",
+        action="store_true",
+        help="Disable Flowmark config-file discovery",
+    )
+    parser.add_argument(
+        "--list-rules",
+        action="store_true",
+        help="List the effective named lint rules and exit",
+    )
     return parser
 
 
@@ -82,10 +125,68 @@ def _resolve_files(arguments: list[str]) -> list[str]:
     return stdin + resolved
 
 
-def _options(args: argparse.Namespace) -> LintOptions:
+def _rule_overrides(values: list[str], parser: argparse.ArgumentParser) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    allowed = {level.value for level in RuleLevel}
+    for value in values:
+        if "=" not in value:
+            parser.error(f"--rule requires RULE=LEVEL, got {value!r}")
+        rule, level = value.rsplit("=", 1)
+        rule = rule.strip()
+        level = level.strip()
+        if not rule or level not in allowed:
+            parser.error(
+                f"--rule requires a rule name and one of {', '.join(sorted(allowed))}"
+            )
+        overrides[rule] = level
+    return overrides
+
+
+def _context(path: str | None, parser: argparse.ArgumentParser) -> dict[str, object]:
+    if path is None:
+        return {}
+    try:
+        value = json.loads(Path(path).read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        parser.error(f"Could not read lint context {path!r}: {error}")
+    if not isinstance(value, dict):
+        parser.error("Lint context JSON must contain an object")
+    typed = cast(dict[object, object], value)
+    return {str(key): item for key, item in typed.items()}
+
+
+def _options(
+    args: argparse.Namespace,
+    config: FlowmarkConfig,
+    parser: argparse.ArgumentParser,
+) -> LintOptions:
+    rules = dict(config.lint_rules or {})
+    rules.update(_rule_overrides(args.rule, parser))
+    context = dict(config.lint_context or {})
+    context.update(_context(args.context, parser))
+    configured_plugins = tuple(config.lint_plugins or ())
+    cli_plugins = tuple(args.plugin)
+    max_line_length = (
+        args.max_line_length
+        if args.max_line_length is not None
+        else config.lint_max_line_length
+    )
+    discover_plugins = (
+        False
+        if args.no_discover_plugins
+        else (
+            True
+            if config.lint_discover_plugins is None
+            else config.lint_discover_plugins
+        )
+    )
     return LintOptions(
         styles=frozenset(StyleRule(value) for value in args.style),
-        max_line_length=args.max_line_length,
+        max_line_length=max_line_length,
+        rules=rules,
+        plugins=configured_plugins + cli_plugins,
+        context=context,
+        discover_plugins=discover_plugins,
     )
 
 
@@ -100,14 +201,68 @@ def _text_line(path: str, diagnostic: dict[str, object]) -> str:
     )
 
 
+def _config_for(
+    path: str | None,
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> FlowmarkConfig:
+    if args.no_config:
+        return FlowmarkConfig()
+    if args.config is not None:
+        config_path = Path(args.config)
+        if not config_path.is_file():
+            parser.error(f"Flowmark config does not exist: {args.config}")
+        return load_config(config_path)
+
+    source_path = cast(str | None, args.source_path)
+    if path == "-" and source_path is not None:
+        start = Path(source_path).expanduser().resolve().parent
+    elif path not in {None, "-"}:
+        assert path is not None
+        candidate = Path(path).expanduser()
+        start = candidate.resolve().parent if candidate.is_file() else candidate.resolve()
+    else:
+        start = Path.cwd()
+    config_path = find_config_file(start)
+    return FlowmarkConfig() if config_path is None else load_config(config_path)
+
+
+def _rule_payload(rule: LintRule) -> dict[str, object]:
+    return {
+        "name": rule.name,
+        "default_level": rule.default_level.value,
+        "description": rule.description,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
-    options = _options(args)
+    parser = _parser()
+    args = parser.parse_args(argv)
+
+    if args.list_rules:
+        config = _config_for(None, args, parser)
+        options = _options(args, config, parser)
+        rules = [_rule_payload(rule) for rule in lint_rules(options)]
+        if args.output_format == "json":
+            json.dump({"version": 1, "rules": rules}, sys.stdout, ensure_ascii=False)
+            sys.stdout.write("\n")
+        else:
+            for rule in rules:
+                print(
+                    f"{rule['name']}\t{rule['default_level']}\t{rule['description']}"
+                )
+        return 0
+
+    if not args.files:
+        parser.error("at least one Markdown file/directory or '-' is required")
+
     paths = _resolve_files(args.files)
     results: list[LintFileResult] = []
     diagnostic_count = 0
 
     for path in paths:
+        config = _config_for(path, args, parser)
+        options = _options(args, config, parser)
         source_path = (
             Path(args.source_path)
             if path == "-" and args.source_path is not None

@@ -32,6 +32,14 @@ def rule_ids(text: str, *, options: LintOptions | None = None, source_path: Path
         ("```python\n\tx=1\n```\n", "code/hard-tab"),
         ("# A {#x}\n\n# B {#x}\n", "pandoc/duplicate-identifier"),
         ("::: theorem\nText\n", "pandoc/unclosed-fenced-div"),
+        (
+            "::: {.theorem}\n## Heading inside div\n:::\n",
+            "structure/heading-in-fenced-div",
+        ),
+        (
+            ":::: {.theorem}\n\n::: {.proof}\nText.\n:::\n::::\n",
+            "structure/nested-fenced-div",
+        ),
         ("Inline $x_i_j$.\n", "math/repeated-subscript"),
         ("Inline $x^2^3$.\n", "math/repeated-superscript"),
         ("Inline $x_{i$.\n", "math/unclosed-group"),
@@ -86,6 +94,115 @@ def test_pandoc_prose_is_not_reclassified_as_failed_syntax(source: str) -> None:
 
 def test_pandoc_allows_atx_heading_levels_above_six() -> None:
     assert lint_text("####### Heading\n") == []
+
+
+def test_heading_inside_nested_fenced_div_is_structural_rule_at_any_level() -> None:
+    source = (
+        "# Outside\n\n"
+        "::: {.definition}\n"
+        "::: {.proof}\n"
+        "####### Deep heading\n"
+        ":::\n"
+        ":::\n"
+    )
+    findings = [
+        diagnostic
+        for diagnostic in lint_text(source)
+        if diagnostic.rule == "structure/heading-in-fenced-div"
+    ]
+    assert len(findings) == 1
+    assert findings[0].line == 5
+
+
+def test_heading_lookalike_in_code_fence_inside_div_is_not_a_heading_rule() -> None:
+    source = (
+        "::: {.example}\n"
+        "~~~markdown\n"
+        "## Literal heading example\n"
+        "~~~\n"
+        ":::\n"
+    )
+    assert "structure/heading-in-fenced-div" not in rule_ids(source)
+
+
+def test_nested_fenced_div_warns_on_inner_opener() -> None:
+    source = (
+        ":::: {.definition}\n"
+        "Outer.\n\n"
+        "::: {.proof}\n"
+        "Inner.\n"
+        ":::\n"
+        "::::\n"
+    )
+    findings = [
+        diagnostic
+        for diagnostic in lint_text(source)
+        if diagnostic.rule == "structure/nested-fenced-div"
+    ]
+    assert len(findings) == 1
+    assert findings[0].line == 4
+    assert findings[0].column == 1
+
+
+def test_each_nested_div_beyond_top_level_warns() -> None:
+    source = (
+        "::::: {.outer}\n\n"
+        ":::: {.middle}\n\n"
+        "::: {.inner}\n"
+        "Text.\n"
+        ":::\n"
+        "::::\n"
+        ":::::\n"
+    )
+    findings = [
+        diagnostic
+        for diagnostic in lint_text(source)
+        if diagnostic.rule == "structure/nested-fenced-div"
+    ]
+    assert [finding.line for finding in findings] == [3, 5]
+
+
+def test_sibling_fenced_divs_do_not_warn_as_nested() -> None:
+    source = (
+        "::: {.first}\n"
+        "One.\n"
+        ":::\n\n"
+        "::: {.second}\n"
+        "Two.\n"
+        ":::\n"
+    )
+    assert "structure/nested-fenced-div" not in rule_ids(source)
+
+
+def test_div_fence_lookalike_inside_code_does_not_affect_nested_div_reconciliation() -> None:
+    source = (
+        ":::: {.outer}\n\n"
+        "~~~markdown\n"
+        "::: {.not-a-div}\n"
+        "~~~\n\n"
+        "::: {.inner}\n"
+        "Text.\n"
+        ":::\n"
+        "::::\n"
+    )
+    findings = [
+        diagnostic
+        for diagnostic in lint_text(source)
+        if diagnostic.rule == "structure/nested-fenced-div"
+    ]
+    assert len(findings) == 1
+    assert findings[0].line == 7
+
+
+def test_nested_native_html_divs_are_not_fenced_div_diagnostics() -> None:
+    source = (
+        "<div>\n"
+        "<div>\n"
+        "Text.\n"
+        "</div>\n"
+        "</div>\n"
+    )
+    assert "structure/nested-fenced-div" not in rule_ids(source)
 
 
 def test_padded_link_text_is_valid_pandoc_link_not_malformed_syntax() -> None:
@@ -234,9 +351,8 @@ def test_missing_pandoc_frontmatter_resources_are_path_aware(tmp_path: Path) -> 
     diagnostics = lint_text(source, source_path=source_path)
     missing = [d for d in diagnostics if d.rule == "pandoc/missing-resource"]
     assert len(missing) == 3
-    assert any("missing-inline.bib" in d.message for d in missing)
-    assert any("headers/missing.tex" in d.message for d in missing)
-    assert any("styles/missing.csl" in d.message for d in missing)
-    assert not any("refs.bib" in d.message for d in diagnostics)
-    assert not any("second.bib" in d.message for d in diagnostics)
-    assert not any("named-template" in d.message for d in diagnostics)
+    assert {d.data["resource"] for d in missing} == {
+        "missing-inline.bib",
+        "headers/missing.tex",
+        "styles/missing.csl",
+    }

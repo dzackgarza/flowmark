@@ -1,4 +1,4 @@
-"""Canonical Pandoc reader dialect for Flowmark's Zettlr authoring surface."""
+"""Canonical Pandoc reader dialect for Flowmark linting and formatting."""
 
 from __future__ import annotations
 
@@ -19,5 +19,13 @@ footnotes, bracketed spans, and attributes. ``tex_math_single_backslash`` and
 corpus, so no caller may silently fall back to bare ``markdown``.
 """
 
+PANDOC_LINT_FORMAT = PANDOC_FORMAT + "-native_divs"
+"""Pandoc reader used for lint semantics.
 
-__all__ = ("PANDOC_FORMAT",)
+``native_divs`` converts raw HTML ``<div>`` elements into the same AST ``Div``
+node used by fenced divs and discards their source provenance. Structural lint
+rules target authored fenced divs, so lint parsing disables that conversion.
+Formatting/verification keep :data:`PANDOC_FORMAT` unchanged.
+"""
+
+__all__ = ("PANDOC_FORMAT", "PANDOC_LINT_FORMAT")

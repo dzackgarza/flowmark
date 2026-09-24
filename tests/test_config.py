@@ -102,6 +102,32 @@ def test_load_config_file_discovery_section(tmp_path: Path) -> None:
     assert config.exclude == ["my_custom/"]
 
 
+def test_load_config_lint_rules_plugins_and_context(tmp_path: Path) -> None:
+    config_file = tmp_path / "flowmark.toml"
+    config_file.write_text(
+        "[lint]\n"
+        "plugins = [\"example_plugin\"]\n"
+        "max-line-length = 97\n"
+        "discover-plugins = false\n"
+        "\n"
+        "[lint.rules]\n"
+        "\"heading/increment\" = \"off\"\n"
+        "\"custom/example\" = { level = \"error\", threshold = 3 }\n"
+        "\n"
+        "[lint.context]\n"
+        "workspace = \"/tmp/workspace\"\n"
+    )
+    config = load_config(config_file)
+    assert config.lint_plugins == ["example_plugin"]
+    assert config.lint_max_line_length == 97
+    assert config.lint_discover_plugins is False
+    assert config.lint_rules == {
+        "heading/increment": "off",
+        "custom/example": {"level": "error", "threshold": 3},
+    }
+    assert config.lint_context == {"workspace": "/tmp/workspace"}
+
+
 def test_load_config_partial(tmp_path: Path) -> None:
     config_file = tmp_path / "flowmark.toml"
     config_file.write_text("[formatting]\nwidth = 120\n")

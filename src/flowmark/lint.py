@@ -20,18 +20,34 @@ from the default correctness rules so valid Pandoc Markdown is not rejected mere
 being written in another conventional style.
 
 The public result is editor-neutral.  A CLI, an editor, CI, or a pre-commit hook can all
-consume the same diagnostics without importing CodeMirror or any Zettlr code.
+consume the same diagnostics without importing GUI/editor code.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from flowmark.lint_rules import StyleRule, lint_rule_findings
+from flowmark.lint_engine import (
+    LintRule,
+    RuleContext,
+    RuleFinding,
+    RuleLevel,
+    RuleRegistry,
+    RuleSetting,
+    apply_rule_policy,
+    load_lint_plugins,
+    normalize_rule_settings,
+    run_registered_rules,
+    validate_rule_settings,
+)
+from flowmark.lint_rules import (
+    StyleRule,
+    register_builtin_rules,
+)
 from flowmark.pandoc_lint import (
-    PandocJson,
     PandocLintUnavailableError,
     PandocMessage,
     parse_pandoc_for_lint,
@@ -41,8 +57,13 @@ from flowmark.pandoc_lint import (
 class Severity(StrEnum):
     """Severity levels emitted by Flowmark's linter."""
 
+    INFO = "info"
     ERROR = "error"
     WARNING = "warning"
+
+
+def _empty_object_mapping() -> dict[str, object]:
+    return {}
 
 
 @dataclass(frozen=True)
@@ -57,6 +78,7 @@ class LintDiagnostic:
     end_line: int
     end_column: int
     replacement: str | None = None
+    data: Mapping[str, object] = field(default_factory=_empty_object_mapping)
 
     def to_json(self) -> dict[str, object]:
         """Return the stable JSON representation consumed by editor clients."""
@@ -76,6 +98,10 @@ class LintOptions:
 
     styles: frozenset[StyleRule] = field(default_factory=frozenset)
     max_line_length: int | None = None
+    rules: Mapping[str, object] = field(default_factory=_empty_object_mapping)
+    plugins: tuple[str, ...] = ()
+    context: Mapping[str, object] = field(default_factory=_empty_object_mapping)
+    discover_plugins: bool = True
 
 
 def _offset_to_point(text: str, offset: int) -> tuple[int, int]:
@@ -87,20 +113,22 @@ def _offset_to_point(text: str, offset: int) -> tuple[int, int]:
     return line, column
 
 
-def _explicit_rule_diagnostics(
+def _point_to_offset(text: str, line: int, column: int) -> int:
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return 0
+    line_index = max(0, min(len(lines) - 1, line - 1))
+    start = sum(len(item) for item in lines[:line_index])
+    visible = lines[line_index].rstrip("\r\n")
+    return min(start + len(visible), start + max(0, column - 1))
+
+
+def _diagnostics_from_findings(
     text: str,
-    options: LintOptions,
-    source_path: Path | None,
-    pandoc_document: dict[str, PandocJson],
+    findings: list[RuleFinding],
 ) -> list[LintDiagnostic]:
     diagnostics: list[LintDiagnostic] = []
-    for finding in lint_rule_findings(
-        text,
-        source_path=source_path,
-        styles=options.styles,
-        max_line_length=options.max_line_length,
-        pandoc_document=pandoc_document,
-    ):
+    for finding in findings:
         line, column = _offset_to_point(text, finding.start)
         end_line, end_column = _offset_to_point(text, finding.end)
         diagnostics.append(
@@ -113,6 +141,7 @@ def _explicit_rule_diagnostics(
                 end_line=end_line,
                 end_column=end_column,
                 replacement=finding.replacement,
+                data=finding.data,
             )
         )
     return diagnostics
@@ -135,21 +164,96 @@ def _pandoc_message_rule(message: PandocMessage) -> str:
     return "pandoc/parse-error" if message.severity == "error" else "pandoc/warning"
 
 
-def _pandoc_message_diagnostic(text: str, message: PandocMessage) -> LintDiagnostic:
+def _pandoc_message_finding(text: str, message: PandocMessage) -> RuleFinding:
     line = message.line or 1
     column = message.column or 1
     lines = text.splitlines() or [""]
     line_index = max(0, min(len(lines) - 1, line - 1))
     end_column = min(len(lines[line_index]) + 1, column + 1)
-    return LintDiagnostic(
+    return RuleFinding(
         rule=_pandoc_message_rule(message),
-        severity=Severity.ERROR if message.severity == "error" else Severity.WARNING,
+        severity="error" if message.severity == "error" else "warning",
         message=message.message,
-        line=line,
-        column=column,
-        end_line=line,
-        end_column=end_column,
+        start=_point_to_offset(text, line, column),
+        end=_point_to_offset(text, line, end_column),
     )
+
+
+_PARSER_RULES = (
+    LintRule(
+        "frontmatter/malformed-flow",
+        "Pandoc cannot parse the YAML metadata block.",
+        RuleLevel.ERROR,
+    ),
+    LintRule(
+        "frontmatter/duplicate-key",
+        "YAML metadata defines a key more than once.",
+    ),
+    LintRule(
+        "reference/duplicate-definition",
+        "Markdown reference label is defined more than once.",
+    ),
+    LintRule(
+        "footnote/duplicate-definition",
+        "Footnote label is defined more than once.",
+    ),
+    LintRule(
+        "footnote/unused-definition",
+        "Footnote definition is unused.",
+    ),
+    LintRule(
+        "pandoc/unclosed-fenced-div",
+        "Pandoc fenced div is not explicitly closed.",
+    ),
+    LintRule("pandoc/parse-error", "Pandoc parser error.", RuleLevel.ERROR),
+    LintRule("pandoc/warning", "Pandoc parser warning."),
+)
+
+
+_STYLE_RULE_IDS = {
+    StyleRule.UNORDERED_LIST_MARKER: "style/unordered-list-marker",
+    StyleRule.FENCE_MARKER: "style/fence-marker",
+    StyleRule.BARE_URL: "style/bare-url",
+    StyleRule.HEADING_PUNCTUATION: "style/heading-punctuation",
+    StyleRule.REQUIRE_H1: "style/required-h1",
+    StyleRule.NO_INLINE_HTML: "style/no-inline-html",
+}
+
+
+def _registry(options: LintOptions) -> RuleRegistry:
+    registry = RuleRegistry()
+    register_builtin_rules(registry)
+    registry.register_many(_PARSER_RULES)
+    load_lint_plugins(
+        registry,
+        options.plugins,
+        discover_entry_points=options.discover_plugins,
+    )
+    return registry
+
+
+def _effective_settings(options: LintOptions) -> dict[str, RuleSetting]:
+    settings = normalize_rule_settings(options.rules)
+    for style in options.styles:
+        _ = settings.setdefault(
+            _STYLE_RULE_IDS[style],
+            RuleSetting(level=RuleLevel.WARNING),
+        )
+    if options.max_line_length is not None:
+        _ = settings.setdefault(
+            "style/line-length",
+            RuleSetting(
+                level=RuleLevel.WARNING,
+                options={"max": options.max_line_length},
+            ),
+        )
+    return settings
+
+
+def lint_rules(options: LintOptions | None = None) -> tuple[LintRule, ...]:
+    """Return the effective built-in + extension rule catalogue."""
+
+    return _registry(options or LintOptions()).rules()
 
 
 def lint_text(
@@ -167,22 +271,35 @@ def lint_text(
     except PandocLintUnavailableError as error:
         raise RuntimeError(str(error)) from error
 
-    diagnostics = [
-        _pandoc_message_diagnostic(text, message) for message in pandoc.messages
-    ]
+    registry = _registry(options)
+    settings = _effective_settings(options)
+    validate_rule_settings(registry, settings)
+    findings = [_pandoc_message_finding(text, message) for message in pandoc.messages]
     if pandoc.document is not None:
-        # The recursive JSON type is intentionally erased at this call boundary;
-        # lint_rules treats it structurally through the pandoc_lint helpers.
-        diagnostics.extend(
-            _explicit_rule_diagnostics(
-                text,
-                options,
-                source_path,
-                pandoc.document,
+        findings.extend(
+            run_registered_rules(
+                RuleContext(
+                    text=text,
+                    pandoc_document=pandoc.document,
+                    source_path=source_path,
+                    data=options.context,
+                ),
+                registry,
+                settings,
             )
         )
+    findings = apply_rule_policy(findings, registry, settings)
+    diagnostics = _diagnostics_from_findings(text, findings)
     diagnostics.sort(key=lambda item: (item.line, item.column, item.rule))
     return diagnostics
 
 
-__all__ = ("LintDiagnostic", "LintOptions", "Severity", "StyleRule", "lint_text")
+__all__ = (
+    "LintDiagnostic",
+    "LintOptions",
+    "RuleLevel",
+    "Severity",
+    "StyleRule",
+    "lint_rules",
+    "lint_text",
+)

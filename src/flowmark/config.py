@@ -42,6 +42,12 @@ class FlowmarkConfig:
     files_max_size: int | None = None
     respect_gitignore: bool | None = None
     force_exclude: bool | None = None
+    # Linting
+    lint_rules: dict[str, Any] | None = None
+    lint_plugins: list[str] | None = None
+    lint_context: dict[str, Any] | None = None
+    lint_max_line_length: int | None = None
+    lint_discover_plugins: bool | None = None
 
 
 # Config file search order (first match wins within each directory level)
@@ -55,6 +61,8 @@ _KEBAB_TO_SNAKE: dict[str, str] = {
     "files-max-size": "files_max_size",
     "respect-gitignore": "respect_gitignore",
     "force-exclude": "force_exclude",
+    "lint-max-line-length": "lint_max_line_length",
+    "lint-discover-plugins": "lint_discover_plugins",
 }
 
 _VALID_FIELDS = {f.name for f in fields(FlowmarkConfig)}
@@ -117,9 +125,34 @@ def load_config(config_path: Path) -> FlowmarkConfig:
 
 def _parse_config_data(data: dict[str, Any]) -> FlowmarkConfig:
     """Parse a flat or sectioned TOML dict into FlowmarkConfig."""
+    mapped: dict[str, Any] = {}
+
+    lint_value = data.get("lint")
+    if isinstance(lint_value, dict):
+        lint = cast(dict[str, Any], lint_value)
+        rules = lint.get("rules")
+        plugins = lint.get("plugins")
+        context = lint.get("context")
+        max_line_length = lint.get("max-line-length", lint.get("max_line_length"))
+        discover_plugins = lint.get("discover-plugins", lint.get("discover_plugins"))
+        if isinstance(rules, dict):
+            mapped["lint_rules"] = cast(dict[str, Any], rules)
+        if isinstance(plugins, list):
+            plugin_items = cast(list[object], plugins)
+            if all(isinstance(item, str) for item in plugin_items):
+                mapped["lint_plugins"] = cast(list[str], plugin_items)
+        if isinstance(context, dict):
+            mapped["lint_context"] = cast(dict[str, Any], context)
+        if isinstance(max_line_length, int):
+            mapped["lint_max_line_length"] = max_line_length
+        if isinstance(discover_plugins, bool):
+            mapped["lint_discover_plugins"] = discover_plugins
+
     # Flatten sections: [formatting] and [file-discovery] merge into top level
     flat: dict[str, Any] = {}
     for key, value in data.items():
+        if key == "lint":
+            continue
         if isinstance(value, dict):
             for sub_key, sub_value in cast(dict[str, Any], value).items():
                 flat[sub_key] = sub_value
@@ -127,7 +160,6 @@ def _parse_config_data(data: dict[str, Any]) -> FlowmarkConfig:
             flat[key] = value
 
     # Map kebab-case to snake_case
-    mapped: dict[str, Any] = {}
     for key, value in flat.items():
         snake_key = _KEBAB_TO_SNAKE.get(key, key.replace("-", "_"))
         if snake_key in _VALID_FIELDS:

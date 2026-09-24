@@ -536,6 +536,32 @@ verification-attribution helpers, not a Markdown grammar. Formatter normalizatio
 likewise not a lint diagnostic; use the formatter itself when canonical source spelling
 matters. The linter does not edit files.
 
+Rules are first-class named objects. `flowmark-lint --list-rules` lists the effective
+built-in and extension rule catalogue. Any rule can be disabled or have its severity
+overridden:
+
+```bash
+flowmark-lint --rule heading/increment=off README.md
+flowmark-lint --rule structure/heading-in-fenced-div=error README.md
+```
+
+The same policy can live in `.flowmark.toml`, `flowmark.toml`, or
+`pyproject.toml [tool.flowmark]`:
+
+```toml
+[lint.rules]
+"heading/increment" = "off"
+"structure/heading-in-fenced-div" = "error"
+"style/line-length" = { level = "warning", max = 100 }
+```
+
+Lint extensions register ordinary named rules through the public rule registry. Installed
+packages may expose the `flowmark.lint_rules` entry-point group; local/project extensions
+may be loaded explicitly with `--plugin module.name` or `--plugin path/to/plugin.py`.
+Extension rules receive the same Pandoc-authoritative `RuleContext` as built-ins. Optional
+external authority is supplied as JSON data with `--context context.json`, so a rule
+remains runnable from CLI/CI and does not become coupled to an editor process.
+
 Pure house-style policies are opt-in instead of being treated as Markdown correctness:
 
 ```bash

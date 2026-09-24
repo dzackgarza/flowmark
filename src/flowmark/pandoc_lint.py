@@ -15,7 +15,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import cast
 
-from flowmark.pandoc_dialect import PANDOC_FORMAT
+from flowmark.pandoc_dialect import PANDOC_LINT_FORMAT
 
 
 type PandocJson = (
@@ -98,7 +98,7 @@ def parse_pandoc_for_lint(text: str) -> PandocLintDocument:
     if pandoc is None:
         raise PandocLintUnavailableError("Pandoc is required for syntax-aware linting")
     completed = subprocess.run(
-        [pandoc, "-f", PANDOC_FORMAT, "-t", "json"],
+        [pandoc, "-f", PANDOC_LINT_FORMAT, "-t", "json"],
         input=text,
         text=True,
         capture_output=True,
