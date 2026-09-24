@@ -37,17 +37,33 @@ def _next_line(source: Source) -> str | None:
     return cast("str | None", source.next_line())
 
 
-# XXX Turn off Marko's parsing of block HTML.
-# Block parsing with comments or block elements has some counterintuitive issues:
-# https://github.com/frostming/marko/issues/202
-# Another solution might be to always put a newline after a closing block tag during
-# normalization, to avoid this confusion?
-# For now, just ignoring block tags.
 class CustomHTMLBlock(HTMLBlock):
+    """
+    An HTML comment that starts a block and ends a line.
+
+    Pandoc's `markdown` reads such a comment as one `RawBlock`, its line breaks
+    included, so it is kept verbatim rather than reflowed. This is CommonMark's HTML
+    block type 2, narrowed to where pandoc agrees: CommonMark also takes any text
+    after the `-->` into the block, but pandoc reads that text as a paragraph, so a
+    comment followed by text on its closing line stays paragraph text here.
+
+    The other CommonMark HTML block types are not read: a block started by an HTML
+    tag runs to the next blank line in CommonMark, while pandoc goes on reading
+    Markdown inside it (`markdown_in_html_blocks`); see also
+    https://github.com/frostming/marko/issues/202.
+    """
+
     @override
     @classmethod
     def match(cls, source: Source) -> int | bool:
-        return False
+        if not source.expect_re(r" {,3}<!--(?:(?!-->)[\s\S])*-->[ \t]*(?:\n|$)"):
+            return False
+        return super().match(source)
+
+    @override
+    @classmethod
+    def get_type(cls, snake_case: bool = False) -> str:
+        return "html_block" if snake_case else "HTMLBlock"
 
 
 class ExtendedParseInfo(NamedTuple):

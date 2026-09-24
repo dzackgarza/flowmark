@@ -332,7 +332,9 @@ def test_a_multiline_html_comment_block_is_kept_verbatim() -> None:
     `RawBlock` whose text includes the line breaks, so reflowing it changes that
     text. The README's generated-file banner is this shape (#41).
     """
-    source = "<!-- Generated from a file via\nscripts/gen.py.\n-->\n\n# Title\n\nText.\n"
+    source = (
+        "<!-- Generated from a file via\nscripts/gen.py.\n-->\n\n# Title\n\nText.\n"
+    )
 
     result = reformat_text(source, semantic=False, verify=True)
 
