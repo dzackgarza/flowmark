@@ -1,5 +1,5 @@
-<!-- Generated from docs/shared/flowmark-readme-shared.md via
-scripts/generate-python-readme.py.
+<!-- Generated from docs/shared/flowmark-readme-shared.md by `make readme`; edit that
+file, not this one.
 -->
 
 # flowmark

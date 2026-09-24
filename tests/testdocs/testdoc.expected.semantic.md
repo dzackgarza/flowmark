@@ -308,9 +308,8 @@ to $24,000, which means the tax benefit of buying is
 
 * When an investor is trying to get you to agree to a term you think is unfair, you need
   to protect your interests without sounding accusatory toward the investor: *“Sorry,
-  I’m just inexperienced, I read/was told that it’s not wise to
-  [term they want you to agree to].”*
-  [[Paul Graham, Y Combinator](http://paulgraham.com/fr.html)]
+  I’m just inexperienced, I read/was told that it’s not wise to [term they want you to
+  agree to].”* [[Paul Graham, Y Combinator](http://paulgraham.com/fr.html)]
 
 * When you want to test a VC’s interest to determine where to put your energy, you don’t
   want to sound desperate or pushy: *“I know that you’re not likely to give me a strong
@@ -1056,7 +1055,7 @@ And let's try some links with angle brackets.
 [^53]: <https://www.fastcompany.com/90216464/the-29-billion-battle-to-own-how-america-sleeps>
 
 [^217]: Testing - : Is Ketamine Contraindicated in Patients with Psychiatric Disorders?
-    - REBEL EM - more words - accessed April 24, 2025,
+    \- REBEL EM - more words - accessed April 24, 2025,
     <https://rebelem.com/is-ketamine-contraindicated-in-patients-with-psychiatric-disorders/>
 
 [^multiline]: The distinction between “hiring” and “recruiting” isn’t universally agreed
@@ -1830,7 +1829,7 @@ When Marko's GFM parser sees a table directly after paragraph text, it may parse
 table rows as paragraph content rather than a table element.
 The line wrapper must still preserve each table row on its own line.
 | Quarter | Revenue ($M) | YoY % | QoQ % | Segment A % | Segment B % | Geo: US % | Geo: Intl % |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+|---------|-------------|-------|-------|-------------|-------------|-----------|-------------|
 | Q1 2025 | 125.3 | +12% | +3% | 45% | 55% | 60% | 40% |
 | Q2 2025 | 131.7 | +15% | +5% | 46% | 54% | 58% | 42% |
 

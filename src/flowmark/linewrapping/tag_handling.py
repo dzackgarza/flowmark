@@ -12,7 +12,17 @@ The main concerns are:
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
+from enum import Enum
+from functools import cache
+from typing import NamedTuple, cast
 
+from marko import block
+from marko.ext.gfm import elements as gfm_elements
+from marko.parser import Parser
+from marko.source import Source
+
+from flowmark.formats.flowmark_parser import flowmark_parser
 from flowmark.linewrapping.atomic_patterns import (
     PAIRED_HTML_COMMENT,
     PAIRED_JINJA_COMMENT,
@@ -22,12 +32,6 @@ from flowmark.linewrapping.atomic_patterns import (
     SINGLE_JINJA_COMMENT,
     SINGLE_JINJA_TAG,
     SINGLE_JINJA_VAR,
-)
-from flowmark.linewrapping.block_heuristics import (
-    line_is_block_content,
-    line_is_list_item,
-    line_is_table_row,
-    normalize_table_separator,
 )
 from flowmark.linewrapping.protocols import LineWrapper
 
@@ -110,7 +114,7 @@ def denormalize_adjacent_tags(text: str) -> str:
     return _denormalize_tags_re.sub(remove_space, text)
 
 
-def _is_tag_only_line(line: str) -> bool:
+def is_tag_only_line(line: str) -> bool:
     """
     Check if a line contains only a tag (opening or closing), not inline tags in content.
 
@@ -150,6 +154,62 @@ def _is_tag_only_line(line: str) -> bool:
     return starts_tag and ends_tag
 
 
+@cache
+def _parser() -> Parser:
+    """flowmark's Markdown parser, built once."""
+    return flowmark_parser()
+
+
+def _blocks(lines: Sequence[str]) -> list[block.BlockElement]:
+    """The top-level blocks flowmark's parser reads in `lines`."""
+    # marko's `Parser.parse` (marko/parser.py, marko 2.2.2) without its inline
+    # pass: only block types are asked about here, and inline parsing is most of
+    # a parse's cost.
+    parser = _parser()
+    source = Source("\n".join(lines) + "\n")
+    source.parser = parser
+    document = cast("block.Document", parser.block_elements["Document"]())
+    with source.under_state(document):
+        return parser.parse_source(source)
+
+
+def _is_list_or_table(element: block.BlockElement) -> bool:
+    return isinstance(element, (block.List, gfm_elements.Table))
+
+
+def _is_list_item_line(line: str) -> bool:
+    """Whether the parser reads `line`, on its own, as the start of a list."""
+    return isinstance(_blocks([line])[0], block.List)
+
+
+def _table_length(lines: Sequence[str]) -> int:
+    """
+    How many of `lines`, from the first, the parser reads as one pipe table, or 0
+    if they do not open one.
+    """
+    # The header and delimiter rows alone decide whether a table opens here, so the
+    # whole run is parsed only when one does.
+    if not isinstance(_blocks(lines[:2])[0], gfm_elements.Table):
+        return 0
+    table = _blocks(lines)[0]
+    assert isinstance(table, gfm_elements.Table)
+    # Every row is a child of the table; the delimiter row is not.
+    return len(table.children) + 1
+
+
+def _run_between_tags(lines: Sequence[str], start: int, step: int) -> list[str]:
+    """
+    The lines from `start`, walking by `step` (1 or -1) until a blank or tag-only
+    line, in document order.
+    """
+    run: list[str] = []
+    i = start
+    while 0 <= i < len(lines) and lines[i].strip() and not is_tag_only_line(lines[i]):
+        run.append(lines[i])
+        i += step
+    return run if step > 0 else run[::-1]
+
+
 def preprocess_tag_block_spacing(text: str) -> str:
     """
     Preprocess text to ensure proper blank lines around block content within tags.
@@ -174,38 +234,34 @@ def preprocess_tag_block_spacing(text: str) -> str:
         - item 2
 
         {% /field %}
+
+    Whether the content beside a tag is a list or table is the parser's reading of
+    that content, taken up to the next blank or tag-only line.
     """
     lines = text.split("\n")
     result_lines: list[str] = []
 
     # Check if there are any tag-only lines in the text
-    has_tag_only_lines = any(_is_tag_only_line(line) for line in lines)
+    has_tag_only_lines = any(is_tag_only_line(line) for line in lines)
     if not has_tag_only_lines:
         return text
 
     for i, line in enumerate(lines):
         # Check if we need to add a blank line BEFORE this line
-        if i > 0:
-            prev_line = lines[i - 1]
-            prev_is_empty = prev_line.strip() == ""
-
-            # Case 1: Previous line is a tag-only line, current line is block content
+        if i > 0 and lines[i - 1].strip():
+            # Case 1: a tag-only line, then content that opens with a list or table
             # (need blank line after opening tag before list/table)
-            if (
-                not prev_is_empty
-                and _is_tag_only_line(prev_line)
-                and line_is_block_content(line)
-            ):
-                result_lines.append("")
+            if is_tag_only_line(lines[i - 1]):
+                after = _run_between_tags(lines, i, 1)
+                if after and _is_list_or_table(_blocks(after)[0]):
+                    result_lines.append("")
 
-            # Case 2: Previous line is block content, current line is a closing tag-only line
+            # Case 2: content that closes with a list or table, then a tag-only line
             # (need blank line after list/table before closing tag)
-            if (
-                not prev_is_empty
-                and line_is_block_content(prev_line)
-                and _is_tag_only_line(line)
-            ):
-                result_lines.append("")
+            if is_tag_only_line(line):
+                before = _run_between_tags(lines, i - 1, -1)
+                if before and _is_list_or_table(_blocks(before)[-1]):
+                    result_lines.append("")
 
         result_lines.append(line)
 
@@ -268,6 +324,59 @@ def _is_unindented_tag_line(line: str) -> bool:
     return line_starts_with_tag(line)
 
 
+class _SegmentKind(Enum):
+    text = "text"
+    list_item = "list_item"
+    table = "table"
+
+
+class _Segment(NamedTuple):
+    """Consecutive lines of a paragraph's text that are wrapped, or kept, together."""
+
+    lines: list[str]
+    kind: _SegmentKind
+
+    @property
+    def is_block(self) -> bool:
+        return self.kind is not _SegmentKind.text
+
+
+def _segments(lines: Sequence[str], has_tags: bool) -> list[_Segment]:
+    """
+    Split a paragraph's lines where a tag or a block begins or ends.
+
+    A run of lines the parser reads as a pipe table is always a segment of its own:
+    a row must never be wrapped. When tags are present, so is each line the parser
+    reads as a list item.
+    """
+    segments: list[_Segment] = []
+    i = 0
+    while i < len(lines):
+        table_length = _table_length(lines[i:])
+        if table_length:
+            segments.append(
+                _Segment(list(lines[i : i + table_length]), _SegmentKind.table)
+            )
+            i += table_length
+            continue
+        line = lines[i]
+        if has_tags and _is_list_item_line(line):
+            segments.append(_Segment([line], _SegmentKind.list_item))
+        elif (
+            segments
+            and segments[-1].kind is _SegmentKind.text
+            and not line_ends_with_tag(lines[i - 1])
+            # Only unindented tag lines are boundaries; indented ones are
+            # continuations (e.g., of a list item).
+            and not _is_unindented_tag_line(line)
+        ):
+            segments[-1].lines.append(line)
+        else:
+            segments.append(_Segment([line], _SegmentKind.text))
+        i += 1
+    return segments
+
+
 def add_tag_newline_handling(
     base_wrapper: LineWrapper,
 ) -> LineWrapper:
@@ -325,131 +434,60 @@ def add_tag_newline_handling(
             result = _fix_multiline_opening_tag_with_closing(result)
             return result
 
-        # Check if there are any tags in the text - only apply list heuristics
+        # Check if there are any tags in the text - only split off list items
         # when tags are present to avoid changing normal markdown behavior.
         has_tags = any(
             line_ends_with_tag(line) or line_starts_with_tag(line) for line in lines
         )
 
-        # Group lines into segments that should be wrapped together
-        # A new segment starts when:
-        # - The previous line ends with a tag
-        # - The current line starts with a tag
-        # - The current or previous line is a table row (always — tables are structural)
-        # - (Only if tags present) The current or previous line is a list item
-        segments: list[str] = []
-        current_segment_lines: list[str] = []
+        segments = _segments(lines, has_tags)
 
-        for i, line in enumerate(lines):
-            is_first_line = i == 0
-            prev_ends_with_tag = not is_first_line and line_ends_with_tag(lines[i - 1])
-            # Only treat unindented tag lines as segment boundaries.
-            # Indented tag lines are continuations (e.g., list item continuations).
-            curr_starts_with_tag = _is_unindented_tag_line(line)
-
-            # Table rows are always segment boundaries — they are structural
-            # markdown elements that must never be line-wrapped.
-            # List items are only boundaries when tags are present.
-            curr_is_table = line_is_table_row(line)
-            prev_is_table = not is_first_line and line_is_table_row(lines[i - 1])
-            curr_is_block = curr_is_table or (has_tags and line_is_list_item(line))
-            prev_is_block = prev_is_table or (
-                has_tags and not is_first_line and line_is_list_item(lines[i - 1])
-            )
-
-            # Start a new segment if there's a tag or block content boundary
-            if (
-                prev_ends_with_tag
-                or curr_starts_with_tag
-                or curr_is_block
-                or prev_is_block
-            ):
-                if current_segment_lines:
-                    segments.append("\n".join(current_segment_lines))
-                    current_segment_lines = []
-
-            current_segment_lines.append(line)
-
-        # Don't forget the last segment
-        if current_segment_lines:
-            segments.append("\n".join(current_segment_lines))
-
-        # If we only have one segment, no tag boundaries were found
-        if len(segments) == 1:
+        # A single text segment means no tag or block boundaries were found
+        if len(segments) == 1 and segments[0].kind is _SegmentKind.text:
             result = base_wrapper(text, initial_indent, subsequent_indent)
             result = _fix_multiline_opening_tag_with_closing(result)
             return result
 
-        # Wrap each segment separately.
-        # Table row segments are passed through as-is (never wrapped) since
-        # pipe-delimited rows are structural markdown that must stay on one line.
+        # Wrap each segment separately. A table's rows are kept as written, one
+        # per line: wrapping would break a row, and the text of a paragraph is
+        # never rewritten into a table's normalized form.
         wrapped_segments: list[str] = []
         for i, segment in enumerate(segments):
-            is_first = i == 0
-            cur_initial_indent = initial_indent if is_first else subsequent_indent
-            segment_lines = segment.split("\n")
-            if all(line_is_table_row(line) for line in segment_lines if line.strip()):
-                # Table rows: preserve verbatim with appropriate indent,
-                # but normalize separator rows to 3 dashes for consistency.
-                indented_lines: list[str] = []
-                for j, line in enumerate(segment_lines):
-                    indent = cur_initial_indent if j == 0 else subsequent_indent
-                    normalized = (
-                        normalize_table_separator(line) if line.strip() else line
-                    )
-                    indented_lines.append(
-                        indent + normalized if normalized.strip() else normalized
-                    )
-                wrapped = "\n".join(indented_lines)
+            cur_initial_indent = initial_indent if i == 0 else subsequent_indent
+            if segment.kind is _SegmentKind.table:
+                wrapped = "\n".join(
+                    (cur_initial_indent if j == 0 else subsequent_indent) + line
+                    for j, line in enumerate(segment.lines)
+                )
             else:
-                wrapped = base_wrapper(segment, cur_initial_indent, subsequent_indent)
+                wrapped = base_wrapper(
+                    "\n".join(segment.lines), cur_initial_indent, subsequent_indent
+                )
             wrapped_segments.append(wrapped)
 
         # Rejoin segments, normalizing newlines around block content.
-        # When transitioning between a tag and block content (list/table),
-        # ensure exactly one blank line to prevent CommonMark lazy continuation.
-        result_parts: list[str] = []
-        for i, wrapped in enumerate(wrapped_segments):
-            if i == 0:
-                result_parts.append(wrapped)
-                continue
-
-            prev_segment = segments[i - 1]
-            curr_segment = segments[i]
-
-            # Check if we're transitioning to/from block content
-            prev_is_block = any(
-                line_is_block_content(line) for line in prev_segment.split("\n")
-            )
-            curr_is_block = any(
-                line_is_block_content(line) for line in curr_segment.split("\n")
-            )
-            prev_is_tag = (
-                line_ends_with_tag(prev_segment.split("\n")[-1])
-                if prev_segment
-                else False
-            )
-            # Only treat unindented tag lines as "tag" for blank line insertion.
-            # Indented tag lines are continuations and shouldn't trigger blank lines.
-            curr_is_tag = (
-                _is_unindented_tag_line(curr_segment.split("\n")[0])
-                if curr_segment
-                else False
-            )
-
-            # Ensure exactly one blank line between tag and block content
-            if (prev_is_tag and curr_is_block) or (prev_is_block and curr_is_tag):
-                # Add blank line separator
+        # Between a tag and block content (list/table), and between block content
+        # and a closing tag, ensure exactly one blank line to prevent CommonMark
+        # lazy continuation.
+        result_parts: list[str] = [wrapped_segments[0]]
+        for prev, curr, wrapped in zip(segments, segments[1:], wrapped_segments[1:]):
+            prev_is_tag = line_ends_with_tag(prev.lines[-1])
+            # Only unindented tag lines count as a tag here; indented ones are
+            # continuations. A closing tag counts indented or not: it is
+            # dedented below.
+            curr_is_tag = _is_unindented_tag_line(curr.lines[0])
+            curr_is_closing_tag = _is_closing_tag(curr.lines[0])
+            if (prev_is_tag and curr.is_block) or (
+                prev.is_block and (curr_is_tag or curr_is_closing_tag)
+            ):
                 result_parts.append("")  # Empty string creates blank line when joined
-                result_parts.append(wrapped)
-            else:
-                result_parts.append(wrapped)
+            result_parts.append(wrapped)
 
         result = "\n".join(result_parts)
 
-        # Post-process: ensure closing tags have proper spacing and no indentation.
+        # Post-process: closing tags take no indentation.
         # The Markdown parser may indent closing tags due to lazy continuation.
-        result = _fix_closing_tag_spacing(result)
+        result = _dedent_closing_tags(result)
 
         # Fix multi-line opening tags that have closing tags on the same line.
         # This works around a Markdoc parser bug (see GitHub issue #17).
@@ -471,39 +509,14 @@ def _is_closing_tag(line: str) -> bool:
     )
 
 
-def _fix_closing_tag_spacing(text: str) -> str:
+def _dedent_closing_tags(text: str) -> str:
     """
-    Fix closing tag spacing for block content only.
-
-    When a closing tag follows block content (like a list item or table row),
-    the Markdown parser may indent it as list continuation. This function:
-    1. Adds a blank line before closing tags that follow block content
-    2. Strips any incorrect indentation from closing tags
-
-    Regular paragraph text before closing tags is NOT modified - no blank line
-    is added. The blank line is only needed to prevent CommonMark lazy
-    continuation for block elements.
+    Strip indentation from closing tags, which the Markdown parser may have
+    indented as list continuation.
     """
-    lines = text.split("\n")
-    fixed_lines: list[str] = []
-
-    for i, line in enumerate(lines):
-        if _is_closing_tag(line):
-            stripped = line.lstrip()
-            # Only add blank line before closing tag if previous line is block content
-            if i > 0 and fixed_lines:
-                prev_line = fixed_lines[-1]
-                prev_is_empty = prev_line.strip() == ""
-                prev_is_block = line_is_block_content(prev_line)
-                if not prev_is_empty and prev_is_block:
-                    # Add blank line before closing tag to prevent lazy continuation
-                    fixed_lines.append("")
-            # Add the closing tag without indentation
-            fixed_lines.append(stripped)
-        else:
-            fixed_lines.append(line)
-
-    return "\n".join(fixed_lines)
+    return "\n".join(
+        line.lstrip() if _is_closing_tag(line) else line for line in text.split("\n")
+    )
 
 
 # Pattern to detect closing delimiter of opening tag followed by a closing tag.

@@ -14,10 +14,11 @@ from flowmark.pandoc_verify import (
     SMART_QUOTES,
     UNBOLD_HEADING,
     MeaningChangedError,
+    block_indices,
     check_meaning_preserved,
     describe,
 )
-from flowmark.preflight import preflight
+from flowmark.preflight import MalformedInputError, preflight, rejected_math
 
 
 def reformat_text(
@@ -42,6 +43,10 @@ def reformat_text(
             document whose meaning changed. On by default; requires the pandoc
             binary on PATH. Markdown mode only.
         verify_label: How to name the document in a verification error.
+
+    Raises:
+        MalformedInputError: in Markdown mode, if the document has `$...$` meant as
+            math that pandoc reads as text (`rejected_math`).
     """
     if plaintext:
         # Plaintext mode
@@ -52,7 +57,14 @@ def reformat_text(
             word_splitter=get_html_md_word_splitter(),
         )
     else:
-        # Markdown mode
+        # Markdown mode. Math pandoc reads as text is an error in the document:
+        # formatting it would treat the author's TeX as prose.
+        rejected = rejected_math(text)
+        if rejected:
+            named = "; ".join(f"{verify_label}:{f.line}: {f.message}" for f in rejected)
+            raise MalformedInputError(
+                f"Refusing to write {verify_label}: {named}. The file is unchanged."
+            )
         result = fill_markdown(
             text,
             # A document is not a docstring: its common indentation is content.
@@ -77,9 +89,18 @@ def reformat_text(
                 applied = check_meaning_preserved(text, result, verify_label)
             except MeaningChangedError as changed:
                 # The gate can only ask "did flowmark break this?". Before answering
-                # yes, ask the other question -- "was this already broken?" -- because
-                # in #17 the answer was yes and the misattribution cost a bisection.
+                # yes, ask the other question -- "was this already broken?" -- of the
+                # block that changed. A suspect construct anywhere else in the
+                # document is not the cause, and naming it sends the reader to a
+                # line that is fine (#38).
                 findings = preflight(text)
+                if findings and changed.block is not None:
+                    blocks = block_indices(text, [f.line for f in findings])
+                    findings = [
+                        finding
+                        for finding, block in zip(findings, blocks, strict=True)
+                        if block == changed.block
+                    ]
                 if not findings:
                     raise
                 named = "; ".join(
@@ -93,6 +114,7 @@ def reformat_text(
                     f"looks ambiguous, so this is probably not a flowmark defect -- "
                     f"{named}{more}. Fix the input, or pass --no-verify to format anyway.",
                     detail=changed.detail,
+                    block=changed.block,
                 ) from changed
             # Asking for a normalization and getting it is not news; getting one
             # without asking is, so only the latter is reported.
@@ -207,9 +229,10 @@ def reformat_files(
     make_parents: bool = True,
     list_spacing: ListSpacing = ListSpacing.loose,
     verify: bool = True,
-) -> None:
+) -> int:
     """
-    Reformat multiple files with the same options.
+    Reformat multiple files with the same options, and return how many were left
+    unformatted because they were refused.
 
     Args:
         files: List of file paths to process, or ["-"] for stdin.
@@ -228,8 +251,11 @@ def reformat_files(
             parsed AST, and write nothing if it did. On by default (only applies
             to Markdown mode).
     """
-    if len(files) == 1 and files[0] == "-":
-        # Single stdin case - use original function
+    # Stdin, or one file with an output path: a single document with a single
+    # destination, so a refusal raises instead of being reported as a batch skip.
+    if len(files) == 1 and (
+        files[0] == "-" or (output and output != "-" and not inplace)
+    ):
         reformat_file(
             path=files[0],
             output=output,
@@ -245,7 +271,7 @@ def reformat_files(
             list_spacing=list_spacing,
             verify=verify,
         )
-        return
+        return 0
 
     # Multiple files case
     if not inplace and output and output != "-":
@@ -277,16 +303,16 @@ def reformat_files(
                 list_spacing=list_spacing,
                 verify=verify,
             )
-        except MeaningChangedError as e:
-            # The guard already protected this document (it was left
-            # byte-identical); a per-file refusal must not abort the batch.
+        except (MeaningChangedError, MalformedInputError) as e:
+            # The document was left byte-identical; a per-file refusal must not
+            # abort the batch.
             print(f"Warning: {e}", file=sys.stderr)
             refused += 1
     if refused:
         print(
             f"Warning: {refused} file{'s' if refused != 1 else ''} left unformatted "
-            "because reformatting would have changed the pandoc-parsed meaning "
-            "(see warnings above; each is a flowmark bug or ambiguous markdown "
-            "worth reporting).",
+            "(see warnings above: each names an error in the input, or a change to "
+            "the pandoc-parsed meaning that is a flowmark bug worth reporting).",
             file=sys.stderr,
         )
+    return refused

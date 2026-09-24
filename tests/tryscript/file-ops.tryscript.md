@@ -29,10 +29,11 @@ Another paragraph here.
 Use content that needs reformatting so the file is actually written (and backup created).
 
 ```console
-$ printf '# Test\nsome   text   here\n' > test-backup.md && flowmark --inplace test-backup.md && cat test-backup.md && test -f test-backup.md.orig && echo "backup exists"
+$ printf '# Test\nFirst sentence. Second sentence.\n' > test-backup.md && flowmark --inplace test-backup.md && cat test-backup.md && test -f test-backup.md.orig && echo "backup exists"
 # Test
 
-some text here
+First sentence.
+Second sentence.
 backup exists
 ```
 
@@ -57,20 +58,26 @@ $ printf '# Out\n\nSome output text.\n' | flowmark -o output.md - && cat output.
 Some output text.
 ```
 
-## FO4b: Output to file with direct file input currently errors
+## FO4b: Output to file with direct file input
 
 ```console
-$ flowmark -o output.md fixtures/content/simple.md 2>&1
-Error: Cannot specify output file when processing multiple files (use --inplace instead)
-? 1
+$ flowmark -o output.md fixtures/content/simple.md && cat output.md
+# Simple Document
+
+This is a basic paragraph with some text.
+
+Another paragraph here.
 ```
 
-## FO4c: Long `--output` flag with direct file input also errors
+## FO4c: Long `--output` flag with direct file input
 
 ```console
-$ flowmark --output output.md fixtures/content/simple.md 2>&1
-Error: Cannot specify output file when processing multiple files (use --inplace instead)
-? 1
+$ flowmark --output output-long.md fixtures/content/simple.md && cat output-long.md
+# Simple Document
+
+This is a basic paragraph with some text.
+
+Another paragraph here.
 ```
 
 ## FO5: Output to stdout (explicit dash)
@@ -112,10 +119,11 @@ Content of file B.
 ## FO8: Short alias `-i` performs in-place formatting with backup
 
 ```console
-$ printf '# Test\nsome   text   here\n' > test-short-alias.md && flowmark -i test-short-alias.md && cat test-short-alias.md && test -f test-short-alias.md.orig && echo "short inplace alias backup"
+$ printf '# Test\nFirst sentence. Second sentence.\n' > test-short-alias.md && flowmark -i test-short-alias.md && cat test-short-alias.md && test -f test-short-alias.md.orig && echo "short inplace alias backup"
 # Test
 
-some text here
+First sentence.
+Second sentence.
 short inplace alias backup
 ```
 

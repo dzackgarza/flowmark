@@ -18,21 +18,20 @@ import pytest
 from flowmark.pandoc_verify import MeaningChangedError
 from flowmark.reformat_api import reformat_file, reformat_files
 
-# Ambiguous markdown: an unescaped `|` from a linear system inside inline math,
-# in a pipe-table row (the #17 reporter's actual line). Pandoc already mis-parses
-# the row -- the three logical cells read as five -- so reflowing the table
-# shuffles the mis-split differently and verify correctly refuses.
+# Ambiguous markdown: a fence opened and never closed. Pandoc does not start a code
+# block without its closing fence and reads the lines as paragraphs; flowmark
+# closes the fence, so verify correctly refuses.
 #
-# This fixture was previously a paragraph followed by a tight list. That was a
-# live bug (#16), and pinning a test to a live bug means the test fails the day it
-# is fixed -- which is exactly what happened when the `lazy_list` normalization
-# landed. The refusal here is not a flowmark defect due to be fixed: the input is
-# genuinely ambiguous, so this document keeps refusing by design.
+# The fixture must be input that is wrong, not a live flowmark bug: a test pinned
+# to a live bug fails the day the bug is fixed.
 AMBIGUOUS = dedent(
     """\
-    | col | status | ref |
-    |---|---|---|
-    | $|-2K_{\\widetilde V}|=\\{C\\}$ generically | established | @sec:anti-bicanonical |
+    Intro.
+
+    ```python
+    x = 1
+
+    more   text   here
     """
 )
 

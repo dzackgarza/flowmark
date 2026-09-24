@@ -22,6 +22,7 @@ from flowmark.pandoc_verify import (
     LAZY_LIST,
     LIST_SPACING,
     SMART_QUOTES,
+    TAG_LINE_SPLIT,
     UNBOLD_HEADING,
     MeaningChangedError,
     PandocUnavailableError,
@@ -151,6 +152,15 @@ NORMALIZATION_CONTRACT: tuple[NormalizationContract, ...] = (
         ),
     ),
     NormalizationContract(
+        key=TAG_LINE_SPLIT,
+        positive=("- a\n<!--toc:end-->\n", "- a\n\n<!--toc:end-->\n"),
+        negative=("- a\nmore text\n", "- a\n\nmore text\n"),
+        negative_reason=(
+            "the line split out of the item is prose, not a tag: the item's text "
+            "lost words and a paragraph appeared"
+        ),
+    ),
+    NormalizationContract(
         key=HYPHEN_JOIN,
         positive=("the degree-\n2 Coble locus\n", "the degree-2 Coble locus\n"),
         negative=("the degree-2 Coble locus\n", "the degree- 2 Coble locus\n"),
@@ -236,6 +246,21 @@ def test_paragraph_then_tight_list_is_formattable() -> None:
 
 
 @pandocless
+def test_paragraph_then_nested_tight_list_is_formattable() -> None:
+    """
+    An indented sub-bullet under a lazy line is more of the same paragraph to
+    pandoc, so the list flowmark materializes may nest.
+    """
+    source = (
+        "**2. Fundamental matrix**\n"
+        "* Hard: `phi1..4` for this GKZ\n"
+        "* General: enclose the matrix by a truncated sum.\n"
+        "  * Needs: a coefficient growth estimate.\n"
+    )
+    reformat_text(source, verify=True)
+
+
+@pandocless
 def test_paragraph_then_tight_list_writes_the_file(tmp_path: Path) -> None:
     """
     The acceptance criterion as the reporter stated it: the file is written, not
@@ -249,6 +274,47 @@ def test_paragraph_then_tight_list_writes_the_file(tmp_path: Path) -> None:
     written = doc.read_text()
     assert written != LAZY_LIST_SOURCE
     assert "\n\n- Polynomial reduction backends" in written
+
+
+# A table of contents as markdown-toc tooling writes it: the closing marker is on
+# the line right after the last item. Pandoc reads the marker as a lazy
+# continuation of that item's text; CommonMark reads it as an HTML block after the
+# list, which is what the marker means and what flowmark writes.
+TOC_SOURCE = (
+    "<!--toc:start-->\n- [Intake](#intake)\n  - [Leads](#leads)\n<!--toc:end-->\n"
+)
+
+
+@pandocless
+def test_toc_end_marker_after_a_list_is_formattable() -> None:
+    result = reformat_text(TOC_SOURCE, semantic=True, verify=True)
+
+    assert result.endswith("- [Leads](#leads)\n\n<!--toc:end-->\n")
+
+
+# Markdoc tags wrapped around a tight list, with no blank lines. Pandoc reads all
+# three lines as one paragraph; flowmark writes a tag, a list, and a tag.
+MARKDOC_WRAPPED_LIST = "{% field %}\n- a\n- b\n{% /field %}\n"
+
+
+@pandocless
+def test_markdoc_tags_around_a_tight_list_verify() -> None:
+    result = reformat_text(MARKDOC_WRAPPED_LIST, verify=True)
+
+    assert result == "{% field %}\n\n- a\n\n- b\n\n{% /field %}\n"
+    # No list spacing is reported: the source has no list whose spacing changed.
+    assert set(check_meaning_preserved(MARKDOC_WRAPPED_LIST, result)) == {
+        LAZY_LIST,
+        TAG_LINE_SPLIT,
+    }
+
+
+@pandocless
+def test_prose_in_place_of_the_closing_tag_still_raises() -> None:
+    with pytest.raises(MeaningChangedError):
+        check_meaning_preserved(
+            "{% field %}\n- a\ntext\n", "{% field %}\n\n- a\n\ntext\n"
+        )
 
 
 def _many_block_document(count: int = 40) -> list[str]:
@@ -338,6 +404,11 @@ def test_mismatch_names_the_block_when_only_content_differs() -> None:
         pytest.param("# X\n", "## X\n", id="heading-level-changed"),
         # A real live defect (#11) must still be caught.
         pytest.param("H~2~O\n", "H~~2~~O\n", id="subscript-becomes-strikeout"),
+        # The tag-line carve-out folds in one direction only: a comment block
+        # pulled into the list item above it is still a change.
+        pytest.param(
+            "- a\n\n<!--x-->\n", "- a\n<!--x-->\n", id="comment-pulled-into-item"
+        ),
     ],
 )
 def test_changes_beyond_the_normalizations_still_fail(source: str, result: str) -> None:

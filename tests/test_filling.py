@@ -344,3 +344,15 @@ def test_standalone_wide_table() -> None:
     result_lines = result.strip().split("\n")
     table_lines = [line for line in result_lines if line.startswith("|")]
     assert len(table_lines) == 4  # header + separator + 2 data rows
+
+
+def test_semantic_breaks_without_a_width_collapse_runs_of_spaces() -> None:
+    """
+    Every mode normalizes the spaces between words; semantic line breaks with no
+    column limit, the CLI default, must too (#40).
+    """
+    result = fill_markdown(
+        "some   text   here. More   text.\n", semantic=True, width=0, dedent_input=False
+    )
+
+    assert result == "some text here.\nMore text.\n"

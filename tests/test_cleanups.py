@@ -139,6 +139,19 @@ def test_an_authored_space_after_a_hyphen_is_left_alone() -> None:
     assert "degree- 2" in result, result
 
 
+def test_a_join_beside_an_authored_hyphen_space_passes_verification() -> None:
+    """
+    One paragraph can hold both: a break after `semi-log-` that the cleanup closes
+    up, and a `post- cases` the author typed on one line, which it leaves alone.
+    The gate must accept exactly that result, not demand every `- x` be joined.
+    """
+    result = reformat_text(
+        "A semi-log-\nscale plot of the post- cases.\n", cleanups=True, verify=True
+    )
+
+    assert "semi-log-scale plot of the post- cases." in result, result
+
+
 def test_hyphen_join_requires_cleanups() -> None:
     """Without `-c` the faithful `SoftBreak` spacing stands."""
     result = fill_markdown(

@@ -5,7 +5,8 @@ from collections.abc import Callable
 from typing import Protocol
 
 from flowmark.linewrapping.protocols import LineWrapper
-from flowmark.linewrapping.sentence_split_regex import split_sentences_atomic
+from flowmark.linewrapping.atomic_patterns import TEMPLATE_TAG_PATTERNS
+from flowmark.linewrapping.sentence_split_regex import split_sentences_with_spans
 from flowmark.linewrapping.tag_handling import (
     add_tag_newline_handling,
     denormalize_adjacent_tags,
@@ -13,12 +14,21 @@ from flowmark.linewrapping.tag_handling import (
 from flowmark.linewrapping.text_filling import DEFAULT_WRAP_WIDTH
 from flowmark.linewrapping.text_wrapping import (
     DEFAULT_LEN_FUNCTION,
+    markdown_escape_word,
     wrap_paragraph,
     wrap_paragraph_lines,
 )
 
 DEFAULT_MIN_LINE_LEN = 20
 """Default minimum line length for sentence breaking."""
+
+
+def _escape_line_start(line: str, is_markdown: bool) -> str:
+    """Escape `line`'s first word if, at the start of a line, Markdown reads it as syntax."""
+    if not is_markdown:
+        return line
+    first, space, rest = line.partition(" ")
+    return markdown_escape_word(first) + space + rest
 
 
 class SentenceSplitter(Protocol):
@@ -28,9 +38,16 @@ class SentenceSplitter(Protocol):
 
 
 def split_sentences_no_min_length(text: str) -> list[str]:
-    # Atomic-aware: never break a sentence inside a link/code span/URL (e.g. a "St."
-    # inside link text must not trip the end-of-sentence heuristic).
-    return split_sentences_atomic(text, min_length=0)
+    # A link, code span or math span arrives with no whitespace in it (the renderer
+    # writes parsed elements `unbreakable`), so a "St." inside link text is not a word
+    # end and cannot trip the end-of-sentence heuristic. Tags have no parse node, so
+    # they are kept whole by pattern.
+    return [
+        span.text
+        for span in split_sentences_with_spans(
+            text, min_length=0, patterns=TEMPLATE_TAG_PATTERNS
+        )
+    ]
 
 
 _line_break_re = re.compile(r"\\\n|  \n")
@@ -123,13 +140,18 @@ def line_wrap_by_sentence(
     """
 
     def line_wrapper(text: str, initial_indent: str, subsequent_indent: str) -> str:
-        text = text.replace("\n", " ")
+        # Whitespace between words is spelling, normalized as every other mode does;
+        # whitespace inside a code span or math was hidden by the renderer.
+        text = re.sub(r"\s+", " ", text)
 
         sentences = split_sentences(text)
 
         # Handle width <= 0 as "semantic-only: split sentences, no column wrapping"
         if width <= 0:
-            result = "\n".join(s.strip() for s in sentences if s.strip())
+            result = "\n".join(
+                _escape_line_start(s.strip(), is_markdown) if index else s.strip()
+                for index, s in enumerate(s for s in sentences if s.strip())
+            )
             if initial_indent and result:
                 indented_lines = result.split("\n")
                 indented_lines[0] = initial_indent + indented_lines[0]
@@ -169,6 +191,10 @@ def line_wrap_by_sentence(
                 lines[-1] += " " + wrapped[0]
                 wrapped.pop(0)
 
+            # A sentence's first line is a first line to the wrapper, which does
+            # not escape it, but in the paragraph it follows a line break.
+            if lines and wrapped:
+                wrapped[0] = _escape_line_start(wrapped[0], is_markdown)
             lines.extend(wrapped)
 
             first_line = False

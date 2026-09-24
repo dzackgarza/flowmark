@@ -329,3 +329,113 @@ def test_missing_pandoc_frontmatter_resources_are_path_aware(tmp_path: Path) -> 
         "headers/missing.tex",
         "styles/missing.csl",
     }
+
+
+MATH_IN_PROSE = (
+    "Passage from bilinear form b: M⊗_R M→R on free M≅R^n to polynomial "
+    "b(x,x)∈R[x_0..x_{n-1}]; Lambert series \\sum a_n q^n/(1-q^n) and "
+    "Mobius inversion \\mu(n/d), graded \\[a_i\\].\n"
+)
+
+
+def _findings(source: str, rule: str) -> list[str]:
+    return [
+        source.splitlines()[d.line - 1][d.column - 1 : d.end_column - 1]
+        for d in lint_text(source)
+        if d.rule == rule and d.line == d.end_line
+    ]
+
+
+def test_tex_notation_outside_math_mode_is_reported() -> None:
+    """
+    Outside `$...$`, `_` is an emphasis delimiter (here marko and pandoc disagree
+    on whether `_R ... x_` is one span), and `\\sum` is raw TeX that pandoc drops
+    from HTML output. Each site is named where it stands.
+    """
+    assert _findings(MATH_IN_PROSE, "math/outside-math-mode") == [
+        "_R",
+        "^n",
+        "_0",
+        "_{n-1}",
+        "\\sum",
+        "_n",
+        "^n",
+        "^n",
+        "\\mu",
+    ]  # `\[a_i\]` is math: the dialect enables `tex_math_single_backslash`.
+
+
+def test_unicode_math_symbols_outside_math_mode_are_reported() -> None:
+    assert _findings(MATH_IN_PROSE, "math/unicode-symbol") == ["⊗", "→", "≅", "∈"]
+
+
+def test_an_unmatched_backtick_does_not_unprotect_later_code_spans() -> None:
+    """
+    A code span cannot cross a blank line or a table row, so a stray backtick in
+    one block must not pair with the first backtick of the next and turn every
+    later code span inside out.
+    """
+    source = (
+        "| a | b |\n| --- | --- |\n| stray ` | y |\n| `x_0` | `R^n` |\n\n"
+        "A stray ` backtick.\n\nThen `x_0 in R^n` in code.\n"
+    )
+    assert "math/outside-math-mode" not in rule_ids(source)
+
+
+def test_unicode_math_symbols_are_reported_in_code_and_math_too() -> None:
+    """Only a fence that names its language keeps Unicode: Lean's syntax uses it."""
+    source = (
+        "Code `x ∈ M`, math $α$.\n\n"
+        "```\nψ_p(∇): T → End(E)\n```\n\n"
+        "```lean\ntheorem t : ∀ n : ℕ, n = n := fun _ => rfl\n```\n"
+    )
+    assert _findings(source, "math/unicode-symbol") == ["∈", "α", "ψ", "∇", "→"]
+
+
+def test_headings_with_inline_math_or_code_are_still_headings() -> None:
+    """
+    A heading that contains `$...$` or a code span is a heading: its explicit and
+    automatic identifiers resolve fragments, and it counts for duplicates.
+    """
+    source = (
+        "## Plain $x\\to y$ heading {#custom-id}\n\n"
+        "## The `run_all` command\n\n"
+        "## Sets $A_i \\otimes B$ and $\\pi_1$\n\n"
+        "[x](#custom-id), [y](#the-run_all-command), "
+        "[z](#sets-a_i-otimes-b-and-pi_1)\n\n"
+        "## The `run_all` command\n"
+    )
+    rules = rule_ids(source)
+    assert "link/invalid-fragment" not in rules
+    assert "heading/duplicate" in rules
+
+
+def test_intraword_underscores_stay_in_heading_identifiers() -> None:
+    """Pandoc's `intraword_underscores` keeps `is_simple`'s `_` as text, and in the id."""
+    source = "## The is_simple check\n\n[a](#the-is_simple-check)\n"
+    assert "link/invalid-fragment" not in rule_ids(source)
+
+
+def test_a_fragment_after_bracketed_link_text_is_not_prose() -> None:
+    """Link text holding `$R[[t]]$` still ends in a destination, not prose."""
+    source = "## Operators on $R[[t]]$ and $\\partial_t$\n\n"
+    source += "- [Operators on $R[[t]]$](#operators-on-rt-and-partial_t)\n"
+    assert "math/outside-math-mode" not in rule_ids(source)
+
+
+def test_escaped_list_markers_are_not_math_delimiters() -> None:
+    """Flowmark writes `1\\)`, `A\\)` and `\\(1)` so a wrapped line is not a list."""
+    source = "- Bounds (Thms. 3.4, App.\n  A\\) give enclosures, step\n  \\(1) holds.\n"
+    assert "math/backslash-delimiter" not in rule_ids(source)
+
+
+def test_math_notation_rules_are_quiet_on_prose_code_math_and_urls() -> None:
+    source = (
+        "Prose with an em dash — and is_simple, __init__, snake_case_name.\n\n"
+        "Pandoc sub/superscript: H~2~O and x^2^. Emphasis: _word_ and *word*.\n\n"
+        "Math $M \\otimes_R M \\to R$, $x_{n-1}$, and code `x_0 in R^n`.\n\n"
+        "See https://example.com/a_b/x_1 and [doc](notes/file_1.md).\n"
+    )
+    rules = rule_ids(source)
+    assert "math/outside-math-mode" not in rules
+    assert "math/unicode-symbol" not in rules

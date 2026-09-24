@@ -5,7 +5,10 @@ from collections.abc import Callable
 from functools import cache
 from typing import Protocol
 
-from flowmark.linewrapping.atomic_patterns import ATOMIC_PATTERNS, iter_atomic_words
+from flowmark.linewrapping.atomic_patterns import (
+    TEMPLATE_TAG_PATTERNS,
+    iter_atomic_words,
+)
 from flowmark.linewrapping.tag_handling import (
     denormalize_adjacent_tags,
     normalize_adjacent_tags,
@@ -39,15 +42,15 @@ class _HtmlMdWordSplitter:
       rules, converts line breaks to spaces per CommonMark spec
     - Line wrapping (this code): Decides where to break lines in source text
 
-    Splits on whitespace via `iter_atomic_words`, which treats all atomic constructs
-    (template tags, code spans, markdown links, HTML tags) as indivisible tokens that are
-    never broken across lines.
+    Splits on whitespace via `iter_atomic_words`, which keeps template and HTML tags
+    whole. Code spans, math, raw TeX and links reach this already free of whitespace:
+    the renderer writes each parsed element `unbreakable`.
     """
 
     def __call__(self, text: str) -> list[str]:
         # Normalize adjacent tags so paired tags tokenize as separate words.
         text = normalize_adjacent_tags(text)
-        return [word.text for word in iter_atomic_words(text, ATOMIC_PATTERNS)]
+        return [word.text for word in iter_atomic_words(text, TEMPLATE_TAG_PATTERNS)]
 
 
 @cache
@@ -63,20 +66,26 @@ def get_html_md_word_splitter() -> WordSplitter:
 # example), blockquotes (> ), headings (#, ##, etc.).
 _md_specials_pat = re.compile(r"^([-*+>]|#+)$")
 
-# Separate pattern to specifically find the numbered list cases for targeted escaping
-_md_numeral_pat = re.compile(r"^[0-9]+[.)]$")
+# Ordered-list markers as pandoc's `markdown` reads them at the start of a line inside
+# a list item (pandoc manual, "Ordered lists": `fancy_lists`, `example_lists`, and
+# `startnum`): a number, a lowercase letter, or `#`, before `.` or `)`; an uppercase
+# letter before `)` (before `.` it needs two spaces, which a wrap never leaves).
+_md_numeral_pat = re.compile(r"^(?:[0-9]+|[a-z]|#)[.)]$|^[A-Z]\)$")
+# The same markers enclosed in parentheses, and example-list labels: `(1)`, `(a)`, `(@)`.
+_md_enclosed_numeral_pat = re.compile(r"^\((?:[0-9]+|[A-Za-z]|@[\w-]*)\)$")
 
 
 def markdown_escape_word(word: str) -> str:
     """
     Prepends a backslash to a word if it matches markdown patterns
     that need escaping at the start of a wrapped line.
-    For numbered lists (e.g., "1.", "1)"), inserts the backslash before the dot/paren.
+    For ordered-list markers ending in `.` or `)` ("1.", "a)"), inserts the backslash
+    before that character; for enclosed ones ("(1)", "(@)"), before the `(`.
     """
     if _md_numeral_pat.match(word):
         # Insert backslash before the `.` or `)`
         return word[:-1] + "\\" + word[-1]
-    elif _md_specials_pat.match(word):
+    elif _md_enclosed_numeral_pat.match(word) or _md_specials_pat.match(word):
         return "\\" + word
     return word
 

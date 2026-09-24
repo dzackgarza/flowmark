@@ -53,6 +53,7 @@ degrades when pandoc is missing: callers asking to verify get an error.
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -61,6 +62,7 @@ from itertools import combinations
 from typing import cast
 
 from flowmark.formats.frontmatter import split_frontmatter
+from flowmark.linewrapping.tag_handling import is_tag_only_line
 from flowmark.pandoc_dialect import PANDOC_FORMAT
 
 PandocJson = (
@@ -93,10 +95,15 @@ class MeaningChangedError(ValueError):
     """
 
     detail: str
+    block: int | None
+    """The 0-based top-level block of the source that pandoc reads differently."""
 
-    def __init__(self, message: str, detail: str = "") -> None:
+    def __init__(
+        self, message: str, detail: str = "", block: int | None = None
+    ) -> None:
         super().__init__(message)
         self.detail = detail
+        self.block = block
 
 
 def _pandoc_exe() -> str:
@@ -145,6 +152,27 @@ def pandoc_ast(markdown_text: str) -> list[PandocJson]:
     return _collect_blocks(_spawn_pandoc(_pandoc_exe()), markdown_text)
 
 
+def block_indices(markdown_text: str, lines: list[int]) -> list[int]:
+    """
+    The 0-based top-level block that each 1-based line of `markdown_text` is in.
+
+    Pandoc's `markdown` reader records no source positions, so a line's block is
+    found by parsing the text up to and including that line: the line belongs to
+    the last block of that prefix. The prefixes parse concurrently, a few at a time.
+    """
+    text_lines = markdown_text.split("\n")
+    pandoc_exe = _pandoc_exe()
+    batch = os.cpu_count() or 1
+    indices: list[int] = []
+    for start in range(0, len(lines), batch):
+        running = [
+            (_spawn_pandoc(pandoc_exe), "\n".join(text_lines[:line]) + "\n")
+            for line in lines[start : start + batch]
+        ]
+        indices += [len(_collect_blocks(proc, prefix)) - 1 for proc, prefix in running]
+    return indices
+
+
 def _pandoc_ast_pair(
     source: str, result: str
 ) -> tuple[list[PandocJson], list[PandocJson]]:
@@ -181,6 +209,25 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s*…\s*", "…", re.sub(r"\s+", " ", text))
 
 
+_TEX_COMMENT = re.compile(r"(?<!\\)%")
+
+
+def _canonical_math(node: dict[str, PandocJson]) -> PandocJson:
+    """
+    Collapse whitespace runs in a `Math` node's TeX to one space.
+
+    TeX reads the end of a line as a space and a run of spaces as one (The TeXbook,
+    chapter 8), so `a +\\nb` and `a + b` are the same formula; rewrapping a paragraph
+    turns the first into the second. A `%` comment is the exception -- it runs to
+    the end of the line, so joining that line would comment out what follows -- and
+    such a node is compared exactly.
+    """
+    kind, tex = cast("list[PandocJson]", node["c"])
+    if not isinstance(tex, str) or _TEX_COMMENT.search(tex):
+        return node
+    return {"t": "Math", "c": [kind, re.sub(r"\s+", " ", tex)]}
+
+
 def _canonical(node: PandocJson) -> PandocJson:
     """
     Rewrite `node` so that inline whitespace differences compare equal.
@@ -190,6 +237,8 @@ def _canonical(node: PandocJson) -> PandocJson:
     changed element type, a changed nesting, or changed words.
     """
     if isinstance(node, dict):
+        if node.get("t") == "Math":
+            return _canonical_math(node)
         return {key: _canonical(value) for key, value in node.items()}
     if not isinstance(node, list):
         return node
@@ -372,43 +421,53 @@ def _flatten_list_into_paragraph(
     per candidate marker set.
 
     Each marker is emitted surrounded by `Space`, which is what a line join between
-    the paragraph and the marker actually produces.  Items containing anything but
-    a single `Para`/`Plain` are refused: a lazy continuation cannot produce nested
-    blocks, so a list that has them was not made this way.
+    the paragraph and the marker actually produces.  An item may hold paragraphs
+    and nested lists: an indented sub-bullet under a lazy line is more of the same
+    paragraph to pandoc.  Any other block is refused, since a lazy continuation
+    cannot produce it.  One bullet character is tried for the whole nest.
     """
     para_inlines = para.get("c")
     if not isinstance(para_inlines, list):
         return []
-
-    items, marker_candidates = _list_items_and_markers(list_block)
     candidates: list[list[PandocJson]] = []
-    for markers in marker_candidates:
-        flat: list[PandocJson] = list(para_inlines)
-        usable = True
-        for marker, item in zip(markers, items, strict=False):
-            if not isinstance(item, list):
-                usable = False
-                break
-            flat.append({"t": "Space"})
-            flat.append({"t": "Str", "c": marker})
-            for inner in item:
-                if (
-                    not isinstance(inner, dict)
-                    or inner.get("t") not in _PARAGRAPH_BLOCKS
-                ):
-                    usable = False
-                    break
-                inner_inlines = inner.get("c")
-                if not isinstance(inner_inlines, list):
-                    usable = False
-                    break
+    for bullet in _BULLET_MARKERS:
+        flat = _flatten_list(list_block, bullet)
+        if flat is not None and [*para_inlines, *flat] not in candidates:
+            candidates.append([*para_inlines, *flat])
+    return candidates
+
+
+def _flatten_list(
+    list_block: dict[str, PandocJson], bullet: str
+) -> list[PandocJson] | None:
+    """`list_block` spelled as the inlines of lazy paragraph lines, or None."""
+    items, marker_candidates = _list_items_and_markers(list_block)
+    if not marker_candidates:
+        return None
+    markers = (
+        [bullet] * len(items)
+        if list_block.get("t") == "BulletList"
+        else marker_candidates[0]
+    )
+    flat: list[PandocJson] = []
+    for marker, item in zip(markers, items, strict=False):
+        if not isinstance(item, list):
+            return None
+        flat.append({"t": "Space"})
+        flat.append({"t": "Str", "c": marker})
+        for inner in item:
+            if not isinstance(inner, dict):
+                return None
+            inner_inlines = inner.get("c")
+            if inner.get("t") in _PARAGRAPH_BLOCKS and isinstance(inner_inlines, list):
                 flat.append({"t": "Space"})
                 flat.extend(inner_inlines)
-            if not usable:
-                break
-        if usable:
-            candidates.append(flat)
-    return candidates
+                continue
+            nested = _flatten_list(inner, bullet)
+            if nested is None:
+                return None
+            flat += nested
+    return flat
 
 
 def _collapse_lazy_lists_at_level(
@@ -447,18 +506,162 @@ def _collapse_lazy_lists_at_level(
     return out
 
 
-def _collapse_lazy_lists(before: PandocJson, after: PandocJson) -> PandocJson:
-    """Walk both trees in parallel, collapsing materialized lists wherever they align."""
+def _tag_line_inlines(block: PandocJson) -> list[PandocJson] | None:
+    """
+    The inlines `block` becomes when pandoc reads it as a lazy continuation line,
+    or None if `block` is not a tag-only line (`is_tag_only_line`).
+
+    An HTML comment alone on its line reads as a `RawBlock`; a Markdoc or Jinja tag
+    reads as a paragraph of text, which `_canonical` has merged into one `Str`.
+    """
+    if not isinstance(block, dict):
+        return None
+    content = block.get("c")
+    if block.get("t") == "RawBlock" and isinstance(content, list):
+        fmt, text = content
+        if isinstance(fmt, str) and isinstance(text, str) and is_tag_only_line(text):
+            return [{"t": "RawInline", "c": [fmt, text]}]
+        return None
+    if block.get("t") in _PARAGRAPH_BLOCKS and isinstance(content, list):
+        match content:
+            case [{"t": "Str", "c": str(text)}] if is_tag_only_line(text):
+                return content
+            case _:
+                return None
+    return None
+
+
+def _extend_last_paragraph(
+    block: PandocJson, inlines: list[PandocJson]
+) -> PandocJson | None:
+    """
+    `block` with `inlines` appended to its last paragraph, as a lazy continuation
+    line appends to the innermost open paragraph; None if `block` does not end in one.
+    """
+    if not isinstance(block, dict):
+        return None
+    kind, content = block.get("t"), block.get("c")
+    if kind in _PARAGRAPH_BLOCKS and isinstance(content, list):
+        paragraph: dict[str, PandocJson] = {
+            "t": kind,
+            "c": [*content, {"t": "Space"}, *inlines],
+        }
+        return paragraph
+    items = content
+    if kind == "OrderedList" and isinstance(content, list) and len(content) == 2:
+        items = content[1]
+    elif kind != "BulletList":
+        return None
+    if not isinstance(items, list) or not items or not isinstance(items[-1], list):
+        return None
+    last_item = items[-1]
+    if not last_item:
+        return None
+    extended = _extend_last_paragraph(last_item[-1], inlines)
+    if extended is None:
+        return None
+    new_items: list[PandocJson] = [*items[:-1], [*last_item[:-1], extended]]
+    rebuilt: dict[str, PandocJson] = {"t": kind, "c": new_items}
+    if kind == "OrderedList" and isinstance(content, list):
+        rebuilt["c"] = [content[0], new_items]
+    return rebuilt
+
+
+def _fold_tag_lines_at_level(
+    before: list[PandocJson], after: list[PandocJson]
+) -> list[PandocJson]:
+    """
+    Rewrite `after` so a list followed by tag-only blocks becomes the single list
+    `before` has there -- but only when folding them back into the list's last
+    paragraph reproduces `before` exactly.
+
+    The list may itself be one that flowmark made out of a lazy paragraph
+    continuation (`{% field %}` / `- a` / `{% /field %}` is one paragraph to
+    pandoc). Then `before` has a paragraph where `after` has a paragraph and the
+    list, and the fold is accepted when flattening the folded list into that
+    paragraph reproduces it. The flattening itself stays `LAZY_LIST`'s, which runs
+    after this, so both opinions are reported.
+    """
+    out: list[PandocJson] = []
+    before_index = 0
+    after_index = 0
+    while after_index < len(after):
+        original = before[before_index] if before_index < len(before) else None
+        block = after[after_index]
+        folded, candidate = _fold_tag_run(
+            after, after_index, lambda folded: _canonical(folded) == original
+        )
+        if folded:
+            out.append(original)
+            after_index += 1 + folded
+            before_index += 1
+            continue
+        if (
+            isinstance(block, dict)
+            and isinstance(original, dict)
+            and block.get("t") in _PARAGRAPH_BLOCKS
+            and original.get("t") in _PARAGRAPH_BLOCKS
+        ):
+            para = block
+            wanted = _canonical(original.get("c"))
+
+            def flattens_to_original(list_block: PandocJson) -> bool:
+                return isinstance(list_block, dict) and any(
+                    _canonical(flat) == wanted
+                    for flat in _flatten_list_into_paragraph(para, list_block)
+                )
+
+            folded, candidate = _fold_tag_run(
+                after, after_index + 1, flattens_to_original
+            )
+            if folded:
+                out += [block, _canonical(candidate)]
+                after_index += 2 + folded
+                before_index += 1
+                continue
+        out.append(block)
+        after_index += 1
+        before_index += 1
+    return out
+
+
+def _fold_tag_run(
+    after: list[PandocJson], start: int, accept: Callable[[PandocJson], bool]
+) -> tuple[int, PandocJson]:
+    """
+    Fold the tag-only blocks after `after[start]` into its last paragraph, one at a
+    time, and return the longest fold `accept` takes (0 and None for none).
+    """
+    if start >= len(after):
+        return 0, None
+    candidate: PandocJson | None = after[start]
+    best: tuple[int, PandocJson] = (0, None)
+    for offset, block in enumerate(after[start + 1 :], start=1):
+        inlines = _tag_line_inlines(block)
+        if inlines is None or candidate is None:
+            break
+        candidate = _extend_last_paragraph(candidate, inlines)
+        if candidate is not None and accept(candidate):
+            best = (offset, candidate)
+    return best
+
+
+def _walk_levels(
+    at_level: Callable[[list[PandocJson], list[PandocJson]], list[PandocJson]],
+    before: PandocJson,
+    after: PandocJson,
+) -> PandocJson:
+    """Walk both trees in parallel, rewriting each of `after`'s node lists with `at_level`."""
     if isinstance(before, dict) and isinstance(after, dict):
         return {
-            key: _collapse_lazy_lists(before.get(key), value)
+            key: _walk_levels(at_level, before.get(key), value)
             for key, value in after.items()
         }
     if isinstance(before, list) and isinstance(after, list):
-        collapsed = _collapse_lazy_lists_at_level(before, after)
+        rewritten = at_level(before, after)
         return [
-            _collapse_lazy_lists(before[index] if index < len(before) else None, item)
-            for index, item in enumerate(collapsed)
+            _walk_levels(at_level, before[index] if index < len(before) else None, item)
+            for index, item in enumerate(rewritten)
         ]
     return after
 
@@ -481,6 +684,15 @@ LAZY_LIST = "lazy_list"
 Never requested: no flag asks for it, so it is always reported.  The author wrote
 bullets under a paragraph line and pandoc's dialect read them as prose; flowmark
 gives them the list they drew, and says so.
+"""
+
+TAG_LINE_SPLIT = "tag_line_split"
+"""Identifier for moving a tag-only line out of the list item above it.
+
+Never requested, so it is always reported.  An HTML comment or Markdoc tag on the
+line right after a list item is that item's text to pandoc and a block of its own
+to CommonMark.  The block is what a `<!--toc:end-->` marker or a closing
+`{% /tag %}` means, so flowmark writes it as one (`preprocess_tag_block_spacing`).
 """
 
 Normalization = Callable[[PandocJson, PandocJson], tuple[PandocJson, PandocJson]]
@@ -529,53 +741,83 @@ formatter does, and a rule the formatter applies but the gate refuses is a docum
 that cannot be written.  `test_hyphen_join_scope_matches_the_cleanup` pins them.
 """
 
-_HYPHEN_SPACE = re.compile(r"-\s+(\S)")
 
-
-def _join_hyphen_text(text: str) -> str:
-    """Close up `- x` to `-x` in one canonicalized `Str`, per #18's scope."""
-
-    def join(match: re.Match[str]) -> str:
-        following = match.group(1)
-        rest = text[match.end(1) :]
-        word = (
-            (following + rest).split()[0] if (following + rest).split() else following
-        )
-        if word.strip(".,;:!?").lower() in _SUSPENSION_WORDS:
-            return match.group(0)
-        if not (following.isdigit() or following.islower()):
-            return match.group(0)
-        return f"-{following}"
-
-    return _HYPHEN_SPACE.sub(join, text)
-
-
-def _join_hyphens(node: PandocJson) -> PandocJson:
+def _joinable_space(text: str, start: int, followed: bool) -> bool:
     """
-    Apply #18's join to a canonicalized tree.
+    Whether the space at `text[start]`, right after a hyphen, is in #18's scope.
+
+    `followed` says whether an inline comes after this `Str`: a trailing `- `
+    closes up only against one (`degree- ` then a `Math`), never at the end of a
+    paragraph.
+    """
+    rest = text[start:].lstrip()
+    if not rest:
+        return followed
+    if rest.split()[0].strip(".,;:!?").lower() in _SUSPENSION_WORDS:
+        return False
+    return rest[0].isdigit() or rest[0].islower()
+
+
+def _join_hyphen_text_toward(text: str, target: str, followed: bool) -> str:
+    """
+    `target` if it is `text` with some in-scope hyphen spaces closed up, else `text`.
+
+    The formatter joins only at line breaks, so a paragraph can hold a joined
+    `semi-log-scale` beside an authored `post- cases`. Which spaces were joined is
+    read off `target`; every other difference leaves `text` as it was, and the
+    comparison fails.
+    """
+    i = j = 0
+    while i < len(text):
+        if j < len(target) and text[i] == target[j]:
+            i += 1
+            j += 1
+        elif (
+            text[i] == " "
+            and text[i - 1 : i] == "-"
+            and _joinable_space(text, i, followed)
+        ):
+            i += 1
+        else:
+            return text
+    return target if j == len(target) else text
+
+
+def _join_hyphens_toward(node: PandocJson, target: PandocJson) -> PandocJson:
+    """
+    Apply #18's join to canonicalized `node` wherever `target` applied it.
 
     Two shapes, because `_canonical` has already merged `Str`/`Space` runs:
     the join is inside a single `Str` (`degree- 2`), or the `Str` ends with the
     hyphen and a space and the next inline is structure (`degree- ` followed by a
-    `Math`, from `degree-` / `$4$`).
+    `Math`, from `degree-` / `$4$`). Trees that differ in shape are left alone.
     """
-    if isinstance(node, dict):
-        return {key: _join_hyphens(value) for key, value in node.items()}
-    if not isinstance(node, list):
+    if (
+        isinstance(node, dict)
+        and isinstance(target, dict)
+        and node.keys() == target.keys()
+    ):
+        return {
+            key: _join_hyphens_toward(value, target[key]) for key, value in node.items()
+        }
+    if not (
+        isinstance(node, list) and isinstance(target, list) and len(node) == len(target)
+    ):
         return node
 
     out: list[PandocJson] = []
-    for index, item in enumerate(node):
-        if isinstance(item, dict) and item.get("t") == "Str":
-            text = str(item.get("c", ""))
-            joined = _join_hyphen_text(text)
-            # A trailing `- ` closes up only against a following inline: on its own
-            # it is a hyphen at the end of a paragraph, which nothing joins to.
-            if joined.endswith("- ") and index + 1 < len(node):
-                joined = joined[:-1]
-            out.append({"t": "Str", "c": joined})
+    for index, (item, goal) in enumerate(zip(node, target, strict=True)):
+        if (
+            isinstance(item, dict)
+            and isinstance(goal, dict)
+            and item.get("t") == goal.get("t") == "Str"
+        ):
+            text = _join_hyphen_text_toward(
+                str(item.get("c", "")), str(goal.get("c", "")), index + 1 < len(node)
+            )
+            out.append({"t": "Str", "c": text})
             continue
-        out.append(_join_hyphens(item))
+        out.append(_join_hyphens_toward(item, goal))
     return out
 
 
@@ -591,7 +833,7 @@ def _normalize_hyphen_join(
     the exact damage #18 says wrapping tools inflict, and the whole reason this
     cleanup exists.
     """
-    return _canonical(_join_hyphens(before)), after
+    return _canonical(_join_hyphens_toward(before, after)), after
 
 
 def _normalize_lazy_list(
@@ -606,13 +848,33 @@ def _normalize_lazy_list(
     formatter destroyed into prose -- has the extra structure on the `before` side,
     where nothing rewrites it, so it still mismatches and still raises.
     """
-    return before, _collapse_lazy_lists(before, after)
+    return before, _walk_levels(_collapse_lazy_lists_at_level, before, after)
+
+
+def _normalize_tag_line_split(
+    before: PandocJson, after: PandocJson
+) -> tuple[PandocJson, PandocJson]:
+    """
+    Fold tag-only blocks `after` split out of `before`'s last list item back in.
+
+    Directional, like `LAZY_LIST`: only `after` is rewritten, and only where the
+    fold reproduces `before` exactly, so a tag line the formatter pulled *into* a
+    list item still raises.
+    """
+    return before, _walk_levels(_fold_tag_lines_at_level, before, after)
 
 
 _NORMALIZATIONS: list[tuple[str, str, Normalization]] = [
     (UNBOLD_HEADING, "removed bold from a heading", _both(_unbold_headings)),
     (LIST_SPACING, "changed list spacing (tight/loose)", _both(_plain_to_para)),
     (SMART_QUOTES, "curled straight quotes", _normalize_quotes),
+    # Before LAZY_LIST: a tag split out of a list that was itself a lazy
+    # continuation must be folded back before the list can be flattened.
+    (
+        TAG_LINE_SPLIT,
+        "moved a comment or tag line out of the list item above it",
+        _normalize_tag_line_split,
+    ),
     (
         LAZY_LIST,
         "made a list out of a lazy paragraph continuation",
@@ -678,9 +940,12 @@ def _block_type(block: PandocJson) -> str:
     return str(block.get("t", "?")) if isinstance(block, dict) else "?"
 
 
-def _first_difference(before: list[PandocJson], after: list[PandocJson]) -> str:
+def _first_difference(
+    before: list[PandocJson], after: list[PandocJson]
+) -> tuple[int, str]:
     """
-    Locate the first block the two documents disagree about.
+    Locate the first block the two documents disagree about: its index, and a
+    description of what changed.
 
     The whole block list used to be printed on both sides.  That is unbounded in
     the document's size, and flowmark runs inside a `pre-commit` gate where the
@@ -699,16 +964,18 @@ def _first_difference(before: list[PandocJson], after: list[PandocJson]) -> str:
             continue
         before_type, after_type = _block_type(before_block), _block_type(after_block)
         if before_type == after_type:
-            return f"block {index}: {before_type} content differs"
-        return f"block {index}: {before_type} -> {after_type}"
+            return index, f"block {index}: {before_type} content differs"
+        return index, f"block {index}: {before_type} -> {after_type}"
 
     # Every block they have in common matched, so the documents differ in length:
     # one gained or lost trailing blocks.
     index = min(len(before), len(after))
     counts = f"{len(after)} blocks vs {len(before)}"
     if len(after) > len(before):
-        return f"block {index}: (absent) -> {_block_type(after[index])}, {counts}"
-    return f"block {index}: {_block_type(before[index])} -> (absent), {counts}"
+        return index, (
+            f"block {index}: (absent) -> {_block_type(after[index])}, {counts}"
+        )
+    return index, f"block {index}: {_block_type(before[index])} -> (absent), {counts}"
 
 
 def check_meaning_preserved(
@@ -755,7 +1022,9 @@ def check_meaning_preserved(
         )
 
     # Canonicalizing or normalizing a block list always yields a block list.
-    detail = _first_difference(
+    # The normalizations rewrite `before` only inside blocks, so its block indices
+    # are still the source document's.
+    block, detail = _first_difference(
         cast("list[PandocJson]", permissive_before),
         cast("list[PandocJson]", permissive_after),
     )
@@ -765,4 +1034,5 @@ def check_meaning_preserved(
         f"This is a flowmark bug -- please report it with the input document. To skip this "
         f"check and format anyway, pass --no-verify.",
         detail=detail,
+        block=block,
     )

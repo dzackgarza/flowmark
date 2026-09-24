@@ -46,14 +46,14 @@ uvx flowmark@latest README.md
 
 | Flag | Purpose |
 | --- | --- |
-| `--auto` | Format in-place with all improvements (semantic, smartquotes, ellipses). Requires file/directory args (use `.` for current directory) |
+| `--auto` | Format in-place with all improvements (semantic, cleanups, smartquotes, ellipses); a config file or explicit flag overrides each. Requires file/directory args (use `.` for current directory) |
 | `--inplace`, `-i` | Edit file in place |
-| `--semantic`, `-s` | Use semantic (sentence-based) line breaks |
+| `--semantic`, `-s` / `--no-semantic` | Semantic (sentence-based) line breaks, on by default; `--no-semantic` wraps to a column width |
 | `--smartquotes` | Convert straight to curly quotes |
 | `--ellipses` | Convert three dots to ellipsis character |
-| `--width WIDTH` | Line width (default: 88, use 0 to disable wrapping) |
+| `--width WIDTH` | Line width. When not given: no limit with semantic line breaks, 88 with `--no-semantic` or `--plaintext`. 0 disables wrapping |
 | `--plaintext`, `-p` | Process as plain text instead of Markdown |
-| `--list-spacing` | Control list spacing: preserve, loose, or tight |
+| `--list-spacing` | List spacing: loose (default), tight, or preserve |
 | `--list-files` | Print resolved file paths, don’t format (useful for debugging) |
 | `--extend-include PAT` | Additional file patterns (e.g., `*.mdx`) |
 | `--extend-exclude PAT` | Add to default exclusions (e.g., `drafts/`) |
@@ -71,7 +71,7 @@ git diff  # Review clean, semantic diffs
 ### Format LLM Output
 
 ```bash
-echo "$llm_output" | uvx flowmark@latest --semantic -
+echo "$llm_output" | uvx flowmark@latest -
 ```
 
 ### Batch Format
@@ -87,7 +87,7 @@ uvx flowmark@latest --list-files .
 ### Stdin/Stdout Processing
 
 ```bash
-cat document.md | uvx flowmark@latest --semantic > formatted.md
+cat document.md | uvx flowmark@latest - > formatted.md
 ```
 
 ### VS Code/Cursor (Run on Save)
@@ -108,9 +108,9 @@ Install the `emeraldwalk.runonsave` extension and add this to `settings.json`:
 
 ## Semantic Line Breaks
 
-Flowmark’s `--semantic` option breaks lines at sentence boundaries instead of at fixed
-widths. This produces cleaner git diffs because editing one sentence doesn’t cause
-cascading line changes throughout a paragraph.
+By default, Flowmark breaks lines at sentence boundaries instead of at fixed widths
+(`--no-semantic` restores fixed-width wrapping). This produces cleaner git diffs because
+editing one sentence doesn’t cause cascading line changes throughout a paragraph.
 
 Example transformation:
 ```
@@ -137,4 +137,7 @@ With `--smartquotes` and `--ellipses`:
 - Flowmark preserves Markdown structure (headers, code blocks, lists)
 - Code blocks and inline code are never modified
 - Works with stdin/stdout for pipeline integration
-- Creates `.bak` backup files with `--inplace` (use `--nobackup` to disable)
+- Creates `.orig` backup files with `--inplace` (use `--nobackup` to disable)
+- Settings come from explicit flags first, then a config file (`.flowmark.toml`,
+  `flowmark.toml`, or `[tool.flowmark]` in `pyproject.toml`), then the `--auto` preset,
+  then the built-in defaults; every on/off flag has a `--no-` form

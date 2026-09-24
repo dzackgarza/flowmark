@@ -15,6 +15,7 @@ by the caller.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -34,7 +35,8 @@ from flowmark.atomic_spans import (
     SINGLE_JINJA_VAR,
     iter_atomic_spans,
 )
-from flowmark.formats.flowmark_markdown import CustomRawInlineTex
+from flowmark.formats.flowmark_parser import CustomRawInlineTex
+from flowmark.linewrapping.atomic_patterns import INLINE_MATH
 from flowmark.lint_engine import (
     LintRule,
     RuleCheck,
@@ -244,6 +246,23 @@ _ROMANIZED_MATH_TEXT = re.compile(
 )
 _LEFT_RIGHT = re.compile(r"(?<!\\)\\(?P<kind>left|right)\b")
 
+# One block for inline scanning: a table row or heading line alone, or a run of
+# other non-blank lines.
+_INLINE_BLOCK = re.compile(
+    r"^[ \t]*[|#][^\n]*"
+    r"|^(?:[ \t]*[^\s|#][^\n]*(?:\n(?![ \t]*(?:\n|$|[|#]))|$))+",
+    re.MULTILINE,
+)
+_ANY_URL = re.compile(r"https?://[^\s<>)\]]+")
+_LINK_DESTINATION = re.compile(r"\]\((?P<dest>[^)\s]*)")
+# TeX written in prose: a control word (`\sum`), or a sub/superscript on a base
+# character (`x_0`, `x_{n-1}`, `R^n`, `H^*`). A script is one braced group or one
+# character that ends the token, so `is_simple` and pandoc's `x^2^` are left alone.
+_TEX_IN_PROSE = re.compile(
+    r"\\[A-Za-z]+"
+    r"|(?<=[^\s_^~`*\\])[_^](?:\{[^{}\n]*\}|[A-Za-z0-9*](?![A-Za-z0-9_^~]))"
+)
+
 _PROTECTED_INLINE_PATTERNS = (
     INLINE_CODE_SPAN,
     SINGLE_HTML_COMMENT,
@@ -398,9 +417,15 @@ def _build_protected_map(
             continue
         index += 1
 
-    for span in iter_atomic_spans(text, _PROTECTED_INLINE_PATTERNS):
-        if span.is_atomic:
-            _mark(protected, span.start, span.end)
+    # The inline patterns match across newlines, as a code span may within one
+    # paragraph. Scanning the whole document at once let a stray backtick pair with
+    # one in a later block and invert every code span after it, so each block --
+    # a run of lines between blank lines, with every table row and heading its
+    # own block -- is scanned separately.
+    for block in _INLINE_BLOCK.finditer(text):
+        for span in iter_atomic_spans(block.group(0), _PROTECTED_INLINE_PATTERNS):
+            if span.is_atomic:
+                _mark(protected, block.start() + span.start, block.start() + span.end)
 
     literal = _build_literal_protected_map(text, frontmatter, fences)
     for span in iter_pandoc_math_spans(text, blocked=literal):
@@ -611,6 +636,79 @@ def _line_number(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
+def _is_math_symbol(char: str) -> bool:
+    """A non-ASCII character that writes mathematics: `⊗`, `→`, `α`, `ℓ`, `²`, `𝔤`."""
+    if char.isascii():
+        return False
+    code = ord(char)
+    return (
+        unicodedata.category(char) == "Sm"
+        or 0x0370 <= code <= 0x03FF  # Greek and Coptic
+        or 0x2070 <= code <= 0x209F  # Superscripts and Subscripts
+        or 0x2100 <= code <= 0x214F  # Letterlike Symbols
+        or 0x1D400 <= code <= 0x1D7FF  # Mathematical Alphanumeric Symbols
+        or char in "²³¹"
+    )
+
+
+def _math_notation_findings(
+    text: str, protected: bytearray, fences: list[_Fence]
+) -> list[RuleFinding]:
+    """
+    Report mathematics written outside math mode, and Unicode math symbols.
+
+    Outside math, pandoc reads TeX notation as Markdown: `_` delimits emphasis,
+    and a bare control word such as `\\sum` is raw TeX, which HTML output drops.
+    Unicode symbols render as text, not as mathematics, and fail under pdflatex,
+    so they are reported everywhere -- prose, code spans and math alike -- except
+    in a fenced block that declares a language, whose own syntax may use them
+    (Lean's `∀` and `→`). `protected` covers code, math, raw TeX, comments and
+    front matter for the TeX-notation check.
+    """
+    in_language = bytearray(len(text))
+    for fence in fences:
+        if fence.info:
+            last = fence.closing or (
+                fence.content[-1] if fence.content else fence.opening
+            )
+            _mark(in_language, fence.opening.start, last.raw_end)
+    urls = bytearray(len(text))
+    for match in _ANY_URL.finditer(text):
+        _mark(urls, match.start(), match.end())
+    for match in _LINK_DESTINATION.finditer(text):
+        _mark(urls, match.start("dest"), match.end("dest"))
+
+    findings: list[RuleFinding] = []
+    for match in _TEX_IN_PROSE.finditer(text):
+        start, end = match.start(), match.end()
+        if _overlaps(protected, start, end) or _overlaps(urls, start, end):
+            continue
+        tex = match.group(0)
+        findings.append(
+            RuleFinding(
+                "math/outside-math-mode",
+                "warning",
+                f"`{tex}` is TeX outside math mode. Put the expression in `$…$`.",
+                start,
+                end,
+            )
+        )
+    for offset, char in enumerate(text):
+        if not _is_math_symbol(char) or in_language[offset] or urls[offset]:
+            continue
+        findings.append(
+            RuleFinding(
+                "math/unicode-symbol",
+                "warning",
+                f"Unicode math symbol `{char}` (U+{ord(char):04X}). Write it as TeX "
+                "inside `$…$`.",
+                offset,
+                offset + 1,
+            )
+        )
+    return findings
+
+
 def _overlaps(protected: bytearray, start: int, end: int) -> bool:
     if end <= start:
         return False
@@ -646,8 +744,11 @@ def _headings(
 
     consumed_setext_underlines: set[int] = set()
     for index, line in enumerate(lines):
+        # A line inside a fence or math block is protected from its first
+        # character. A heading that merely contains `$...$` or a code span is
+        # protected only in the middle, and is still a heading.
         if line.number in frontmatter_lines or _overlaps(
-            protected, line.start, line.end
+            protected, line.start, line.start + 1
         ):
             continue
         match = _ATX_HEADING.match(line.text)
@@ -668,7 +769,7 @@ def _headings(
             continue
         underline = lines[index + 1]
         if underline.number in frontmatter_lines or _overlaps(
-            protected, underline.start, underline.end
+            protected, underline.start, underline.start + 1
         ):
             continue
         underline_match = _SETEXT_UNDERLINE.match(underline.text)
@@ -693,13 +794,36 @@ def _headings(
     return result
 
 
+_VERBATIM_INLINE = re.compile(rf"`+(?P<code>[^`]+)`+|(?P<math>{INLINE_MATH.pattern})")
+
+
 def _plain_inline_text(text: str) -> str:
-    text = re.sub(r"`+([^`]+)`+", r"\1", text)
+    """
+    The text pandoc's `stringify` gives an inline run: markup removed, while code
+    and math keep their text verbatim (`$\\pi_1$` is `\\pi_1`, underscore included).
+    """
+    parts: list[str] = []
+    position = 0
+    for match in _VERBATIM_INLINE.finditer(text):
+        parts.append(_strip_inline_markup(text[position : match.start()]))
+        math = match.group("math")
+        parts.append(
+            match.group("code")
+            if math is None
+            else math.removeprefix("\\(").removesuffix("\\)").strip("$")
+        )
+        position = match.end()
+    parts.append(_strip_inline_markup(text[position:]))
+    return " ".join("".join(parts).split())
+
+
+def _strip_inline_markup(text: str) -> str:
     text = re.sub(r"!?(?:\[([^\]]*)\])\([^)]*\)", r"\1", text)
     text = re.sub(r"!?(?:\[([^\]]*)\])\[[^\]]*\]", r"\1", text)
-    text = re.sub(r"[*_~]", "", text)
-    text = re.sub(r"<[^>]+>", "", text)
-    return " ".join(text.split())
+    text = re.sub(r"[*~]", "", text)
+    # Pandoc's `intraword_underscores`: an `_` between alphanumerics is text.
+    text = re.sub(r"(?<![^\W_])_|_(?![^\W_])", "", text)
+    return re.sub(r"<[^>]+>", "", text)
 
 
 def _pandoc_attr(
@@ -1486,6 +1610,7 @@ def lint_rule_findings(
         ),
         *_pandoc_resource_findings(text, pandoc_document, source_path),
         *_mathematical_findings(text, pandoc_document),
+        *_math_notation_findings(text, protected, fences),
         *_style_findings(text, lines, fences, protected, styles, max_line_length),
     ]
     # Identical findings can arise when one malformed token is recognized by a
@@ -1696,6 +1821,16 @@ _BUILTIN_RULES = (
         "link/non-descriptive-text",
         "Link text is non-descriptive.",
         check=_correctness_check("link/non-descriptive-text"),
+    ),
+    LintRule(
+        "math/outside-math-mode",
+        "TeX notation written in prose instead of math.",
+        check=_correctness_check("math/outside-math-mode"),
+    ),
+    LintRule(
+        "math/unicode-symbol",
+        "Unicode math symbol written instead of TeX.",
+        check=_correctness_check("math/unicode-symbol"),
     ),
     LintRule(
         "math/bare-operator",

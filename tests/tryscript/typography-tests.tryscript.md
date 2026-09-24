@@ -187,5 +187,6 @@ It’s a test and they don’t know.
 
 ```console
 $ printf 'He said "hello." And then... nothing.\n' | flowmark --smartquotes --ellipses -
-He said “hello.” And then … nothing.
+He said “hello.”
+And then … nothing.
 ```

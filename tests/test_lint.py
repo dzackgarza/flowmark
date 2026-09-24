@@ -14,7 +14,7 @@ from flowmark.lint_cli import main
 def test_math_and_raw_tex_are_not_markdown_style_findings() -> None:
     source = (
         "Subscripts $x_i y_j$, \\(u_i v_j\\), and \\[a_i b_j\\] stay mathematical; "
-        "so does \\underline{x_i} and \\mathcal{M}_{1}.\n"
+        "so does the raw TeX argument in \\underline{x_i}.\n"
     )
     assert lint_text(source) == []
 
@@ -26,7 +26,9 @@ def test_formatter_normalization_is_not_a_lint_diagnostic() -> None:
 def test_linter_does_not_invent_math_from_unparsed_dollar_text() -> None:
     # Pandoc does not produce a Math node for this source. A linter cannot call
     # it "unterminated math" without independently inventing author intent.
-    assert lint_text("An unmatched $x_i expression.\n") == []
+    # The `_i` is still TeX notation in prose, and only that is reported.
+    rules = [item.rule for item in lint_text("An unmatched $x_i expression.\n")]
+    assert rules == ["math/outside-math-mode"]
 
 
 def test_multiline_pandoc_inline_math_is_not_reported_as_unterminated() -> None:

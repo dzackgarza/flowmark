@@ -1,4 +1,9 @@
-"""Tests for config file loading and merging."""
+"""
+Config file discovery, and the precedence of a config file against the CLI.
+
+Precedence is explicit flags > config file > `--auto` preset > built-in defaults.
+Each precedence test runs the real CLI in a directory holding a real config file.
+"""
 
 from __future__ import annotations
 
@@ -6,14 +11,28 @@ from pathlib import Path
 
 import pytest
 
-from flowmark.cli import Options
-from flowmark.config import (
-    FlowmarkConfig,
-    find_config_file,
-    load_config,
-    merge_cli_with_config,
+from flowmark.cli import main
+from flowmark.config import ConfigError, find_config_file, load_lint_config
+
+QUOTED = 'He said "hello" to them.\n'
+
+QUOTED_WITH_TIGHT_LIST = 'He said "hello" to them.\n\n- one\n- two\n'
+
+LONG_SENTENCE = (
+    "The quick brown fox jumps over the lazy dog again and again. It rests.\n"
 )
-from flowmark.formats.flowmark_markdown import ListSpacing
+
+
+def _format_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config: str, doc: str, *flags: str
+) -> str:
+    """Write `config` and `doc` into `tmp_path`, format the doc in place from there."""
+    (tmp_path / "flowmark.toml").write_text(config)
+    doc_path = tmp_path / "doc.md"
+    doc_path.write_text(doc)
+    monkeypatch.chdir(tmp_path)
+    assert main(["--inplace", "--nobackup", *flags, "doc.md"]) == 0
+    return doc_path.read_text()
 
 
 def test_find_config_flowmark_toml(tmp_path: Path) -> None:
@@ -58,53 +77,100 @@ def test_find_config_none_when_missing(tmp_path: Path) -> None:
     assert result is None
 
 
-def test_load_config_flowmark_toml(tmp_path: Path) -> None:
-    config_file = tmp_path / "flowmark.toml"
-    config_file.write_text(
-        "[formatting]\nwidth = 100\nsemantic = true\nsmartquotes = true\n"
+def test_explicit_flag_beats_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = _format_in_place(
+        tmp_path, monkeypatch, "smartquotes = true\n", QUOTED, "--no-smartquotes"
     )
-    config = load_config(config_file)
-    assert config.width == 100
-    assert config.semantic is True
-    assert config.smartquotes is True
-    # Unset fields should be None (not set)
-    assert config.cleanups is None
+    assert out == QUOTED
 
 
-def test_load_config_pyproject_toml(tmp_path: Path) -> None:
-    config_file = tmp_path / "pyproject.toml"
-    config_file.write_text("[tool.flowmark]\nwidth = 80\nellipses = true\n")
-    config = load_config(config_file)
-    assert config.width == 80
-    assert config.ellipses is True
-
-
-def test_load_config_kebab_case(tmp_path: Path) -> None:
-    config_file = tmp_path / "flowmark.toml"
-    config_file.write_text(
-        '[formatting]\nlist-spacing = "loose"\n\n[file-discovery]\nextend-exclude = ["drafts/"]\nfiles-max-size = 500000\nrespect-gitignore = false\nforce-exclude = true\n'
+def test_config_beats_auto_preset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The #19 config: `--auto` must not discard settings the config file states."""
+    out = _format_in_place(
+        tmp_path,
+        monkeypatch,
+        '[formatting]\nlist-spacing = "preserve"\nsmartquotes = false\n',
+        QUOTED_WITH_TIGHT_LIST,
+        "--auto",
     )
-    config = load_config(config_file)
-    assert config.list_spacing == "loose"
-    assert config.extend_exclude == ["drafts/"]
-    assert config.files_max_size == 500000
-    assert config.respect_gitignore is False
-    assert config.force_exclude is True
+    assert out == QUOTED_WITH_TIGHT_LIST
 
 
-def test_load_config_file_discovery_section(tmp_path: Path) -> None:
-    config_file = tmp_path / "flowmark.toml"
-    config_file.write_text(
-        '[file-discovery]\nextend-include = ["*.mdx", "*.markdown"]\nexclude = ["my_custom/"]\n'
+def test_auto_preset_beats_defaults_under_an_unrelated_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--auto` turns on smart quotes; the config's width still applies."""
+    out = _format_in_place(
+        tmp_path,
+        monkeypatch,
+        "width = 40\n",
+        QUOTED.removesuffix("\n") + " " + LONG_SENTENCE,
+        "--auto",
     )
-    config = load_config(config_file)
-    assert config.extend_include == ["*.mdx", "*.markdown"]
-    assert config.exclude == ["my_custom/"]
+    assert out == (
+        "He said “hello” to them.\n"
+        "The quick brown fox jumps over the lazy\n"
+        "dog again and again.\n"
+        "It rests.\n"
+    )
 
 
-def test_load_config_lint_rules_plugins_and_context(tmp_path: Path) -> None:
+def test_config_width_beats_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A config width wraps each sentence; it is not dropped by semantic breaks."""
+    out = _format_in_place(tmp_path, monkeypatch, "width = 40\n", LONG_SENTENCE)
+    assert out == (
+        "The quick brown fox jumps over the lazy\ndog again and again.\nIt rests.\n"
+    )
+
+
+def test_config_respect_gitignore_false_lists_ignored_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "flowmark.toml").write_text(
+        "[file-discovery]\nrespect-gitignore = false\n"
+    )
+    (tmp_path / ".gitignore").write_text("ignored/\n")
+    (tmp_path / "ignored").mkdir()
+    (tmp_path / "ignored" / "found.md").write_text("# Found\n")
+    monkeypatch.chdir(tmp_path)
+    assert main(["--list-files", "."]) == 0
+    listed = [Path(line).name for line in capsys.readouterr().out.split()]
+    assert listed == ["found.md"]
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        "colour = 60\n",
+        "[formatting]\nsemantic = true\nsmart-quotes = true\n",
+        "this is not toml [[[\n",
+        'width = "wide"\n',
+        'list-spacing = "bogus"\n',
+    ],
+)
+def test_bad_config_fails_without_formatting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config: str
+) -> None:
+    (tmp_path / "flowmark.toml").write_text(config)
+    doc_path = tmp_path / "doc.md"
+    doc_path.write_text(QUOTED)
+    monkeypatch.chdir(tmp_path)
+    assert main(["--inplace", "--smartquotes", "doc.md"]) == 1
+    assert doc_path.read_text() == QUOTED
+
+
+def test_lint_table_is_read_by_the_linter_and_ignored_by_the_formatter(
+    tmp_path: Path,
+) -> None:
     config_file = tmp_path / "flowmark.toml"
     config_file.write_text(
+        "[formatting]\nwidth = 88\n\n"
         "[lint]\n"
         'plugins = ["example_plugin"]\n'
         "max-line-length = 97\n"
@@ -117,185 +183,19 @@ def test_load_config_lint_rules_plugins_and_context(tmp_path: Path) -> None:
         "[lint.context]\n"
         'workspace = "/tmp/workspace"\n'
     )
-    config = load_config(config_file)
-    assert config.lint_plugins == ["example_plugin"]
-    assert config.lint_max_line_length == 97
-    assert config.lint_discover_plugins is False
-    assert config.lint_rules == {
+    lint = load_lint_config(config_file)
+    assert lint.plugins == ("example_plugin",)
+    assert lint.max_line_length == 97
+    assert lint.discover_plugins is False
+    assert lint.rules == {
         "heading/increment": "off",
         "custom/example": {"level": "error", "threshold": 3},
     }
-    assert config.lint_context == {"workspace": "/tmp/workspace"}
+    assert lint.context == {"workspace": "/tmp/workspace"}
 
 
-def test_load_config_partial(tmp_path: Path) -> None:
+def test_unknown_lint_key_is_rejected(tmp_path: Path) -> None:
     config_file = tmp_path / "flowmark.toml"
-    config_file.write_text("[formatting]\nwidth = 120\n")
-    config = load_config(config_file)
-    assert config.width == 120
-    # Everything else should be None (not set)
-    assert config.semantic is None
-    assert config.extend_exclude is None
-
-
-def _make_options(  # pyright: ignore[reportUnusedParameter]
-    files: list[str] | None = None,
-    output: str = "-",
-    width: int = 88,
-    plaintext: bool = False,
-    semantic: bool = False,
-    cleanups: bool = False,
-    smartquotes: bool = False,
-    ellipses: bool = False,
-    verify: bool = False,
-    inplace: bool = False,
-    nobackup: bool = False,
-    version: bool = False,
-    list_spacing: ListSpacing = ListSpacing.preserve,
-    extend_include: list[str] | None = None,
-    exclude: list[str] | None = None,
-    extend_exclude: list[str] | None = None,
-    respect_gitignore: bool = True,
-    force_exclude: bool = False,
-    list_files: bool = False,
-    files_max_size: int = 1_048_576,
-    skill_instructions: bool = False,
-    install_skill: bool = False,
-    agent_base: str | None = None,
-    docs: bool = False,
-) -> Options:
-    """Create an Options with defaults for all required fields."""
-    return Options(
-        files=files if files is not None else ["."],
-        output=output,
-        width=width,
-        plaintext=plaintext,
-        semantic=semantic,
-        cleanups=cleanups,
-        smartquotes=smartquotes,
-        ellipses=ellipses,
-        verify=verify,
-        inplace=inplace,
-        nobackup=nobackup,
-        version=version,
-        list_spacing=list_spacing,
-        extend_include=extend_include if extend_include is not None else [],
-        exclude=exclude,
-        extend_exclude=extend_exclude if extend_exclude is not None else [],
-        respect_gitignore=respect_gitignore,
-        force_exclude=force_exclude,
-        list_files=list_files,
-        files_max_size=files_max_size,
-        skill_instructions=skill_instructions,
-        install_skill=install_skill,
-        agent_base=agent_base,
-        docs=docs,
-    )
-
-
-def test_merge_no_config() -> None:
-    opts = _make_options(width=88, semantic=False)
-    result = merge_cli_with_config(
-        opts, config=None, is_auto=False, explicit_flags=set()
-    )
-    assert result.width == 88
-    assert result.semantic is False
-
-
-def test_merge_config_overrides_defaults() -> None:
-    opts = _make_options()
-    config = FlowmarkConfig(width=100, semantic=True)
-    result = merge_cli_with_config(
-        opts, config=config, is_auto=False, explicit_flags=set()
-    )
-    assert result.width == 100
-    assert result.semantic is True
-
-
-def test_merge_explicit_cli_overrides_config() -> None:
-    opts = _make_options(width=120)
-    config = FlowmarkConfig(width=100)
-    result = merge_cli_with_config(
-        opts, config=config, is_auto=False, explicit_flags={"width"}
-    )
-    assert result.width == 120
-
-
-def test_merge_auto_mode_overrides_formatting() -> None:
-    config = FlowmarkConfig(semantic=False, smartquotes=False)
-    opts = _make_options(
-        semantic=True,
-        cleanups=True,
-        smartquotes=True,
-        ellipses=True,
-        inplace=True,
-        nobackup=True,
-    )
-    result = merge_cli_with_config(
-        opts, config=config, is_auto=True, explicit_flags=set()
-    )
-    # --auto forces formatting settings on
-    assert result.semantic is True
-    assert result.smartquotes is True
-    assert result.cleanups is True
-    assert result.ellipses is True
-
-
-def test_merge_auto_mode_width_from_config() -> None:
-    config = FlowmarkConfig(width=100)
-    opts = _make_options(
-        width=88,
-        semantic=True,
-        cleanups=True,
-        smartquotes=True,
-        ellipses=True,
-        inplace=True,
-        nobackup=True,
-    )
-    result = merge_cli_with_config(
-        opts, config=config, is_auto=True, explicit_flags=set()
-    )
-    # Width should come from config even in auto mode
-    assert result.width == 100
-
-
-def test_merge_file_discovery_from_config() -> None:
-    config = FlowmarkConfig(extend_exclude=["vendor/"], files_max_size=500000)
-    opts = _make_options()
-    result = merge_cli_with_config(
-        opts, config=config, is_auto=False, explicit_flags=set()
-    )
-    assert result.extend_exclude == ["vendor/"]
-    assert result.files_max_size == 500000
-
-
-def test_merge_extend_include_from_config() -> None:
-    """Config extend_include should be applied when not explicitly set (fm-p6x5)."""
-    config = FlowmarkConfig(extend_include=["*.mdx", "*.markdown"])
-    opts = _make_options()
-    result = merge_cli_with_config(
-        opts, config=config, is_auto=False, explicit_flags=set()
-    )
-    assert result.extend_include == ["*.mdx", "*.markdown"]
-
-
-def test_load_config_malformed_toml(tmp_path: Path) -> None:
-    """Malformed TOML should return empty config, not crash (fm-lbku)."""
-    config_file = tmp_path / "flowmark.toml"
-    config_file.write_text("this is not valid toml [[[")
-    config = load_config(config_file)
-    # Should return default empty config
-    assert config.width is None
-    assert config.semantic is None
-
-
-def test_parse_config_warns_unknown_keys(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Unknown keys in config should produce a warning (fm-y9cx)."""
-    config_file = tmp_path / "flowmark.toml"
-    config_file.write_text("unknown_key = true\nwidth = 100\n")
-    config = load_config(config_file)
-    assert config.width == 100
-    captured = capsys.readouterr()
-    assert "unrecognized config key" in captured.err
+    config_file.write_text('[lint]\nplugin = ["typo"]\n')
+    with pytest.raises(ConfigError):
+        _ = load_lint_config(config_file)

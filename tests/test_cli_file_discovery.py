@@ -146,6 +146,40 @@ def test_explicit_file_still_works(
     assert "# Hello World" in out
 
 
+def test_one_file_with_output_writes_the_output(tmp_path: Path) -> None:
+    """`-o` names where one input goes; it was refused as a multi-file request."""
+    source = tmp_path / "in.md"
+    source.write_text("One sentence. Two sentence.\n")
+    target = tmp_path / "out.md"
+
+    assert main([str(source), "-o", str(target)]) == 0
+    assert target.read_text() == "One sentence.\nTwo sentence.\n"
+    assert source.read_text() == "One sentence. Two sentence.\n"
+
+
+def test_output_with_directory_of_one_file_writes_the_output(tmp_path: Path) -> None:
+    """The `-o` check counts resolved files, not arguments."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "only.md").write_text("One sentence. Two sentence.\n")
+    target = tmp_path / "out.md"
+
+    assert main([str(docs), "-o", str(target)]) == 0
+    assert target.read_text() == "One sentence.\nTwo sentence.\n"
+
+
+def test_output_with_directory_of_many_files_is_refused(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("One sentence. Two sentence.\n")
+    (docs / "b.md").write_text("Three sentence. Four sentence.\n")
+    target = tmp_path / "out.md"
+
+    assert main([str(docs), "-o", str(target)]) == 1
+    assert not target.exists()
+    assert (docs / "a.md").read_text() == "One sentence. Two sentence.\n"
+
+
 def test_stdin_still_works(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -217,9 +251,22 @@ def test_auto_list_files_no_args_errors(capsys: pytest.CaptureFixture[str]) -> N
     assert "--auto requires at least one file or directory argument" in err
 
 
-def test_explicit_flag_detection_with_default_value(tmp_path: Path) -> None:
-    """Passing --width 88 (the default) should still be detected as explicit (fm-4z3r)."""
-    from flowmark.cli import _parse_args  # pyright: ignore[reportPrivateUsage]
+def test_a_refused_file_fails_the_run_and_names_its_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """
+    A batch formats every file it can, leaves a malformed one unchanged, names the
+    error's line, and exits non-zero: a commit hook shows output only on failure.
+    """
+    good = tmp_path / "good.md"
+    good.write_text("One sentence here. Another one.\n")
+    bad = tmp_path / "bad.md"
+    malformed = "Intro line.\nThe bound is $ n + 1 $ here.\n"
+    bad.write_text(malformed)
 
-    _, explicit_flags, _ = _parse_args(["--width", "88", str(tmp_path)])
-    assert "width" in explicit_flags
+    code = main(["--inplace", "--nobackup", str(good), str(bad)])
+
+    assert code == 1
+    assert good.read_text() == "One sentence here.\nAnother one.\n"
+    assert bad.read_text() == malformed
+    assert f"{bad}:2:" in capsys.readouterr().err

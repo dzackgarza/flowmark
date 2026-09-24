@@ -46,11 +46,18 @@ def test_default_linter_is_quiet_on_pandoc_prose_lookalikes() -> None:
     # These are intentionally parser-looking strings.  The test first asserts
     # the canonical Pandoc reader accepts them without warnings/errors, then
     # requires the linter not to manufacture failed syntax from their spelling.
+    # TeX notation such as the `_i` in an unclosed `$x_i` is still reported, as
+    # notation outside math: that is a finding about the prose, not syntax.
     for source in (*PROSE_LOOKALIKES, *BOUNDARY_LOOKALIKES):
         parsed = parse_pandoc_for_lint(source + "\n")
         assert parsed.parsed, source
         assert parsed.messages == (), source
-        assert lint_text(source + "\n") == [], source
+        findings = [
+            item.rule
+            for item in lint_text(source + "\n")
+            if item.rule != "math/outside-math-mode"
+        ]
+        assert findings == [], source
 
 
 @pandocless

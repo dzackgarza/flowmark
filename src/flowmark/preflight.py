@@ -3,9 +3,8 @@ Cheap checks for input that was already ambiguous before flowmark touched it.
 
 When verification fails there are two different questions: *did flowmark break
 this?* and *was this already broken?*  The pandoc gate can only ask the first, so
-it answered the second one wrong -- in #17 the reporter's pipe table held an
-unescaped `|` from a linear system inside inline math, pandoc already mis-parsed
-the row, and the gate reported a flowmark bug.  That cost a bisection to attribute.
+on input that was already broken -- a fence never closed, a table row with more
+cells than its header -- it reports a flowmark bug that no report can fix.
 
 So these run only when verification has already failed, and only to say "here is
 something in your input that pandoc reads differently than you probably meant".
@@ -15,7 +14,8 @@ They never gate a run on their own and they never fire on a document that verifi
 every real flowmark defect as the user's fault, which is worse than the message it
 replaces.  Each check below is written to be quiet unless it is fairly sure, and
 `test_preflight_is_quiet_on_clean_input` is what holds that line.  Missing a
-malformed document costs today's message; a false positive costs the truth.
+malformed document costs today's message; a false positive costs the truth.  A
+check must state a rule pandoc actually applies, verified against pandoc itself.
 
 The same checks are importable on their own, so a document can be checked without
 reformatting it -- problem 3 in #17 was breaking the reporter's pandoc build before
@@ -26,6 +26,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+
+from flowmark.formats.flowmark_parser import split_pipe_table_row
+from flowmark.linewrapping.atomic_patterns import DOLLAR_MATH
+
+
+class MalformedInputError(ValueError):
+    """Raised when the document has an error flowmark will not format around."""
 
 
 @dataclass(frozen=True)
@@ -42,55 +49,30 @@ class Finding:
 _TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
 _DELIMITER_ROW = re.compile(r"^\s*\|(\s*:?-+:?\s*\|)+\s*$")
 
-# Inline math and code spans, for finding a bar *inside* one. Deliberately simple:
-# this runs on a single table row, where the constructs cannot span lines.
-_SPANS_IN_ROW = re.compile(r"\$[^$\n]+\$|`+[^`\n]+`+")
-
 _FENCE = re.compile(r"^ {,3}(`{3,}|~{3,})(.*)$")
 
 
-def _split_cells(row: str) -> list[str]:
-    """
-    The cells of a pipe-table row, as pandoc splits them: on every unescaped `|`.
-
-    This is the naive split *on purpose*. Its disagreement with the author's intent
-    is the defect being detected -- pandoc splits the same way, which is why the
-    reporter's three logical cells became five.
-    """
-    inner = row.strip().strip("|")
-    return re.split(r"(?<!\\)\|", inner)
-
-
 def _check_table(lines: list[str], start: int, end: int) -> list[Finding]:
-    """Check one run of consecutive table rows, `lines[start:end]`."""
-    findings: list[Finding] = []
-    expected = len(_split_cells(lines[start]))
+    """
+    Report each row of `lines[start:end]` whose cell count differs from the header's.
 
+    Pandoc pads a short row and drops the cells past the header's count, so the
+    text of an extra cell never reaches the output.
+    """
+    expected = len(split_pipe_table_row(lines[start]))
+    findings: list[Finding] = []
     for offset in range(start, end):
         row = lines[offset]
-        number = offset + 1
-
-        for span in _SPANS_IN_ROW.finditer(row):
-            if "|" in span.group(0):
-                findings.append(
-                    Finding(
-                        number,
-                        f"unescaped `|` inside {span.group(0)!r} in a pipe-table row; pandoc splits the row there, so this cell is read as two",
-                    )
-                )
-                break
-
         if _DELIMITER_ROW.match(row):
             continue
-        count = len(_split_cells(row))
-        if count != expected and not any(f.line == number for f in findings):
+        count = len(split_pipe_table_row(row))
+        if count != expected:
             findings.append(
                 Finding(
-                    number,
+                    offset + 1,
                     f"this row has {count} cells; the header row has {expected}",
                 )
             )
-
     return findings
 
 
@@ -132,33 +114,101 @@ def _fence_findings(lines: list[str]) -> list[Finding]:
     return [Finding(open_at + 1, f"fence `{fence}` is opened here and never closed")]
 
 
-def _math_findings(lines: list[str], fenced: frozenset[int]) -> list[Finding]:
-    """
-    Report a line with an odd number of `$` delimiters.
+_NOT_MATH = re.compile(rf"`+[^`\n]*`+|\\\$|{DOLLAR_MATH}")
 
-    Escaped `\\$` and lines inside a fenced code block are excluded, and so is a
-    lone `$` that is plainly currency -- a digit right after it with no closer.
-    Display math legitimately spans lines, so a line that is exactly `$$` is a
-    delimiter rather than an unterminated span.
+# A `$` pair that pandoc does not read as math only because of how it is delimited
+# (pandoc manual, "Math"): whitespace just inside a delimiter, or a digit right after
+# the closer. An opener followed by a digit is currency, not a delimiter.
+_REJECTED_MATH = re.compile(r"\$(?![\d$])(?P<body>[^$]+?)\$(?P<digit>\d)?")
+
+
+def _blank(match: re.Match[str]) -> str:
+    """The match with every character but a line break replaced by a space."""
+    return re.sub(r"[^\n]", " ", match.group(0))
+
+
+def _prose_paragraphs(lines: list[str]) -> tuple[list[list[int]], bool]:
     """
-    findings: list[Finding] = []
+    The 0-based line indices of each run of prose lines, and whether display math is
+    left open.
+
+    Lines inside a fenced code block and inside `$$` display math are not prose, and
+    a line that is exactly `$$` is a display-math delimiter.
+    """
+    fenced = _fenced_line_numbers(lines)
+    paragraphs: list[list[int]] = [[]]
     display_open = False
     for offset, line in enumerate(lines):
-        if offset in fenced:
+        if not (offset in fenced or display_open or line.strip() in ("", "$$")):
+            paragraphs[-1].append(offset)
             continue
-        if line.strip() == "$$":
+        paragraphs.append([])
+        if offset not in fenced and line.strip() == "$$":
             display_open = not display_open
+    return [p for p in paragraphs if p], display_open
+
+
+def _rejected_in(lines: list[str], paragraph: list[int]) -> list[Finding]:
+    text = _NOT_MATH.sub(_blank, "\n".join(lines[offset] for offset in paragraph))
+    findings: list[Finding] = []
+    for match in _REJECTED_MATH.finditer(text):
+        body = match.group("body")
+        if match.group("digit"):
+            reason = "a digit follows the closing `$`"
+        elif body[0].isspace() or body[-1].isspace():
+            reason = "there is a space just inside a `$`"
+        else:
             continue
-        if display_open:
-            continue
-        bare = re.sub(r"\\\$", "", re.sub(r"`+[^`\n]*`+", "", line))
-        if bare.count("$") % 2 == 0:
-            continue
-        if re.fullmatch(r"[^$]*\$\d[^$]*", bare):
-            continue  # a single price, not an opened span
+        line = paragraph[text.count("\n", 0, match.start())]
+        span = " ".join(match.group(0).split())
         findings.append(
-            Finding(offset + 1, "unterminated `$` math delimiter on this line")
+            Finding(
+                line + 1,
+                f"`{span}` is not math to pandoc because {reason}; "
+                f"write `${' '.join(body.split())}$` if it is math",
+            )
         )
+    return findings
+
+
+def rejected_math(text: str) -> list[Finding]:
+    """
+    Report each `$...$` that is meant as math but that pandoc reads as text.
+
+    Pandoc reads `$ x $` and `$x$1` as prose, so any TeX inside them becomes
+    emphasis or plain text. This is an error in the document, not something to
+    format around: `reformat_text` refuses a document with one.
+    """
+    lines = text.split("\n")
+    paragraphs, _display_open = _prose_paragraphs(lines)
+    return [f for p in paragraphs for f in _rejected_in(lines, p)]
+
+
+def _stray_dollars(lines: list[str], paragraph: list[int]) -> list[Finding]:
+    """
+    Lines of `paragraph` holding a `$` that pandoc reads as no math span.
+
+    The paragraph is matched as a whole, because inline math may continue onto the
+    next line. Code spans, escaped `\\$`, every span pandoc's rule (`DOLLAR_MATH`)
+    reads as math, and the pairs `rejected_math` reports are blanked first; a `$`
+    left before a digit is currency.
+    """
+    text = "\n".join(lines[offset] for offset in paragraph)
+    bare = _REJECTED_MATH.sub(_blank, _NOT_MATH.sub(_blank, text))
+    stray = {
+        paragraph[bare.count("\n", 0, match.start())]
+        for match in re.finditer(r"\$(?!\d)", bare)
+    }
+    return [
+        Finding(offset + 1, "unterminated `$` math delimiter on this line")
+        for offset in sorted(stray)
+    ]
+
+
+def _math_findings(lines: list[str]) -> list[Finding]:
+    """Report a `$` that opens no math span pandoc would read."""
+    paragraphs, display_open = _prose_paragraphs(lines)
+    findings = [f for p in paragraphs for f in _stray_dollars(lines, p)]
     if display_open:
         findings.append(Finding(len(lines), "unterminated `$$` display math"))
     return findings
@@ -194,10 +244,10 @@ def preflight(text: str) -> list[Finding]:
     say about it.
     """
     lines = text.split("\n")
-    fenced = _fenced_line_numbers(lines)
     findings = [
         *_table_findings(lines),
         *_fence_findings(lines),
-        *_math_findings(lines, fenced),
+        *rejected_math(text),
+        *_math_findings(lines),
     ]
     return sorted(findings, key=lambda finding: finding.line)

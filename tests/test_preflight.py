@@ -23,23 +23,31 @@ pandocless = pytest.mark.skipif(
 )
 
 
-# The reporter's actual line from #17: an unescaped `|` from a linear system inside
-# inline math, in a pipe-table row. Pandoc already mis-parses it -- the three logical
-# cells read as five, and the citation is swallowed -- so reflowing the table shuffles
-# the mis-split differently. Escaping the bars makes it verify clean on the first try.
-AMBIGUOUS_TABLE = "| col | status | ref |\n|---|---|---|\n| $|-2K_{\\widetilde V}|=\\{C\\}$ generically | established | @sec:anti-bicanonical |\n"
+# A fence that is opened and never closed. Pandoc does not start a code block
+# without its closing fence, so it reads the lines as paragraphs; flowmark closes
+# the fence, and the gate refuses. The input is what is wrong here.
+AMBIGUOUS_FENCE = "Intro.\n\n```python\nx = 1\n\nmore   text   here\n"
 
 
-def test_preflight_finds_a_bar_inside_inline_math_in_a_table_row() -> None:
-    findings = preflight(AMBIGUOUS_TABLE)
+def test_preflight_reads_a_bar_inside_a_span_as_cell_content() -> None:
+    """
+    Pandoc's `markdown` reader does not split a pipe-table cell at a `|` inside a
+    code span or `$...$` math, so these rows are well-formed, two cells each.
+    Reporting them sent the #17 reporter and a later user to "fix" input that was
+    correct -- and escaping the bar inside a code span changes the code's text.
+    """
+    rows = (
+        "| construct | status |\n|---|---|\n"
+        "| explicit `|X(F_{q^r})|` for `A^n` | proposed |\n"
+        "| $|-2K_{\\widetilde V}|=\\{C\\}$ generically | established |\n"
+    )
 
-    assert findings, "the reporter's row must be found"
-    assert findings[0].line == 3, "the row is named at its own line number"
-    assert "|" in findings[0].message
+    assert preflight(rows) == []
 
 
 def test_preflight_finds_a_row_whose_cell_count_disagrees() -> None:
-    findings = preflight("| a | b |\n|---|---|\n| one | two | three |\n")
+    """Pandoc drops the third cell, so its text never reaches the output."""
+    findings = preflight("| a | `b|c` |\n|---|---|\n| one | two | three |\n")
 
     assert [f.line for f in findings] == [3]
 
@@ -78,13 +86,32 @@ def test_verify_failure_on_ambiguous_input_does_not_blame_flowmark() -> None:
     """
     with pytest.raises(MeaningChangedError) as excinfo:
         reformat_text(
-            AMBIGUOUS_TABLE, semantic=True, verify=True, verify_label="doc.md"
+            AMBIGUOUS_FENCE, semantic=True, verify=True, verify_label="doc.md"
         )
 
     message = str(excinfo.value)
     assert "flowmark bug" not in message, message
     assert "doc.md:3" in message, message
     assert "ambiguous" in message.lower(), message
+
+
+@pandocless
+def test_a_finding_outside_the_changed_block_is_not_blamed() -> None:
+    """
+    The unterminated `$` in block 0 is real, but block 0 formats and verifies on
+    its own. The refusal comes from block 1, where marko reads `_R ... [x_` as one
+    emphasis span and pandoc does not. Naming block 0's finding as the cause sent
+    the writer to a line that was not the problem.
+    """
+    source = "The cost $x_1 grows with y.\n\nPassage a _R b [x_ c] d.\n"
+    assert [f.line for f in preflight(source)] == [1]
+
+    with pytest.raises(MeaningChangedError) as excinfo:
+        reformat_text(source, verify=True, verify_label="doc.md")
+
+    message = str(excinfo.value)
+    assert "flowmark bug" in message, message
+    assert "doc.md:1" not in message, message
 
 
 def test_verify_failure_on_clean_input_keeps_the_original_message(
@@ -126,3 +153,8 @@ def test_verify_failure_on_clean_input_keeps_the_original_message(
     message = str(excinfo.value)
     assert "flowmark bug" in message, message
     assert "ambiguous" not in message.lower(), message
+
+
+def test_preflight_accepts_inline_math_that_continues_on_the_next_line() -> None:
+    """Pandoc reads `$a +\\nb$` as one span; neither line is an unterminated one."""
+    assert preflight("A span $a +\nb$ across two lines.\n") == []

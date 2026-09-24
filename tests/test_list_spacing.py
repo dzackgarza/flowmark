@@ -4,8 +4,8 @@ Test list spacing behavior with different modes: preserve, loose, and tight.
 This test documents the expected behavior for blank line spacing in markdown lists,
 with control over tight vs loose list formatting.
 
-- preserve: Keep lists tight or loose as authored (default)
-- loose: Convert all lists to loose format (blank lines between items)
+- preserve: Keep lists tight or loose as authored
+- loose: Convert all lists to loose format (blank lines between items) (default)
 - tight: Convert all lists to tight format where possible
 """
 
@@ -14,7 +14,7 @@ from textwrap import dedent
 from flowmark.formats.flowmark_markdown import ListSpacing
 from flowmark.linewrapping.markdown_filling import fill_markdown
 
-# --- Tests for preserve mode (default) ---
+# --- Tests for preserve mode ---
 
 
 def test_tight_list_preserved() -> None:

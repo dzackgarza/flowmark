@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import TypedDict, cast
 
-from flowmark.config import FlowmarkConfig, find_config_file, load_config
+from flowmark.config import ConfigError, LintConfig, find_config_file, load_lint_config
 from flowmark.file_resolver import FileResolver, FileResolverConfig
 from flowmark.lint import LintOptions, RuleLevel, StyleRule, lint_rules, lint_text
 from flowmark.lint_engine import LintRule
@@ -161,28 +161,24 @@ def _context(path: str | None, parser: argparse.ArgumentParser) -> dict[str, obj
 
 def _options(
     args: argparse.Namespace,
-    config: FlowmarkConfig,
+    config: LintConfig,
     parser: argparse.ArgumentParser,
 ) -> LintOptions:
-    rules = dict(config.lint_rules or {})
+    rules = dict(config.rules)
     rules.update(_rule_overrides(args.rule, parser))
-    context = dict(config.lint_context or {})
+    context = dict(config.context)
     context.update(_context(args.context, parser))
-    configured_plugins = tuple(config.lint_plugins or ())
+    configured_plugins = config.plugins
     cli_plugins = tuple(args.plugin)
     max_line_length = (
         args.max_line_length
         if args.max_line_length is not None
-        else config.lint_max_line_length
+        else config.max_line_length
     )
     discover_plugins = (
         False
         if args.no_discover_plugins
-        else (
-            True
-            if config.lint_discover_plugins is None
-            else config.lint_discover_plugins
-        )
+        else (True if config.discover_plugins is None else config.discover_plugins)
     )
     return LintOptions(
         styles=frozenset(StyleRule(value) for value in args.style),
@@ -208,18 +204,25 @@ def _text_line(path: str, diagnostic: dict[str, object]) -> str:
     return "".join([line, *(f"\n  help: {item['title']}" for item in suggestions)])
 
 
+def _load(config_path: Path, parser: argparse.ArgumentParser) -> LintConfig:
+    try:
+        return load_lint_config(config_path)
+    except ConfigError as error:
+        parser.error(str(error))
+
+
 def _config_for(
     path: str | None,
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
-) -> FlowmarkConfig:
+) -> LintConfig:
     if args.no_config:
-        return FlowmarkConfig()
+        return LintConfig()
     if args.config is not None:
         config_path = Path(args.config)
         if not config_path.is_file():
             parser.error(f"Flowmark config does not exist: {args.config}")
-        return load_config(config_path)
+        return _load(config_path, parser)
 
     source_path = cast(str | None, args.source_path)
     if path == "-" and source_path is not None:
@@ -233,7 +236,7 @@ def _config_for(
     else:
         start = Path.cwd()
     config_path = find_config_file(start)
-    return FlowmarkConfig() if config_path is None else load_config(config_path)
+    return LintConfig() if config_path is None else _load(config_path, parser)
 
 
 def _rule_payload(rule: LintRule) -> dict[str, object]:

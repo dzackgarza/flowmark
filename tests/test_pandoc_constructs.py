@@ -14,6 +14,8 @@ and #8 (raw inline TeX). Fenced div attribute specs are in test_fenced_div.py
 (#3).
 """
 
+import pytest
+
 from flowmark.reformat_api import reformat_text
 
 # --- #5: footnote definitions ---------------------------------------------
@@ -233,3 +235,107 @@ def test_definition_marker_mid_paragraph_stays_prose() -> None:
     result = reformat_text("Some text\nTerm\n:   Def\n")
 
     assert ":" in result
+
+
+# --- #17: `|` inside a pipe-table cell's code span or math -----------------
+
+
+# Rows from a real research document. Pandoc's `markdown` reader parses a cell's
+# inlines before it looks for the next `|`, so a bar inside a code span or `$...$`
+# math is cell content, not a cell boundary: every row here has two cells.
+BARS_IN_SPANS_TABLE = (
+    "| construct | status |\n"
+    "| --- | --- |\n"
+    "| closed forms via explicit `|X(F_{q^r})|` for `A^n` | proposed |\n"
+    "| `Ann_R(x) = {r∈R | r·x=0} ⊲ R` | proposed |\n"
+    "| $|-2K_{\\widetilde V}|=\\{C\\}$ generically | established |\n"
+    "| `Tr(Frob^r \\| H)` and $\\int_M \\|F_A\\|^2$ | proposed |\n"
+    "| an escaped a \\| b outside spans | proposed |\n"
+)
+
+
+def test_bar_inside_a_code_span_or_math_stays_in_its_cell() -> None:
+    """
+    Splitting on every bar cut each row at the span and dropped the overflow
+    cells, so the cell text after the span was lost; unescaping every `\\|` turned
+    TeX's norm `\\|F\\|` into `|F|`. The default verify gate runs here, so this also
+    asserts that pandoc reads the same table before and after.
+    """
+    assert reformat_text(BARS_IN_SPANS_TABLE) == BARS_IN_SPANS_TABLE
+
+
+@pytest.mark.parametrize("marker", ["(1)", "a.", "a)", "(a)", "#.", "(@)", "A)"])
+def test_wrapping_never_starts_a_line_with_a_pandoc_list_marker(marker: str) -> None:
+    """
+    Inside a list item, pandoc's `fancy_lists` and `example_lists` start a nested
+    list at any of these markers at the start of a line. A wrap that lands one
+    there changes the document, so the default verify gate would refuse it.
+    """
+    source = f"- Transport step (4) is fully general; step {marker} is next.\n"
+
+    result = reformat_text(source, width=45, semantic=False)
+
+    assert result.count("\n") == 2, result
+
+
+@pytest.mark.parametrize("width", [0, 88])
+def test_a_sentence_break_never_starts_a_line_with_a_list_marker(width: int) -> None:
+    """
+    Semantic line breaks put each sentence on its own line, so a sentence that
+    begins with a marker-like word (`A)` after `App.`) starts a line too.
+    """
+    source = (
+        "- Truncation bounds via majorants (Thms. 3.4-3.7, App. A) give interval "
+        "enclosures of the solutions.\n"
+    )
+
+    reformat_text(source, semantic=True, width=width)
+
+
+def test_bars_only_inside_math_do_not_start_a_table() -> None:
+    """
+    A pipe-table row needs a `|` outside code and math, and a delimiter cell is
+    only `:?-+:?`. This paragraph and the bullet under it are not a table.
+    """
+    source = (
+        "- Item:\n\n"
+        "  With grading $|a|' = |a| - 1$, the bracket satisfies:\n"
+        "  - Graded skew-symmetry.\n"
+    )
+    result = reformat_text(source)
+
+    assert "---" not in result
+    assert "- Graded skew-symmetry." in result
+
+
+def test_row_wider_than_its_header_keeps_its_text() -> None:
+    """
+    A bare `d|N` splits the row, and pandoc drops the cells past the header's
+    width. Its reading is the same whatever flowmark writes there, so the gate is
+    blind to those cells: writing them back is what keeps their text in the file.
+    """
+    header = "| lead | capability |\n| --- | --- |\n"
+    source = (
+        header + "| Lambert series | b_N = \\sum_{d|N} a_d and Mobius inversion |\n"
+    )
+    # Every cell boundary is written padded, the accidental one included.
+    written = (
+        header + "| Lambert series | b_N = \\sum_{d | N} a_d and Mobius inversion |\n"
+    )
+
+    assert reformat_text(source) == written
+
+
+def test_a_multiline_html_comment_block_is_kept_verbatim() -> None:
+    """
+    Pandoc reads an HTML comment at the start of a block, through its `-->`, as one
+    `RawBlock` whose text includes the line breaks, so reflowing it changes that
+    text. The README's generated-file banner is this shape (#41).
+    """
+    source = (
+        "<!-- Generated from a file via\nscripts/gen.py.\n-->\n\n# Title\n\nText.\n"
+    )
+
+    result = reformat_text(source, semantic=False, verify=True)
+
+    assert result.startswith("<!-- Generated from a file via\nscripts/gen.py.\n-->\n")
