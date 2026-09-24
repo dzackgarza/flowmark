@@ -34,7 +34,7 @@ from flowmark.atomic_spans import (
     SINGLE_JINJA_VAR,
     iter_atomic_spans,
 )
-from flowmark.formats.flowmark_markdown import CustomRawInlineTex
+from flowmark.formats.flowmark_parser import CustomRawInlineTex
 from flowmark.linewrapping.atomic_patterns import DOLLAR_MATH, AtomicPattern
 
 # Math as pandoc's `markdown` reads it: `$...$` and `$$...$$` only. It leaves

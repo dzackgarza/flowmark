@@ -27,7 +27,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from flowmark.formats.flowmark_markdown import split_pipe_table_row
+from flowmark.formats.flowmark_parser import split_pipe_table_row
 from flowmark.linewrapping.atomic_patterns import DOLLAR_MATH
 
 

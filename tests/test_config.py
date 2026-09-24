@@ -147,7 +147,7 @@ def test_config_respect_gitignore_false_lists_ignored_files(
 @pytest.mark.parametrize(
     "config",
     [
-        "wdith = 60\n",
+        "colour = 60\n",
         "[formatting]\nsemantic = true\nsmart-quotes = true\n",
         "this is not toml [[[\n",
         'width = "wide"\n',

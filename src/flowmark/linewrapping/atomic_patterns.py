@@ -67,7 +67,7 @@ INLINE_CODE_SPAN = AtomicPattern(
 # closer must not be followed by a digit, which is what keeps prose currency out
 # (`their $420K at the 20% discount, they would be paying $` is not math); `$$`
 # allows the spaces. Either may continue across a line break, but not a blank line.
-# `CustomInlineMath` in `formats/flowmark_markdown.py` parses with this pattern, so
+# `CustomInlineMath` in `formats/flowmark_parser.py` parses with this pattern, so
 # the parser and everything else here read math the way pandoc does.
 _MATH_CHAR = r"(?:\\.|[^\\$\n]|\n(?![ \t]*\n))"
 _INLINE_MATH_DOUBLE = rf"(?<!\\)(?<!\$)\$\$(?!\$){_MATH_CHAR}+?(?<!\\)\$\$(?!\$)"

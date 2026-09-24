@@ -22,6 +22,7 @@ from marko.ext.gfm import elements as gfm_elements
 from marko.parser import Parser
 from marko.source import Source
 
+from flowmark.formats.flowmark_parser import flowmark_parser
 from flowmark.linewrapping.atomic_patterns import (
     PAIRED_HTML_COMMENT,
     PAIRED_JINJA_COMMENT,
@@ -155,15 +156,8 @@ def is_tag_only_line(line: str) -> bool:
 
 @cache
 def _parser() -> Parser:
-    """flowmark's Markdown parser."""
-    # Imported here, not at the top: `flowmark_markdown` imports the line wrappers,
-    # and they import this module.
-    from flowmark.formats.flowmark_markdown import flowmark_markdown
-
-    markdown = flowmark_markdown()
-    # `Markdown.parser` is set up by the first parse.
-    markdown.parse("")
-    return markdown.parser
+    """flowmark's Markdown parser, built once."""
+    return flowmark_parser()
 
 
 def _blocks(lines: Sequence[str]) -> list[block.BlockElement]:
