@@ -668,137 +668,80 @@ def test_tag_with_list_items() -> None:
     assert "\n{% /field %}" in result
 
 
-def test_block_heuristics_table_rows() -> None:
+def test_table_inside_tags_is_a_table() -> None:
     """
-    Test that table rows inside tags have their newlines preserved.
-
-    Block heuristics should:
-    - Preserve newline after opening tag before table
-    - Preserve newlines between table rows
-    - Preserve newline after table before closing tag
+    A table between tag-only lines is set off from them by blank lines, so it is
+    read as a table and rendered as one, delimiter row normalized.
     """
-    from flowmark.linewrapping.line_wrappers import line_wrap_to_width
+    from flowmark import fill_markdown
 
-    wrapper = line_wrap_to_width(width=80, is_markdown=True)
+    text = "{% field %}\n| A | B |\n|---|---|\n| 1 | 2 |\n{% /field %}\n"
 
-    # Table inside tags WITHOUT blank lines (tests block heuristics)
-    text = "{% field %}\n| A | B |\n|---|---|\n| 1 | 2 |\n{% /field %}"
-    result = wrapper(text, "", "")
-
-    # Each table row should be on its own line
-    assert "{% field %}\n" in result
-    assert "\n| A | B |\n" in result
-    assert "\n| --- | --- |\n" in result
-    assert "\n| 1 | 2 |\n" in result
-    assert "\n{% /field %}" in result
+    assert fill_markdown(text) == (
+        "{% field %}\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n{% /field %}\n"
+    )
 
 
-def test_table_rows_preserved_without_tags() -> None:
-    """
-    Test that table rows are preserved on their own lines even without tags.
-
-    Table rows (lines starting with |) are structural markdown elements that must
-    never be line-wrapped, regardless of whether template tags are present.
-    This prevents the bug where Marko parses a table adjacent to paragraph text
-    as a single paragraph, and the line wrapper then breaks the table row.
-    """
-    from flowmark.linewrapping.line_wrappers import line_wrap_to_width
-
-    wrapper = line_wrap_to_width(width=80, is_markdown=True)
-
-    # Table rows after paragraph text (no tags) — each row stays on its own line
-    text = "Some text\n| A | B | C |\n|---|---|---|\n| 1 | 2 | 3 |"
-    result = wrapper(text, "", "")
-
-    assert "Some text\n" in result
-    assert "\n| A | B | C |\n" in result
-    assert "\n| --- | --- | --- |\n" in result
-    assert "| 1 | 2 | 3 |" in result
+# pandoc reads table rows written straight after paragraph text as more of the
+# paragraph, so they are kept as written: never wrapped (#36), and never rewritten,
+# the delimiter row included.
+WIDE_TABLE = dedent("""
+    | Quarter | Revenue ($M) | YoY % | QoQ % | Segment A % | Segment B % | Geo: US % | Geo: Intl % |
+    |---------|-------------|-------|-------|-------------|-------------|-----------|-------------|
+    | Q1 2025 | 125.3 | +12% | +3% | 45% | 55% | 60% | 40% |
+    """).strip()
 
 
-def test_wide_table_rows_not_wrapped() -> None:
-    """
-    Test that table rows wider than the wrap width are NOT broken across lines.
+def test_table_rows_after_paragraph_text_kept_as_written() -> None:
+    from flowmark import fill_markdown
 
-    This is the core issue from GitHub #36: a wide table header exceeding the
-    wrap width was being broken mid-cell by the line wrapper.
-    """
-    from flowmark.linewrapping.line_wrappers import line_wrap_to_width
+    text = "Some text\n| A | B | C |\n|---|---|---|\n| 1 | 2 | 3 |\n"
 
-    wrapper = line_wrap_to_width(width=88, is_markdown=True)
-
-    wide_header = "| Quarter | Revenue ($M) | YoY % | QoQ % | Segment A % | Segment B % | Geo: US % | Geo: Intl % |"
-    input_separator = "|---------|-------------|-------|-------|-------------|-------------|-----------|-------------|"
-    normalized_separator = "| --- | --- | --- | --- | --- | --- | --- | --- |"
-    data_row = "| Q1 2025 | 125.3 | +12% | +3% | 45% | 55% | 60% | 40% |"
-
-    # Wide table after paragraph text (the exact reproduction case from #36)
-    text = f"Paragraph text here.\n{wide_header}\n{input_separator}\n{data_row}"
-    result = wrapper(text, "", "")
-
-    # Each table row must remain on a single line, not wrapped
-    # Separator row should be normalized to 3 dashes
-    assert wide_header in result
-    assert normalized_separator in result
-    assert data_row in result
-    # Verify they're each on their own line
-    result_lines = result.split("\n")
-    assert any(line == wide_header for line in result_lines)
-    assert any(line == normalized_separator for line in result_lines)
-    assert any(line == data_row for line in result_lines)
+    assert fill_markdown(text) == text
 
 
-def test_table_rows_with_semantic_wrapping() -> None:
-    """
-    Test that table rows are preserved with semantic (sentence-based) wrapping.
-    """
-    from flowmark.linewrapping.line_wrappers import line_wrap_by_sentence
+def test_wide_table_rows_after_paragraph_text_not_wrapped() -> None:
+    """The reproduction case from #36: the header row is wider than the wrap width."""
+    from flowmark import fill_markdown
 
-    wrapper = line_wrap_by_sentence(width=88, min_line_len=40, is_markdown=True)
+    text = f"Paragraph text here.\n{WIDE_TABLE}\n"
 
-    wide_header = "| Quarter | Revenue ($M) | YoY % | QoQ % | Segment A % | Segment B % | Geo: US % | Geo: Intl % |"
-    input_separator = "|---------|-------------|-------|-------|-------------|-------------|-----------|-------------|"
-    normalized_separator = "| --- | --- | --- | --- | --- | --- | --- | --- |"
-    data_row = "| Q1 2025 | 125.3 | +12% | +3% | 45% | 55% | 60% | 40% |"
-
-    text = f"Paragraph text. Another sentence here.\n{wide_header}\n{input_separator}\n{data_row}"
-    result = wrapper(text, "", "")
-
-    # Table rows must not be wrapped even in semantic mode
-    # Separator row should be normalized to 3 dashes
-    assert wide_header in result
-    assert normalized_separator in result
-    assert data_row in result
+    assert fill_markdown(text, width=88) == text
 
 
-def test_table_rows_only_no_surrounding_text() -> None:
-    """
-    Test that table-only content (no surrounding text, no tags) is preserved.
-    """
-    from flowmark.linewrapping.line_wrappers import line_wrap_to_width
+def test_table_rows_after_paragraph_text_semantic_wrapping() -> None:
+    from flowmark import fill_markdown
 
-    wrapper = line_wrap_to_width(width=40, is_markdown=True)
+    text = "The first sentence of this paragraph. The second sentence, before the rows."
 
-    # Just table rows, no surrounding text
-    text = "| A long header | Another long header |\n|---|---|\n| Cell data | More cell data |"
-    result = wrapper(text, "", "")
-
-    assert "| A long header | Another long header |" in result
-    assert "| --- | --- |" in result
-    assert "| Cell data | More cell data |" in result
+    assert fill_markdown(f"{text}\n{WIDE_TABLE}\n", semantic=True, width=88) == (
+        "The first sentence of this paragraph.\n"
+        f"The second sentence, before the rows.\n{WIDE_TABLE}\n"
+    )
 
 
-def test_block_heuristics_list_items() -> None:
+def test_table_not_wrapped_at_narrow_width() -> None:
+    from flowmark import fill_markdown
+
+    text = "| A long header | Another long header |\n|---|---|\n| Cell data | More cell data |\n"
+
+    assert fill_markdown(text, width=40) == (
+        "| A long header | Another long header |\n| --- | --- |\n"
+        "| Cell data | More cell data |\n"
+    )
+
+
+def test_tag_wrapper_list_items() -> None:
     """
     Test that list items inside tags have their newlines preserved.
 
-    Block heuristics should preserve newlines around list items when tags present.
+    Newlines around list items are preserved when tags are present.
     """
     from flowmark.linewrapping.line_wrappers import line_wrap_to_width
 
     wrapper = line_wrap_to_width(width=80, is_markdown=True)
 
-    # List inside tags WITHOUT blank lines (tests block heuristics)
+    # List inside tags WITHOUT blank lines
     text = "{% field %}\n- Item 1\n- Item 2\n- Item 3\n{% /field %}"
     result = wrapper(text, "", "")
 
@@ -810,13 +753,10 @@ def test_block_heuristics_list_items() -> None:
     assert "\n{% /field %}" in result
 
 
-def test_block_heuristics_only_with_tags_for_lists() -> None:
+def test_tag_wrapper_splits_list_items_only_with_tags() -> None:
     """
-    Test that list heuristics only apply when tags are present.
-
     Normal markdown text with lists should NOT have list items treated as
-    segment boundaries. Table rows, however, are ALWAYS preserved on their
-    own lines since they are structural markdown elements.
+    segment boundaries: only when tags are present.
     """
     from flowmark.linewrapping.line_wrappers import line_wrap_to_width
 
@@ -831,36 +771,32 @@ def test_block_heuristics_only_with_tags_for_lists() -> None:
     # The list item might be merged with surrounding text (no segment break)
     assert "\n- list item\n" not in result
 
-    # Table WITHOUT tags - table rows ARE still preserved as segment boundaries
-    text = "Some text\n| A | B |\nMore text"
-    result = wrapper(text, "", "")
 
-    # Table rows are always preserved on their own line
-    assert "\n| A | B |\n" in result
-
-
-def test_block_heuristics_mixed_content() -> None:
+def test_lone_table_row_in_paragraph_text_wraps() -> None:
     """
-    Test block heuristics with mixed content (text + block elements).
+    A pipe row with no delimiter row under it is no table, to pandoc or to
+    flowmark's parser, so it wraps with the paragraph it is part of.
     """
-    from flowmark.linewrapping.line_wrappers import line_wrap_to_width
+    from flowmark import fill_markdown
 
-    wrapper = line_wrap_to_width(width=80, is_markdown=True)
-
-    # Mixed content: text, table, more text, all inside tags
-    text = "{% field %}\nIntro text here.\n| Col1 | Col2 |\n|------|------|\nOutro text.\n{% /field %}"
-    result = wrapper(text, "", "")
-
-    # Opening tag preserved
-    assert "{% field %}\n" in result
-    # Table rows should each be on own line
-    assert "\n| Col1 | Col2 |\n" in result
-    assert "\n| --- | --- |\n" in result
-    # Closing tag preserved
-    assert "\n{% /field %}" in result
+    assert fill_markdown("Some text\n| A | B |\nMore text\n") == (
+        "Some text | A | B | More text\n"
+    )
 
 
-def test_block_heuristics_blank_line_normalization() -> None:
+def test_table_rows_between_paragraph_lines_inside_tags() -> None:
+    """
+    Paragraph text, table rows, and more paragraph text between two tags is one
+    paragraph to pandoc: the rows keep their lines and are not rewritten.
+    """
+    from flowmark import fill_markdown
+
+    text = "{% field %}\nIntro text here.\n| Col1 | Col2 |\n|------|------|\nOutro text.\n{% /field %}\n"
+
+    assert fill_markdown(text) == text
+
+
+def test_tag_wrapper_blank_line_normalization() -> None:
     """
     Test that block content between tags gets exactly one blank line at boundaries.
 
@@ -889,7 +825,7 @@ def test_block_heuristics_blank_line_normalization() -> None:
     )
 
 
-def test_block_heuristics_table_blank_lines() -> None:
+def test_tag_wrapper_table_blank_lines() -> None:
     """
     Test blank line normalization specifically for tables.
     """
@@ -906,7 +842,7 @@ def test_block_heuristics_table_blank_lines() -> None:
     assert "\n\n{% /field %}" in result
 
 
-def test_block_heuristics_preserves_existing_blank_lines() -> None:
+def test_tag_wrapper_preserves_existing_blank_lines() -> None:
     """
     Test that if there are already blank lines, we don't add extras.
     """
@@ -1308,53 +1244,6 @@ def test_mixed_content_blank_lines_correct() -> None:
     )
 
 
-def test_closing_tag_spacing_function() -> None:
-    """
-    Test the _fix_closing_tag_spacing function directly.
-
-    This function should only add blank lines when the previous line is
-    block content (list item or table row), not for regular text.
-    """
-    from flowmark.linewrapping.tag_handling import (
-        _fix_closing_tag_spacing,  # pyright: ignore[reportPrivateUsage]
-    )
-
-    # Paragraph text - NO blank line added
-    text1 = "Regular text.\n{% /tag %}"
-    result1 = _fix_closing_tag_spacing(text1)
-    assert result1 == "Regular text.\n{% /tag %}", f"Unexpected change: {result1}"
-
-    # List item - blank line added
-    text2 = "- List item\n{% /tag %}"
-    result2 = _fix_closing_tag_spacing(text2)
-    assert result2 == "- List item\n\n{% /tag %}", f"Expected blank line: {result2}"
-
-    # Table row - blank line added
-    text3 = "| A | B |\n{% /tag %}"
-    result3 = _fix_closing_tag_spacing(text3)
-    assert result3 == "| A | B |\n\n{% /tag %}", f"Expected blank line: {result3}"
-
-    # Already has blank line - no change
-    text4 = "- Item\n\n{% /tag %}"
-    result4 = _fix_closing_tag_spacing(text4)
-    assert result4 == "- Item\n\n{% /tag %}", f"Should not add extra: {result4}"
-
-    # Closing tag with indentation gets stripped
-    text5 = "- Item\n   {% /tag %}"
-    result5 = _fix_closing_tag_spacing(text5)
-    # Blank line added AND indentation stripped
-    assert result5 == "- Item\n\n{% /tag %}", f"Expected stripped: {result5}"
-
-    # HTML comment closing tags
-    text6 = "Regular text.\n<!-- /tag -->"
-    result6 = _fix_closing_tag_spacing(text6)
-    assert result6 == "Regular text.\n<!-- /tag -->", f"Unexpected change: {result6}"
-
-    text7 = "- Item\n<!-- /tag -->"
-    result7 = _fix_closing_tag_spacing(text7)
-    assert result7 == "- Item\n\n<!-- /tag -->", f"Expected blank line: {result7}"
-
-
 def test_various_tag_types_with_tables() -> None:
     """
     Test tables with various tag types (Jinja, HTML comments, variables).
@@ -1366,21 +1255,21 @@ def test_various_tag_types_with_tables() -> None:
     wrapper = line_wrap_to_width(width=80, is_markdown=True)
 
     # Jinja tags with table
-    jinja = "{% table %}\n| A | B |\n{% /table %}"
+    jinja = "{% table %}\n| A | B |\n|---|---|\n{% /table %}"
     jinja_result = wrapper(jinja, "", "")
     assert "{% table %}\n\n" in jinja_result
     assert "\n\n{% /table %}" in jinja_result
 
     # HTML comment tags with table
-    html = "<!-- f:table -->\n| A | B |\n<!-- /f:table -->"
+    html = "<!-- f:table -->\n| A | B |\n|---|---|\n<!-- /f:table -->"
     html_result = wrapper(html, "", "")
     assert "<!-- f:table -->\n\n" in html_result
     assert "\n\n<!-- /f:table -->" in html_result
 
     # Jinja variable tags (edge case - less common with tables)
-    var = "{{ header }}\n| A | B |\n{{ footer }}"
+    var = "{{ header }}\n| A | B |\n|---|---|\n{{ footer }}"
     var_result = wrapper(var, "", "")
-    # Variable tags should also trigger block heuristics
+    # Variable tags are tags too
     assert "{{ header }}\n\n" in var_result
 
 

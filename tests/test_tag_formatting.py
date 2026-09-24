@@ -601,6 +601,19 @@ def test_preprocess_tag_block_spacing_inline_tags() -> None:
     )
 
 
+def test_tags_around_text_the_parser_reads_as_no_block() -> None:
+    """
+    Only a list or table the parser reads is set off from its tags. A lone pipe
+    row has no delimiter row, so it is paragraph text; set off by blank lines it
+    would become a pandoc line block. A version number is no list item.
+    """
+    for text in (
+        "{% field %}\n| A | B |\n{% /field %}\n",
+        "{% field %}\n1.0.0 shipped\n{% /field %}\n",
+    ):
+        assert fill_markdown(text) == text
+
+
 def test_fill_markdown_with_list_in_tags() -> None:
     """
     Integration test: fill_markdown properly formats lists inside tags.
