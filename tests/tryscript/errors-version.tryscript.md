@@ -85,3 +85,19 @@ $ printf '# Hello\n\nFirst sentence here. Second sentence here.\n' | flowmark --
 First sentence here.
 Second sentence here.
 ```
+
+## E10: A verify refusal names the input file, not `-`
+
+````console
+$ printf 'Intro.\n\n```python\nx = 1\n\nmore   text   here\n' > bad.md && flowmark bad.md -o out.md 2>&1; test ! -e out.md && echo "no output written"
+Error: Refusing to write bad.md: reformatting would change what pandoc reads (block 1: Para -> CodeBlock). The file is unchanged. Your input looks ambiguous, so this is probably not a flowmark defect -- bad.md:3: fence ````` is opened here and never closed. Fix the input, or pass --no-verify to format anyway.
+no output written
+````
+
+## E11: Output with a directory that resolves to several files
+
+```console
+$ flowmark -o out.md fixtures/multi-file 2>&1
+Error: Cannot specify output file when processing multiple files (use --inplace instead)
+? 1
+```

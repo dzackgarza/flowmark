@@ -149,35 +149,35 @@ def test_explicit_file_still_works(
 def test_one_file_with_output_writes_the_output(tmp_path: Path) -> None:
     """`-o` names where one input goes; it was refused as a multi-file request."""
     source = tmp_path / "in.md"
-    source.write_text("Some   text.\n")
+    source.write_text("One sentence. Two sentence.\n")
     target = tmp_path / "out.md"
 
     assert main([str(source), "-o", str(target)]) == 0
-    assert target.read_text() == "Some text.\n"
-    assert source.read_text() == "Some   text.\n"
+    assert target.read_text() == "One sentence.\nTwo sentence.\n"
+    assert source.read_text() == "One sentence. Two sentence.\n"
 
 
 def test_output_with_directory_of_one_file_writes_the_output(tmp_path: Path) -> None:
     """The `-o` check counts resolved files, not arguments."""
     docs = tmp_path / "docs"
     docs.mkdir()
-    (docs / "only.md").write_text("Some   text.\n")
+    (docs / "only.md").write_text("One sentence. Two sentence.\n")
     target = tmp_path / "out.md"
 
     assert main([str(docs), "-o", str(target)]) == 0
-    assert target.read_text() == "Some text.\n"
+    assert target.read_text() == "One sentence.\nTwo sentence.\n"
 
 
 def test_output_with_directory_of_many_files_is_refused(tmp_path: Path) -> None:
     docs = tmp_path / "docs"
     docs.mkdir()
-    (docs / "a.md").write_text("Some   text.\n")
-    (docs / "b.md").write_text("Other   text.\n")
+    (docs / "a.md").write_text("One sentence. Two sentence.\n")
+    (docs / "b.md").write_text("Three sentence. Four sentence.\n")
     target = tmp_path / "out.md"
 
     assert main([str(docs), "-o", str(target)]) == 1
     assert not target.exists()
-    assert (docs / "a.md").read_text() == "Some   text.\n"
+    assert (docs / "a.md").read_text() == "One sentence. Two sentence.\n"
 
 
 def test_stdin_still_works(

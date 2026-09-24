@@ -29,10 +29,11 @@ Another paragraph here.
 Use content that needs reformatting so the file is actually written (and backup created).
 
 ```console
-$ printf '# Test\nsome   text   here\n' > test-backup.md && flowmark --inplace test-backup.md && cat test-backup.md && test -f test-backup.md.orig && echo "backup exists"
+$ printf '# Test\nFirst sentence. Second sentence.\n' > test-backup.md && flowmark --inplace test-backup.md && cat test-backup.md && test -f test-backup.md.orig && echo "backup exists"
 # Test
 
-some text here
+First sentence.
+Second sentence.
 backup exists
 ```
 
@@ -118,10 +119,11 @@ Content of file B.
 ## FO8: Short alias `-i` performs in-place formatting with backup
 
 ```console
-$ printf '# Test\nsome   text   here\n' > test-short-alias.md && flowmark -i test-short-alias.md && cat test-short-alias.md && test -f test-short-alias.md.orig && echo "short inplace alias backup"
+$ printf '# Test\nFirst sentence. Second sentence.\n' > test-short-alias.md && flowmark -i test-short-alias.md && cat test-short-alias.md && test -f test-short-alias.md.orig && echo "short inplace alias backup"
 # Test
 
-some text here
+First sentence.
+Second sentence.
 short inplace alias backup
 ```
 

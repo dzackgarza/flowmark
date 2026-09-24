@@ -108,11 +108,11 @@ def test_auto_preset_beats_defaults_under_an_unrelated_config(
         tmp_path,
         monkeypatch,
         "width = 40\n",
-        'He said "hello". ' + LONG_SENTENCE,
+        QUOTED.removesuffix("\n") + " " + LONG_SENTENCE,
         "--auto",
     )
     assert out == (
-        "He said “hello”.\n"
+        "He said “hello” to them.\n"
         "The quick brown fox jumps over the lazy\n"
         "dog again and again.\n"
         "It rests.\n"
@@ -151,6 +151,7 @@ def test_config_respect_gitignore_false_lists_ignored_files(
         "[formatting]\nsemantic = true\nsmart-quotes = true\n",
         "this is not toml [[[\n",
         'width = "wide"\n',
+        'list-spacing = "bogus"\n',
     ],
 )
 def test_bad_config_fails_without_formatting(

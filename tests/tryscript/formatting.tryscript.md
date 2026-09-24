@@ -13,10 +13,26 @@ before: |
 
 Core formatting tests covering width, plaintext, semantic, cleanups, and combinations.
 
-## F1: Default width (88)
+## F1: Default: one sentence per line, no column limit
 
 ```console
 $ flowmark fixtures/content/paragraphs-long.md
+# Long Paragraphs
+
+This is a paragraph that is right at the boundary of the default width setting.
+It has exactly enough text to test.
+
+This is a very long paragraph that should definitely be wrapped at any reasonable width setting because it goes on and on and on with many words and phrases that make it extend well beyond the default eighty-eight character width limit that flowmark uses by default for line wrapping purposes in formatted output.
+
+Short paragraph.
+
+A paragraph with **bold text** and [a link](https://example.com) and some `inline code` mixed in with regular text that makes wrapping more interesting because of inline formatting.
+```
+
+## F1b: --no-semantic wraps to 88 columns
+
+```console
+$ flowmark --no-semantic fixtures/content/paragraphs-long.md
 # Long Paragraphs
 
 This is a paragraph that is right at the boundary of the default width setting. It has
@@ -34,10 +50,10 @@ mixed in with regular text that makes wrapping more interesting because of inlin
 formatting.
 ```
 
-## F2: Custom width (60)
+## F2: Custom width (60) with --no-semantic
 
 ```console
-$ flowmark --width 60 fixtures/content/paragraphs-long.md
+$ flowmark --no-semantic --width 60 fixtures/content/paragraphs-long.md
 # Long Paragraphs
 
 This is a paragraph that is right at the boundary of the
@@ -58,10 +74,10 @@ in with regular text that makes wrapping more interesting
 because of inline formatting.
 ```
 
-## F3: Custom width (30)
+## F3: Custom width (30) with --no-semantic
 
 ```console
-$ flowmark --width 30 fixtures/content/paragraphs-long.md
+$ flowmark --no-semantic --width 30 fixtures/content/paragraphs-long.md
 # Long Paragraphs
 
 This is a paragraph that is
@@ -93,10 +109,10 @@ interesting because of inline
 formatting.
 ```
 
-## F4: Width zero (no wrap)
+## F4: Width zero with --no-semantic (no wrap)
 
 ```console
-$ flowmark --width 0 fixtures/content/paragraphs-long.md
+$ flowmark --no-semantic --width 0 fixtures/content/paragraphs-long.md
 # Long Paragraphs
 
 This is a paragraph that is right at the boundary of the default width setting. It has exactly enough text to test.
@@ -259,12 +275,12 @@ date: 2024-01-15
 ## **Bold Heading for Cleanup Testing**
 
 This is a long paragraph that should be wrapped at various widths for testing purposes.
-It contains enough text to definitely exceed the default eighty-eight character width
-limit and also the sixty character width. The quick brown fox jumps over the lazy dog
-and keeps running.
+It contains enough text to definitely exceed the default eighty-eight character width limit and also the sixty character width.
+The quick brown fox jumps over the lazy dog and keeps running.
 
-First sentence of a multi-sentence paragraph. Second sentence that follows the first
-one. Third sentence that wraps up the paragraph.
+First sentence of a multi-sentence paragraph.
+Second sentence that follows the first one.
+Third sentence that wraps up the paragraph.
 
 - Tight item one
 
@@ -328,7 +344,8 @@ A [collapsed][] reference where label equals text.
 
 **Bold text** and *italic text* and ~~strikethrough~~.
 
-<div class="html-block"> HTML block content. </div>
+<div class="html-block"> HTML block content.
+</div>
 
 Inline <em>HTML emphasis</em> here.
 

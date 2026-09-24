@@ -17,8 +17,8 @@ Tests for stdin processing with various flags.
 $ printf '# Title\n\nThis is a long paragraph that should be wrapped at the default width. The quick brown fox jumps over the lazy dog and keeps on running for quite a while.\n' | flowmark -
 # Title
 
-This is a long paragraph that should be wrapped at the default width. The quick brown
-fox jumps over the lazy dog and keeps on running for quite a while.
+This is a long paragraph that should be wrapped at the default width.
+The quick brown fox jumps over the lazy dog and keeps on running for quite a while.
 ```
 
 ## S2: Stdin with semantic

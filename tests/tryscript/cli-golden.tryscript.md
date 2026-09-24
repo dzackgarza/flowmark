@@ -155,8 +155,8 @@ $ flowmark --docs | grep "^# flowmark$" | head -1
 $ printf '# Title\n\nThis is a long paragraph that should be wrapped at the default width. The quick brown fox jumps over the lazy dog and keeps on running for quite a while.\n' | flowmark -
 # Title
 
-This is a long paragraph that should be wrapped at the default width. The quick brown
-fox jumps over the lazy dog and keeps on running for quite a while.
+This is a long paragraph that should be wrapped at the default width.
+The quick brown fox jumps over the lazy dog and keeps on running for quite a while.
 ```
 
 ## Stdin: semantic mode
@@ -203,7 +203,8 @@ default width.
 
 ```console
 $ printf 'He said "hello." And then... nothing.\n' | flowmark --smartquotes --ellipses -
-He said “hello.” And then … nothing.
+He said “hello.”
+And then … nothing.
 ```
 
 ## List spacing: loose
@@ -231,10 +232,11 @@ World.
 ## Inplace with backup
 
 ```console
-$ printf '# Backup\nsome   text   here\n' > backup.md && flowmark --inplace backup.md && cat backup.md && test -f backup.md.orig && echo "backup exists"
+$ printf '# Backup\nFirst sentence. Second sentence.\n' > backup.md && flowmark --inplace backup.md && cat backup.md && test -f backup.md.orig && echo "backup exists"
 # Backup
 
-some text here
+First sentence.
+Second sentence.
 backup exists
 ```
 
