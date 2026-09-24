@@ -562,6 +562,48 @@ Extension rules receive the same Pandoc-authoritative `RuleContext` as built-ins
 external authority is supplied as JSON data with `--context context.json`, so a rule
 remains runnable from CLI/CI and does not become coupled to an editor process.
 
+#### Mathematics, TeX, references and citations
+
+Flowmark lints the TeX inside Pandoc math and raw TeX, not only the Markdown around it.
+Rules that need data only the author's environment has read it from `[lint.context]`
+(or `--context`):
+
+```toml
+[lint.context.tex]
+macro_sources = ["~/.pandoc/styles/macros", "~/.pandoc/templates/css/mathjax-macros.json"]
+packages = ["amsmath", "amssymb"]
+```
+
+- `tex/unknown-command` reports a control word in math that no active package, macro
+  source, or in-document definition provides. When a package that is not active would
+  provide it, the finding names those packages.
+- `math/user-macro-candidates` reports manual notation that matches one or more
+  available macros. It lists every matching macro instead of choosing one.
+- `math/notation-consistency` reports a document that mixes paired variants such as
+  `\epsilon` and `\varepsilon`.
+- `tex/missing-resource` reports a static `\input`, `\include` or `\includegraphics`
+  target that cannot be found.
+- `document/authorial-residue` reports TODO, FIXME, `???` and citation placeholders.
+- `reference/*`, `citation/*` and `tikz/compile-error` check theorem/proof divs,
+  cross-references, citation keys and TikZ compiler output. Workspace reference
+  resolutions, bibliography keys and compiler findings arrive under
+  `[lint.context.references]` and `[lint.context.compiler]`.
+
+`macro_sources` accepts files, directories (searched recursively) and glob patterns.
+Relative paths resolve from the linted document's directory. `.tex`, `.sty` and `.cls`
+sources contribute every declared control word, and their simple definitions and
+`\DeclareMathOperator` declarations contribute expansions for macro-candidate matching.
+`.json` sources accept a MathJax macro mapping, `{"macros": {...}}`, or
+`{"tex": {"macros": {...}}}`.
+
+The TeX and LaTeX command vocabulary comes from TeXstudio's completion (CWL) files. The
+TeX, LaTeX-document and LaTeX-dev files are always active. Packages and classes become
+active through `\usepackage`, `\RequirePackage` and `\documentclass` in raw TeX (a
+declaration inside a code block does not count), through macro sources that require
+them, and through `lint.context.tex.packages` / `classes`. `#include:` dependencies are
+followed. `devtools/update_texstudio_command_index.py` regenerates
+`src/flowmark/data/texstudio-command-index.json` from TeXstudio's upstream HEAD.
+
 Pure house-style policies are opt-in instead of being treated as Markdown correctness:
 
 ```bash

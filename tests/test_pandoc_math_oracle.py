@@ -64,8 +64,7 @@ def _sentinel_index(block: JsonValue) -> int | None:
 
 def _pandoc_math_by_case(cases: list[str]) -> list[list[tuple[bool, str]]]:
     batch = "\n\n".join(
-        f"{source}\n\n<!-- {SENTINEL}{index} -->"
-        for index, source in enumerate(cases)
+        f"{source}\n\n<!-- {SENTINEL}{index} -->" for index, source in enumerate(cases)
     )
     completed = subprocess.run(
         ["pandoc", "-f", PANDOC_FORMAT, "-t", "json"],

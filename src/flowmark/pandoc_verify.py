@@ -68,6 +68,7 @@ PandocJson = (
 )
 """One node of pandoc's JSON AST, exactly as `json.loads` produces it."""
 
+
 class PandocUnavailableError(RuntimeError):
     """Raised when verification is requested but the pandoc binary is not on PATH."""
 

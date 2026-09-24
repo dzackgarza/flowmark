@@ -9,8 +9,13 @@ import pytest
 from flowmark.lint import LintOptions, StyleRule, lint_text
 
 
-def rule_ids(text: str, *, options: LintOptions | None = None, source_path: Path | None = None) -> set[str]:
-    return {diagnostic.rule for diagnostic in lint_text(text, options, source_path=source_path)}
+def rule_ids(
+    text: str, *, options: LintOptions | None = None, source_path: Path | None = None
+) -> set[str]:
+    return {
+        diagnostic.rule
+        for diagnostic in lint_text(text, options, source_path=source_path)
+    }
 
 
 @pytest.mark.parametrize(
@@ -50,7 +55,9 @@ def rule_ids(text: str, *, options: LintOptions | None = None, source_path: Path
         ("$$\nSpec R \\to Proj S\n$$\n", "math/bare-operator"),
     ],
 )
-def test_default_rules_cover_common_structural_and_semantic_failures(source: str, expected: str) -> None:
+def test_default_rules_cover_common_structural_and_semantic_failures(
+    source: str, expected: str
+) -> None:
     assert expected in rule_ids(source)
 
 
@@ -70,7 +77,9 @@ def test_semantic_diagnostics_do_not_depend_on_formatter_spelling() -> None:
         "Text\n| a | b |\n| --- | --- |\n| x | y |\nAfter\n",
     ],
 )
-def test_default_linter_does_not_invent_structure_pandoc_did_not_report(source: str) -> None:
+def test_default_linter_does_not_invent_structure_pandoc_did_not_report(
+    source: str,
+) -> None:
     assert lint_text(source) == []
 
 
@@ -98,12 +107,7 @@ def test_pandoc_allows_atx_heading_levels_above_six() -> None:
 
 def test_heading_inside_nested_fenced_div_is_structural_rule_at_any_level() -> None:
     source = (
-        "# Outside\n\n"
-        "::: {.definition}\n"
-        "::: {.proof}\n"
-        "####### Deep heading\n"
-        ":::\n"
-        ":::\n"
+        "# Outside\n\n::: {.definition}\n::: {.proof}\n####### Deep heading\n:::\n:::\n"
     )
     findings = [
         diagnostic
@@ -115,25 +119,12 @@ def test_heading_inside_nested_fenced_div_is_structural_rule_at_any_level() -> N
 
 
 def test_heading_lookalike_in_code_fence_inside_div_is_not_a_heading_rule() -> None:
-    source = (
-        "::: {.example}\n"
-        "~~~markdown\n"
-        "## Literal heading example\n"
-        "~~~\n"
-        ":::\n"
-    )
+    source = "::: {.example}\n~~~markdown\n## Literal heading example\n~~~\n:::\n"
     assert "structure/heading-in-fenced-div" not in rule_ids(source)
 
 
 def test_nested_fenced_div_warns_on_inner_opener() -> None:
-    source = (
-        ":::: {.definition}\n"
-        "Outer.\n\n"
-        "::: {.proof}\n"
-        "Inner.\n"
-        ":::\n"
-        "::::\n"
-    )
+    source = ":::: {.definition}\nOuter.\n\n::: {.proof}\nInner.\n:::\n::::\n"
     findings = [
         diagnostic
         for diagnostic in lint_text(source)
@@ -146,13 +137,7 @@ def test_nested_fenced_div_warns_on_inner_opener() -> None:
 
 def test_each_nested_div_beyond_top_level_warns() -> None:
     source = (
-        "::::: {.outer}\n\n"
-        ":::: {.middle}\n\n"
-        "::: {.inner}\n"
-        "Text.\n"
-        ":::\n"
-        "::::\n"
-        ":::::\n"
+        "::::: {.outer}\n\n:::: {.middle}\n\n::: {.inner}\nText.\n:::\n::::\n:::::\n"
     )
     findings = [
         diagnostic
@@ -163,18 +148,13 @@ def test_each_nested_div_beyond_top_level_warns() -> None:
 
 
 def test_sibling_fenced_divs_do_not_warn_as_nested() -> None:
-    source = (
-        "::: {.first}\n"
-        "One.\n"
-        ":::\n\n"
-        "::: {.second}\n"
-        "Two.\n"
-        ":::\n"
-    )
+    source = "::: {.first}\nOne.\n:::\n\n::: {.second}\nTwo.\n:::\n"
     assert "structure/nested-fenced-div" not in rule_ids(source)
 
 
-def test_div_fence_lookalike_inside_code_does_not_affect_nested_div_reconciliation() -> None:
+def test_div_fence_lookalike_inside_code_does_not_affect_nested_div_reconciliation() -> (
+    None
+):
     source = (
         ":::: {.outer}\n\n"
         "~~~markdown\n"
@@ -195,13 +175,7 @@ def test_div_fence_lookalike_inside_code_does_not_affect_nested_div_reconciliati
 
 
 def test_nested_native_html_divs_are_not_fenced_div_diagnostics() -> None:
-    source = (
-        "<div>\n"
-        "<div>\n"
-        "Text.\n"
-        "</div>\n"
-        "</div>\n"
-    )
+    source = "<div>\n<div>\nText.\n</div>\n</div>\n"
     assert "structure/nested-fenced-div" not in rule_ids(source)
 
 
@@ -270,9 +244,7 @@ def test_tex_and_math_examples_inside_code_fences_are_literal() -> None:
 
 
 def test_valid_reference_footnote_fragment_and_image_are_quiet() -> None:
-    source = (
-        "# Target Heading\n\n[reference][ref] and [fragment](#target-heading) and ![diagram](image.png).\n\nText[^note].\n\n[ref]: https://example.com\n[^note]: Footnote.\n"
-    )
+    source = "# Target Heading\n\n[reference][ref] and [fragment](#target-heading) and ![diagram](image.png).\n\nText[^note].\n\n[ref]: https://example.com\n[^note]: Footnote.\n"
     assert lint_text(source) == []
 
 

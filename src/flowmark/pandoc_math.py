@@ -116,7 +116,9 @@ def _blankline_end(text: str, start: int) -> int | None:
     return cursor + 1 if cursor < len(text) and text[cursor] == "\n" else None
 
 
-def _inline_math_at(text: str, start: int, opener: str, closer: str) -> PandocMathSpan | None:
+def _inline_math_at(
+    text: str, start: int, opener: str, closer: str
+) -> PandocMathSpan | None:
     """Port of Pandoc ``mathInlineWith`` at one exact source position."""
     if not text.startswith(opener, start):
         return None
@@ -198,7 +200,9 @@ def _inline_math_at(text: str, start: int, opener: str, closer: str) -> PandocMa
     return None
 
 
-def _display_math_at(text: str, start: int, opener: str, closer: str) -> PandocMathSpan | None:
+def _display_math_at(
+    text: str, start: int, opener: str, closer: str
+) -> PandocMathSpan | None:
     """Port of Pandoc ``mathDisplayWith`` at one exact source position."""
     if not text.startswith(opener, start):
         return None

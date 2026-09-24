@@ -111,7 +111,9 @@ _LATEX_END_TEMPLATE = r"\\end\{%s\}"
 _BARE_URL = re.compile(r"(?<![<\w])(https?://[^\s<>]+)")
 _INLINE_HTML = re.compile(r"</?[A-Za-z][^>\n]*>")
 _UNORDERED_MARKER = re.compile(r"^(?P<indent> *)(?P<marker>[*+-])[ \t]+")
-_REPEATED_MATH_SCRIPT = re.compile(r"(?<!\\)(?P<script>[_^])(?:\\[A-Za-z@]+|\\.|[A-Za-z0-9])[ \t]*(?P=script)")
+_REPEATED_MATH_SCRIPT = re.compile(
+    r"(?<!\\)(?P<script>[_^])(?:\\[A-Za-z@]+|\\.|[A-Za-z0-9])[ \t]*(?P=script)"
+)
 
 _MATH_OPERATOR_NAMES = (
     "arccos",
@@ -169,7 +171,11 @@ _MATH_OPERATOR_NAMES = (
     "SU",
     "Sp",
 )
-_BARE_MATH_OPERATOR = re.compile(r"(?<![A-Za-z\\])(?P<name>" + "|".join(re.escape(name) for name in _MATH_OPERATOR_NAMES) + r")(?![A-Za-z])")
+_BARE_MATH_OPERATOR = re.compile(
+    r"(?<![A-Za-z\\])(?P<name>"
+    + "|".join(re.escape(name) for name in _MATH_OPERATOR_NAMES)
+    + r")(?![A-Za-z])"
+)
 _ROMANIZED_MATH_TEXT = re.compile(
     r"\\(?:operatorname|mathrm|textrm|text|mathsf|mathtt|mathbf|mathit)\*?"
     r"[ \t]*\{(?:\\.|[^{}])*\}"
@@ -273,13 +279,17 @@ def _fences(lines: list[_Line], protected_line_numbers: set[int]) -> list[_Fence
             stripped = candidate.text.lstrip(" ")
             leading = len(candidate.text) - len(stripped)
             if leading <= 3:
-                close_match = re.match(rf"{re.escape(marker[0])}{{{len(marker)},}}[ \t]*$", stripped)
+                close_match = re.match(
+                    rf"{re.escape(marker[0])}{{{len(marker)},}}[ \t]*$", stripped
+                )
                 if close_match is not None:
                     closing = candidate
                     break
             content.append(candidate)
             probe += 1
-        result.append(_Fence(line, closing, marker, match.group("info").strip(), tuple(content)))
+        result.append(
+            _Fence(line, closing, marker, match.group("info").strip(), tuple(content))
+        )
         index = (probe + 1) if closing is not None else len(lines)
     return result
 
@@ -545,16 +555,24 @@ def _strip_heading_attributes(text: str) -> tuple[str, str | None]:
     return stripped, explicit_id
 
 
-def _headings(lines: list[_Line], protected: bytearray, frontmatter: _Frontmatter | None) -> list[_Heading]:
+def _headings(
+    lines: list[_Line], protected: bytearray, frontmatter: _Frontmatter | None
+) -> list[_Heading]:
     result: list[_Heading] = []
     frontmatter_lines: set[int] = set()
     if frontmatter is not None:
-        end = frontmatter.closing.number if frontmatter.closing is not None else lines[-1].number
+        end = (
+            frontmatter.closing.number
+            if frontmatter.closing is not None
+            else lines[-1].number
+        )
         frontmatter_lines.update(range(frontmatter.opening.number, end + 1))
 
     consumed_setext_underlines: set[int] = set()
     for index, line in enumerate(lines):
-        if line.number in frontmatter_lines or _overlaps(protected, line.start, line.end):
+        if line.number in frontmatter_lines or _overlaps(
+            protected, line.start, line.end
+        ):
             continue
         match = _ATX_HEADING.match(line.text)
         if match is not None:
@@ -573,7 +591,9 @@ def _headings(lines: list[_Line], protected: bytearray, frontmatter: _Frontmatte
         if index + 1 >= len(lines):
             continue
         underline = lines[index + 1]
-        if underline.number in frontmatter_lines or _overlaps(protected, underline.start, underline.end):
+        if underline.number in frontmatter_lines or _overlaps(
+            protected, underline.start, underline.end
+        ):
             continue
         underline_match = _SETEXT_UNDERLINE.match(underline.text)
         if underline_match is None or not line.text.strip():
@@ -606,11 +626,17 @@ def _plain_inline_text(text: str) -> str:
     return " ".join(text.split())
 
 
-def _pandoc_attr(value: PandocJson) -> tuple[str, list[str], list[tuple[str, str]]] | None:
+def _pandoc_attr(
+    value: PandocJson,
+) -> tuple[str, list[str], list[tuple[str, str]]] | None:
     if not isinstance(value, list) or len(value) != 3:
         return None
     identifier, classes, key_values = value
-    if not isinstance(identifier, str) or not isinstance(classes, list) or not isinstance(key_values, list):
+    if (
+        not isinstance(identifier, str)
+        or not isinstance(classes, list)
+        or not isinstance(key_values, list)
+    ):
         return None
     parsed_classes = [item for item in classes if isinstance(item, str)]
     parsed_key_values: list[tuple[str, str]] = []
@@ -625,7 +651,9 @@ def _pandoc_attr(value: PandocJson) -> tuple[str, list[str], list[tuple[str, str
     return identifier, parsed_classes, parsed_key_values
 
 
-def _pandoc_node_attr(node: dict[str, PandocJson]) -> tuple[str, list[str], list[tuple[str, str]]] | None:
+def _pandoc_node_attr(
+    node: dict[str, PandocJson],
+) -> tuple[str, list[str], list[tuple[str, str]]] | None:
     kind = node.get("t")
     content = node.get("c")
     if not isinstance(content, list):
@@ -784,7 +812,9 @@ def _pandoc_identifiers(document: dict[str, PandocJson]) -> list[str]:
     return result
 
 
-def _locate_after(text: str, needles: tuple[str, ...], start: int = 0) -> tuple[int, int]:
+def _locate_after(
+    text: str, needles: tuple[str, ...], start: int = 0
+) -> tuple[int, int]:
     best: tuple[int, int] | None = None
     for needle in needles:
         if not needle:
@@ -806,7 +836,11 @@ def _pandoc_code_blocks(
         if node.get("t") != "CodeBlock":
             continue
         content = node.get("c")
-        if not isinstance(content, list) or len(content) != 2 or not isinstance(content[1], str):
+        if (
+            not isinstance(content, list)
+            or len(content) != 2
+            or not isinstance(content[1], str)
+        ):
             continue
         attr = _pandoc_attr(content[0])
         if attr is None:
@@ -1001,7 +1035,9 @@ def _pandoc_semantic_findings(
                         end,
                     )
                 )
-        if StyleRule.HEADING_PUNCTUATION in styles and title.rstrip().endswith(tuple(_HEADING_PUNCTUATION)):
+        if StyleRule.HEADING_PUNCTUATION in styles and title.rstrip().endswith(
+            tuple(_HEADING_PUNCTUATION)
+        ):
             findings.append(
                 RuleFinding(
                     "style/heading-punctuation",
@@ -1052,7 +1088,11 @@ def _pandoc_semantic_findings(
     id_search_from = 0
     all_ids = set(_pandoc_identifiers(pandoc_document))
     for identifier in _pandoc_identifiers(pandoc_document):
-        start, end = _locate_after(text, (f"#{identifier}", f'id="{identifier}"', f"id={identifier}"), id_search_from)
+        start, end = _locate_after(
+            text,
+            (f"#{identifier}", f'id="{identifier}"', f"id={identifier}"),
+            id_search_from,
+        )
         if end > start:
             id_search_from = end
         if identifier in seen_ids:
@@ -1078,12 +1118,21 @@ def _pandoc_semantic_findings(
             continue
         label = " ".join(pandoc_plain(content[1]).split())
         target = content[2]
-        if not isinstance(target, list) or len(target) != 2 or not isinstance(target[0], str):
+        if (
+            not isinstance(target, list)
+            or len(target) != 2
+            or not isinstance(target[0], str)
+        ):
             continue
         destination = target[0]
         start, end = _locate_after(
             text,
-            (destination, label, "![]" if kind == "Image" and not label else "", "]()" if not destination else ""),
+            (
+                destination,
+                label,
+                "![]" if kind == "Image" and not label else "",
+                "]()" if not destination else "",
+            ),
             link_search_from,
         )
         if end > start:
@@ -1132,7 +1181,9 @@ def _pandoc_semantic_findings(
                     )
                 )
         if kind == "Link":
-            local_finding = _local_destination_finding(destination, start, end, source_path)
+            local_finding = _local_destination_finding(
+                destination, start, end, source_path
+            )
             if local_finding is not None:
                 findings.append(local_finding)
 
@@ -1290,7 +1341,9 @@ def _style_findings(
             )
     if max_line_length is not None and max_line_length > 0:
         for line in lines:
-            if len(line.text) <= max_line_length or _overlaps(protected, line.start, line.end):
+            if len(line.text) <= max_line_length or _overlaps(
+                protected, line.start, line.end
+            ):
                 continue
             findings.append(
                 RuleFinding(
@@ -1318,8 +1371,14 @@ def lint_rule_findings(
     frontmatter = _frontmatter(lines)
     frontmatter_line_numbers: set[int] = set()
     if frontmatter is not None:
-        last_number = frontmatter.closing.number if frontmatter.closing is not None else lines[-1].number
-        frontmatter_line_numbers.update(range(frontmatter.opening.number, last_number + 1))
+        last_number = (
+            frontmatter.closing.number
+            if frontmatter.closing is not None
+            else lines[-1].number
+        )
+        frontmatter_line_numbers.update(
+            range(frontmatter.opening.number, last_number + 1)
+        )
     fences = _fences(lines, frontmatter_line_numbers)
     protected = _build_protected_map(text, lines, frontmatter, fences)
 
@@ -1648,6 +1707,7 @@ _BUILTIN_RULES = (
         _style_check("style/unordered-list-marker", StyleRule.UNORDERED_LIST_MARKER),
     ),
 )
+
 
 def register_builtin_rules(registry: RuleRegistry) -> None:
     """Register Flowmark's built-in named rules."""

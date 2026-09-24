@@ -39,7 +39,8 @@ def test_multiline_pandoc_inline_math_is_not_reported_as_unterminated() -> None:
         "U\\oplus\\latI_{0,7}$ and "
         "$e^{\\perp}/e\\cong U\\oplus\\latI_{0,7}\\cong\\latI_{1,8}$,\n"
     )
-    assert lint_text(source) == []
+    macros = {"latI": "\\mathrm{I}", "ZZ": "\\mathbb{Z}"}
+    assert lint_text(source, LintOptions(context={"tex": {"macros": macros}})) == []
 
 
 def test_json_cli_is_editor_consumable(
@@ -126,8 +127,7 @@ def test_cli_discovers_rule_config_from_flowmark_toml(
     path = tmp_path / "doc.md"
     path.write_text("::: {.theorem}\n## Inside\n:::\n")
     (tmp_path / "flowmark.toml").write_text(
-        "[lint.rules]\n"
-        "\"structure/heading-in-fenced-div\" = \"off\"\n"
+        '[lint.rules]\n"structure/heading-in-fenced-div" = "off"\n'
     )
     assert main(["--format", "json", "--exit-zero", str(path)]) == 0
     payload = json.loads(capsys.readouterr().out)

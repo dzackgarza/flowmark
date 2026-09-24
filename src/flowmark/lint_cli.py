@@ -26,7 +26,9 @@ def _parser() -> argparse.ArgumentParser:
         prog="flowmark-lint",
         description="Lint Pandoc-flavoured Markdown with Flowmark's semantic parser.",
     )
-    parser.add_argument("files", nargs="*", help="Markdown files/directories, or '-' for stdin")
+    parser.add_argument(
+        "files", nargs="*", help="Markdown files/directories, or '-' for stdin"
+    )
     parser.add_argument(
         "--format", choices=("text", "json"), default="text", dest="output_format"
     )
@@ -125,7 +127,9 @@ def _resolve_files(arguments: list[str]) -> list[str]:
     return stdin + resolved
 
 
-def _rule_overrides(values: list[str], parser: argparse.ArgumentParser) -> dict[str, str]:
+def _rule_overrides(
+    values: list[str], parser: argparse.ArgumentParser
+) -> dict[str, str]:
     overrides: dict[str, str] = {}
     allowed = {level.value for level in RuleLevel}
     for value in values:
@@ -220,7 +224,9 @@ def _config_for(
     elif path not in {None, "-"}:
         assert path is not None
         candidate = Path(path).expanduser()
-        start = candidate.resolve().parent if candidate.is_file() else candidate.resolve()
+        start = (
+            candidate.resolve().parent if candidate.is_file() else candidate.resolve()
+        )
     else:
         start = Path.cwd()
     config_path = find_config_file(start)
@@ -248,9 +254,7 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write("\n")
         else:
             for rule in rules:
-                print(
-                    f"{rule['name']}\t{rule['default_level']}\t{rule['description']}"
-                )
+                print(f"{rule['name']}\t{rule['default_level']}\t{rule['description']}")
         return 0
 
     if not args.files:

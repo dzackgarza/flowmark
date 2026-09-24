@@ -43,6 +43,7 @@ from flowmark.lint_engine import (
     run_registered_rules,
     validate_rule_settings,
 )
+from flowmark.lint_authoring import register_authoring_rules
 from flowmark.lint_rules import (
     StyleRule,
     register_builtin_rules,
@@ -223,6 +224,7 @@ _STYLE_RULE_IDS = {
 def _registry(options: LintOptions) -> RuleRegistry:
     registry = RuleRegistry()
     register_builtin_rules(registry)
+    register_authoring_rules(registry)
     registry.register_many(_PARSER_RULES)
     load_lint_plugins(
         registry,
