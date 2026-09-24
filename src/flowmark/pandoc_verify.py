@@ -727,53 +727,64 @@ formatter does, and a rule the formatter applies but the gate refuses is a docum
 that cannot be written.  `test_hyphen_join_scope_matches_the_cleanup` pins them.
 """
 
-_HYPHEN_SPACE = re.compile(r"-\s+(\S)")
-
-
-def _join_hyphen_text(text: str) -> str:
-    """Close up `- x` to `-x` in one canonicalized `Str`, per #18's scope."""
-
-    def join(match: re.Match[str]) -> str:
-        following = match.group(1)
-        rest = text[match.end(1) :]
-        word = (
-            (following + rest).split()[0] if (following + rest).split() else following
-        )
-        if word.strip(".,;:!?").lower() in _SUSPENSION_WORDS:
-            return match.group(0)
-        if not (following.isdigit() or following.islower()):
-            return match.group(0)
-        return f"-{following}"
-
-    return _HYPHEN_SPACE.sub(join, text)
-
-
-def _join_hyphens(node: PandocJson) -> PandocJson:
+def _joinable_space(text: str, start: int, followed: bool) -> bool:
     """
-    Apply #18's join to a canonicalized tree.
+    Whether the space at `text[start]`, right after a hyphen, is in #18's scope.
+
+    `followed` says whether an inline comes after this `Str`: a trailing `- `
+    closes up only against one (`degree- ` then a `Math`), never at the end of a
+    paragraph.
+    """
+    rest = text[start:].lstrip()
+    if not rest:
+        return followed
+    if rest.split()[0].strip(".,;:!?").lower() in _SUSPENSION_WORDS:
+        return False
+    return rest[0].isdigit() or rest[0].islower()
+
+
+def _join_hyphen_text_toward(text: str, target: str, followed: bool) -> str:
+    """
+    `target` if it is `text` with some in-scope hyphen spaces closed up, else `text`.
+
+    The formatter joins only at line breaks, so a paragraph can hold a joined
+    `semi-log-scale` beside an authored `post- cases`. Which spaces were joined is
+    read off `target`; every other difference leaves `text` as it was, and the
+    comparison fails.
+    """
+    i = j = 0
+    while i < len(text):
+        if j < len(target) and text[i] == target[j]:
+            i += 1
+            j += 1
+        elif text[i] == " " and text[i - 1 : i] == "-" and _joinable_space(text, i, followed):
+            i += 1
+        else:
+            return text
+    return target if j == len(target) else text
+
+
+def _join_hyphens_toward(node: PandocJson, target: PandocJson) -> PandocJson:
+    """
+    Apply #18's join to canonicalized `node` wherever `target` applied it.
 
     Two shapes, because `_canonical` has already merged `Str`/`Space` runs:
     the join is inside a single `Str` (`degree- 2`), or the `Str` ends with the
     hyphen and a space and the next inline is structure (`degree- ` followed by a
-    `Math`, from `degree-` / `$4$`).
+    `Math`, from `degree-` / `$4$`). Trees that differ in shape are left alone.
     """
-    if isinstance(node, dict):
-        return {key: _join_hyphens(value) for key, value in node.items()}
-    if not isinstance(node, list):
+    if isinstance(node, dict) and isinstance(target, dict) and node.keys() == target.keys():
+        return {key: _join_hyphens_toward(value, target[key]) for key, value in node.items()}
+    if not (isinstance(node, list) and isinstance(target, list) and len(node) == len(target)):
         return node
 
     out: list[PandocJson] = []
-    for index, item in enumerate(node):
-        if isinstance(item, dict) and item.get("t") == "Str":
-            text = str(item.get("c", ""))
-            joined = _join_hyphen_text(text)
-            # A trailing `- ` closes up only against a following inline: on its own
-            # it is a hyphen at the end of a paragraph, which nothing joins to.
-            if joined.endswith("- ") and index + 1 < len(node):
-                joined = joined[:-1]
-            out.append({"t": "Str", "c": joined})
+    for index, (item, goal) in enumerate(zip(node, target, strict=True)):
+        if isinstance(item, dict) and isinstance(goal, dict) and item.get("t") == goal.get("t") == "Str":
+            text = _join_hyphen_text_toward(str(item.get("c", "")), str(goal.get("c", "")), index + 1 < len(node))
+            out.append({"t": "Str", "c": text})
             continue
-        out.append(_join_hyphens(item))
+        out.append(_join_hyphens_toward(item, goal))
     return out
 
 
@@ -789,7 +800,7 @@ def _normalize_hyphen_join(
     the exact damage #18 says wrapping tools inflict, and the whole reason this
     cleanup exists.
     """
-    return _canonical(_join_hyphens(before)), after
+    return _canonical(_join_hyphens_toward(before, after)), after
 
 
 def _normalize_lazy_list(
