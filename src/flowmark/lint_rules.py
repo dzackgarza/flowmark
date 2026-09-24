@@ -42,6 +42,7 @@ from flowmark.lint_engine import (
     RuleFinding,
     RuleLevel,
     RuleRegistry,
+    Suggestion,
 )
 from flowmark.pandoc_lint import (
     PandocJson,
@@ -170,6 +171,45 @@ _MATH_OPERATOR_NAMES = (
     "SO",
     "SU",
     "Sp",
+)
+# Log-like operators LaTeX itself defines (LaTeX2e kernel, ltmath.dtx; the same
+# list as the LaTeX Companion's table of predefined operators). Other names
+# need \operatorname or a user macro.
+_LATEX_OPERATOR_COMMANDS = frozenset(
+    {
+        "arccos",
+        "arcsin",
+        "arctan",
+        "arg",
+        "cos",
+        "cosh",
+        "cot",
+        "coth",
+        "csc",
+        "deg",
+        "det",
+        "dim",
+        "exp",
+        "gcd",
+        "hom",
+        "inf",
+        "ker",
+        "lg",
+        "lim",
+        "liminf",
+        "limsup",
+        "ln",
+        "log",
+        "max",
+        "min",
+        "Pr",
+        "sec",
+        "sin",
+        "sinh",
+        "sup",
+        "tan",
+        "tanh",
+    }
 )
 _BARE_MATH_OPERATOR = re.compile(
     r"(?<![A-Za-z\\])(?P<name>"
@@ -450,7 +490,7 @@ def _tex_group_findings(source: str, source_offset: int) -> list[RuleFinding]:
                     RuleFinding(
                         "math/unmatched-group-close",
                         "error",
-                        "TeX group closes with '}' here but no matching '{' is open.",
+                        "`}` has no matching `{`.",
                         source_offset + index,
                         source_offset + index + 1,
                     )
@@ -461,7 +501,7 @@ def _tex_group_findings(source: str, source_offset: int) -> list[RuleFinding]:
             RuleFinding(
                 "math/unclosed-group",
                 "error",
-                "TeX group opens with '{' here but is never closed.",
+                "`{` is never closed.",
                 source_offset + opening,
                 source_offset + opening + 1,
             )
@@ -478,7 +518,7 @@ def _tex_group_findings(source: str, source_offset: int) -> list[RuleFinding]:
                 RuleFinding(
                     "math/unmatched-right",
                     "error",
-                    "\\right appears here without a matching \\left.",
+                    "`\\right` has no matching `\\left`.",
                     source_offset + match.start(),
                     source_offset + match.end(),
                 )
@@ -488,7 +528,7 @@ def _tex_group_findings(source: str, source_offset: int) -> list[RuleFinding]:
             RuleFinding(
                 "math/unclosed-left",
                 "error",
-                "\\left appears here without a matching \\right.",
+                "`\\left` has no matching `\\right`.",
                 source_offset + match.start(),
                 source_offset + match.end(),
             )
@@ -513,7 +553,8 @@ def _mathematical_findings(
                 RuleFinding(
                     f"math/repeated-{kind}",
                     "error",
-                    f"Repeated unbraced {kind} operator; TeX rejects this as a double {kind}.",
+                    f"Double {kind}: TeX rejects `{script}` twice in a row. Add braces to "
+                    + f"show which {kind} is nested, e.g. `x{script}{{a{script}b}}`.",
                     second,
                     second + 1,
                 )
@@ -522,17 +563,27 @@ def _mathematical_findings(
         visible = _mask_romanized_math(source)
         for match in _BARE_MATH_OPERATOR.finditer(visible):
             name = match.group("name")
+            command = (
+                f"\\{name}"
+                if name in _LATEX_OPERATOR_COMMANDS
+                else f"\\operatorname{{{name}}}"
+            )
             findings.append(
                 RuleFinding(
                     "math/bare-operator",
                     "warning",
-                    f"{name!r} is currently typeset as separate variables. If it denotes "
-                    + f"an operator, write \\operatorname{{{name}}} or use an operator macro.",
+                    f"`{name}` is typeset as a product of italic variables. "
+                    + f"For the operator, write `{command}`.",
                     start + match.start("name"),
                     start + match.end("name"),
+                    suggestions=(Suggestion(f"Use `{command}`", command),),
                 )
             )
     return findings
+
+
+def _line_number(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
 
 
 def _overlaps(protected: bytearray, start: int, end: int) -> bool:
@@ -935,7 +986,7 @@ def _pandoc_resource_findings(
                 RuleFinding(
                     "pandoc/missing-resource",
                     "warning",
-                    f"Can't find {resource!r} relative to this document.",
+                    f"Can't find the `{key}` file `{resource}` relative to this document.",
                     start,
                     end,
                     data={"resource": resource, "metadata_key": key},
@@ -967,8 +1018,8 @@ def _pandoc_semantic_findings(
             RuleFinding(
                 "structure/nested-fenced-div",
                 "warning",
-                "This fenced div is nested inside another fenced div. Move one div "
-                "outside the other so the fenced blocks are not nested.",
+                "Fenced div is nested inside another fenced div. Move it outside the "
+                "enclosing div.",
                 start,
                 end,
             )
@@ -991,9 +1042,9 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "structure/heading-in-fenced-div",
                     "warning",
-                    "Heading is inside a fenced div. If this text is intended to title "
-                    "the div, use the .title paradigm instead. If it delineates a "
-                    "section, move the heading outside all enclosing fenced divs.",
+                    "Heading is inside a fenced div. To title the div, use its `title` "
+                    'attribute, e.g. `::: {.theorem title="…"}`. To start a section, '
+                    "move the heading outside the div.",
                     start,
                     end,
                 )
@@ -1003,7 +1054,7 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "heading/increment",
                     "warning",
-                    f"Heading level jumps from H{previous_level} to H{level}.",
+                    f"Heading level jumps from H{previous_level} to H{level}. Use H{previous_level + 1}.",
                     start,
                     end,
                 )
@@ -1012,17 +1063,18 @@ def _pandoc_semantic_findings(
         normalized_title = title.casefold()
         if normalized_title:
             if normalized_title in seen_heading_text:
+                earlier = _line_number(text, seen_heading_text[normalized_title])
                 findings.append(
                     RuleFinding(
                         "heading/duplicate",
                         "warning",
-                        f"Heading {title!r} duplicates an earlier heading.",
+                        f'Heading "{title}" repeats the heading on line {earlier}.',
                         start,
                         end,
                     )
                 )
             else:
-                seen_heading_text[normalized_title] = index
+                seen_heading_text[normalized_title] = start
         if level == 1:
             h1_count += 1
             if h1_count > 1:
@@ -1084,7 +1136,7 @@ def _pandoc_semantic_findings(
                 )
             )
 
-    seen_ids: set[str] = set()
+    seen_ids: dict[str, int] = {}
     id_search_from = 0
     all_ids = set(_pandoc_identifiers(pandoc_document))
     for identifier in _pandoc_identifiers(pandoc_document):
@@ -1100,13 +1152,14 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "pandoc/duplicate-identifier",
                     "error",
-                    f"ID {identifier!r} is used more than once.",
+                    f"ID `#{identifier}` is already used on line "
+                    + f"{_line_number(text, seen_ids[identifier])}.",
                     start,
                     end,
                 )
             )
         else:
-            seen_ids.add(identifier)
+            seen_ids[identifier] = start
 
     link_search_from = 0
     for node in walk_pandoc(pandoc_document):
@@ -1163,7 +1216,7 @@ def _pandoc_semantic_findings(
                 RuleFinding(
                     "link/non-descriptive-text",
                     "warning",
-                    f"Link text {label!r} does not describe its destination.",
+                    f'Link text "{label}" does not say where the link goes.',
                     start,
                     end,
                 )
@@ -1175,7 +1228,7 @@ def _pandoc_semantic_findings(
                     RuleFinding(
                         "link/invalid-fragment",
                         "warning",
-                        f"No target with ID '#{fragment}' exists in this document.",
+                        f"This document has no element with ID `#{fragment}`.",
                         start,
                         end,
                     )
@@ -1244,7 +1297,7 @@ def _local_destination_finding(
         return RuleFinding(
             "link/missing-local-target",
             "warning",
-            f"Can't find linked file {parsed.path!r} relative to this document.",
+            f"Can't find the linked file `{parsed.path}` relative to this document.",
             start,
             end,
         )
@@ -1259,7 +1312,7 @@ def _local_destination_finding(
     return RuleFinding(
         "link/invalid-fragment",
         "warning",
-        f"No target with ID '#{fragment}' exists in {parsed.path!r}.",
+        f"`{parsed.path}` has no element with ID `#{fragment}`.",
         start,
         end,
     )
@@ -1334,7 +1387,7 @@ def _style_findings(
                 RuleFinding(
                     "style/no-inline-html",
                     "warning",
-                    "Inline HTML is disabled by the selected style.",
+                    "Inline HTML is not allowed by the configured style.",
                     match.start(),
                     match.end(),
                 )

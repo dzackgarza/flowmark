@@ -12,6 +12,7 @@ __all__ = (
     "RuleFinding",
     "RuleLevel",
     "RuleRegistry",
+    "Suggestion",
     "StyleRule",
     "get_html_md_word_splitter",
     "simple_word_splitter",
@@ -41,6 +42,7 @@ from flowmark.lint_engine import (
     RuleFinding,
     RuleLevel,
     RuleRegistry,
+    Suggestion,
 )
 from flowmark.linewrapping.line_wrappers import (
     line_wrap_by_sentence,

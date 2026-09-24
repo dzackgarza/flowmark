@@ -515,7 +515,9 @@ flowmark-lint --format json --exit-zero - < document.md
 ```
 
 The Python API is `flowmark.lint_text()`. Diagnostics use 1-based source coordinates and
-stable rule ids. The default layer checks semantics only after Pandoc has established the
+stable rule ids. A diagnostic with a known fix carries `suggestions`: each has a short
+`title` ("Use `\sin`") and a `replacement` for the diagnostic's whole range. Text output
+prints them as indented `help:` lines. The default layer checks semantics only after Pandoc has established the
 relevant syntax: heading hierarchy/duplicates, actual links/images and fragments,
 fenced-code language/tabs, explicit Pandoc identifiers, Pandoc metadata resources, and
 TeX checks inside actual Pandoc `Math` nodes. Pandoc's own reader diagnostics are mapped

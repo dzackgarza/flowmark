@@ -199,10 +199,13 @@ def _read(path: str) -> str:
 
 
 def _text_line(path: str, diagnostic: dict[str, object]) -> str:
-    return (
+    line = (
         f"{path}:{diagnostic['line']}:{diagnostic['column']}: "
         f"{diagnostic['severity']} {diagnostic['rule']}: {diagnostic['message']}"
     )
+    # One indented `help:` line per suggested fix, as rustc prints them.
+    suggestions = cast(list[dict[str, str]], diagnostic.get("suggestions", []))
+    return "".join([line, *(f"\n  help: {item['title']}" for item in suggestions)])
 
 
 def _config_for(

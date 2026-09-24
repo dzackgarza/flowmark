@@ -19,6 +19,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from rapidfuzz import process
+from rapidfuzz.distance import OSA
+
 import flowmark.lint_rules as core
 from flowmark.lint_engine import (
     LintRule,
@@ -27,6 +30,7 @@ from flowmark.lint_engine import (
     RuleFinding,
     RuleLevel,
     RuleRegistry,
+    Suggestion,
 )
 from flowmark.pandoc_lint import PandocJson, pandoc_plain, walk_pandoc
 
@@ -57,11 +61,11 @@ _AUTHORIAL_RESIDUE = (
     ),
     (re.compile(r"\bCITE(?:ME)?\b"), "citation-placeholder", "Citation placeholder"),
     (re.compile(r"\?\?\?"), "unresolved-placeholder", "Unresolved placeholder"),
-    (re.compile(r"\\todo\b"), "todo-command", "TODO command"),
+    (re.compile(r"\\todo\b"), "todo-command", "Unfinished note"),
 )
-_TEX_INPUT = re.compile(r"(?<!\\)\\(?:input|include)\s*\{(?P<path>[^{}\n]+)\}")
+_TEX_INPUT = re.compile(r"(?<!\\)(?P<cmd>\\(?:input|include))\s*\{(?P<path>[^{}\n]+)\}")
 _TEX_GRAPHICS = re.compile(
-    r"(?<!\\)\\includegraphics(?:\s*\[[^\]\n]*\])?\s*\{(?P<path>[^{}\n]+)\}"
+    r"(?<!\\)(?P<cmd>\\includegraphics)(?:\s*\[[^\]\n]*\])?\s*\{(?P<path>[^{}\n]+)\}"
 )
 _TEX_GRAPHICSPATH = re.compile(
     r"(?<!\\)\\graphicspath\s*\{(?P<paths>(?:\s*\{[^{}\n]*\}\s*)+)\}"
@@ -260,8 +264,8 @@ def _texstudio_vocabulary(
             continue
         try:
             packages, classes = _package_names_from_tex(path.read_text())
-        except OSError:
-            continue
+        except OSError as error:
+            raise ValueError(f"Cannot read macro source {path}: {error}") from error
         package_roots.update(packages)
         class_roots.update(classes)
 
@@ -643,6 +647,10 @@ def _normalize_tex_for_macro_match(source: str) -> _NormalizedTex:
 
 def _macro_pattern(definition: _MacroDefinition) -> re.Pattern[str] | None:
     normalized = _normalize_tex_for_macro_match(definition.replacement).text
+    # Normalization drops braces, so an argument at either end of the body has
+    # no delimiter and its extent in the document is unknowable.
+    if re.match(r"#[1-9]", normalized) or re.search(r"#[1-9]$", normalized):
+        return None
     placeholders = list(re.finditer(r"#([1-9])", normalized))
     fixed = re.sub(r"#([1-9])", "", normalized)
     if len(fixed) < 4:
@@ -724,6 +732,8 @@ def _unknown_tex_commands(
     _options: Mapping[str, object],
 ) -> Iterable[RuleFinding]:
     known, _expansions = _macro_inventory(context)
+    package_commands, _active_packages = _texstudio_vocabulary(context, _tex(context))
+    user_commands = known - package_commands
 
     findings: list[RuleFinding] = []
     seen: set[int] = set()
@@ -736,13 +746,24 @@ def _unknown_tex_commands(
                 continue
             seen.add(absolute)
             providers = _texstudio_command_providers(command)
-            if providers:
-                visible = ", ".join(providers[:8])
-                extra = len(providers) - 8
+            suggestions: tuple[Suggestion, ...] = ()
+            if len(providers) == 1:
                 message = (
-                    f"{command} is known from TeX package data, but none of its "
-                    + f"providing packages are active here. Providers: {visible}"
-                    + (f" (+{extra} more)." if extra > 0 else ".")
+                    f"`{command}` is defined by the `{providers[0]}` package, which this "
+                    + f"document does not load. Load it with `\\usepackage{{{providers[0]}}}`."
+                )
+                data = {
+                    "command": command,
+                    "kind": "inactive-package",
+                    "providers": providers,
+                }
+            elif providers:
+                listed = ", ".join(f"`{name}`" for name in providers[:5])
+                extra = len(providers) - 5
+                message = (
+                    f"`{command}` is defined by packages this document does not load: "
+                    + listed
+                    + (f" (and {extra} more)." if extra > 0 else ".")
                 )
                 data = {
                     "command": command,
@@ -750,9 +771,14 @@ def _unknown_tex_commands(
                     "providers": providers,
                 }
             else:
+                similar = _similar_names(command, known, user_commands)
                 message = (
-                    f"No definition for {command} was found in this document, the "
-                    + "active TeX/LaTeX packages, or the available macro sources."
+                    f"Undefined control sequence `{command}`: no loaded package, macro "
+                    + "file, or definition in this document provides it."
+                    + _did_you_mean(similar)
+                )
+                suggestions = tuple(
+                    Suggestion(f"Use `{name}`", name) for name in similar
                 )
                 data = {"command": command, "kind": "unknown"}
             findings.append(
@@ -762,10 +788,59 @@ def _unknown_tex_commands(
                     message,
                     absolute,
                     absolute + len(match.group(0)),
+                    suggestions=suggestions,
                     data=data,
                 )
             )
     return findings
+
+
+def _similar_names(
+    name: str, candidates: Iterable[str], preferred: frozenset[str]
+) -> list[str]:
+    """Return up to three likely intended spellings of ``name``.
+
+    Distance is optimal string alignment (Damerau-Levenshtein restricted to
+    adjacent transpositions), so a swapped pair of letters is one edit. The
+    cutoff is rustc's typo-suggestion bound, ``max(len, 3) // 3`` edits
+    (rustc_span::edit_distance::find_best_match_for_name). Only the closest
+    candidates are kept. Among them a rearrangement of the same letters (a
+    transposed pair) ranks first, then a same-length spelling,
+    because a substitution is likelier than a dropped letter,
+    then a name in ``preferred`` (for commands: the author's own macros).
+    """
+
+    length = len(name.lstrip("\\@"))
+    matches = process.extract(
+        name,
+        list(candidates),
+        scorer=OSA.distance,
+        score_cutoff=max(length, 3) // 3,
+        limit=None,
+    )
+    if not matches:
+        return []
+    best = min(int(distance) for _choice, distance, _index in matches)
+    closest = [str(choice) for choice, distance, _index in matches if distance == best]
+    closest.sort(
+        key=lambda choice: (
+            sorted(choice) != sorted(name),
+            len(choice) != len(name),
+            choice not in preferred,
+            choice,
+        )
+    )
+    return closest[:3]
+
+
+def _did_you_mean(names: Sequence[str]) -> str:
+    if not names:
+        return ""
+    quoted = [f"`{name}`" for name in names]
+    options = (
+        quoted[0] if len(quoted) == 1 else ", ".join(quoted[:-1]) + " or " + quoted[-1]
+    )
+    return f" Did you mean {options}?"
 
 
 def _command_offsets(source: str, offset: int, command: str) -> list[int]:
@@ -813,12 +888,11 @@ def _notation_consistency(
                 RuleFinding(
                     "math/notation-consistency",
                     "info",
-                    f"Both {majority} and {minority} appear in this document; "
-                    + f"{majority} appears {majority_count} times, while this occurrence "
-                    + f"uses {minority}. If they are intended to denote the same symbol, "
-                    + "choose one form consistently.",
+                    f"`{minority}` here, but `{majority}` elsewhere ({majority_count} "
+                    + "times). Use one form if both mean the same symbol.",
                     start,
                     start + len(minority),
+                    suggestions=(Suggestion(f"Use `{majority}`", majority),),
                 )
             )
     return findings
@@ -834,7 +908,11 @@ def _user_macro_candidates(
         for definition in definitions
         if (pattern := _macro_pattern(definition)) is not None
     ]
-    span_candidates: dict[tuple[int, int], dict[str, _MacroDefinition]] = {}
+    # Per matched source span: macro name -> (definition, concrete invocation).
+    # The invocation is None when an argument cannot be recovered from the match.
+    span_candidates: dict[
+        tuple[int, int], dict[str, tuple[_MacroDefinition, str | None]]
+    ] = {}
     for start, end in cast(list[tuple[int, int]], _source_analysis(context)["math"]):
         source = context.text[start:end]
         normalized = _normalize_tex_for_macro_match(source)
@@ -848,14 +926,18 @@ def _user_macro_candidates(
                 authored_to = start + normalized.positions[match.end() - 1] + 1
                 span_candidates.setdefault((authored_from, authored_to), {})[
                     definition.name
-                ] = definition
+                ] = (
+                    definition,
+                    _concrete_invocation(definition, match, source, normalized),
+                )
 
     findings: list[RuleFinding] = []
     spans = sorted(span_candidates)
     for authored_from, authored_to in spans:
         candidates_by_name = span_candidates[(authored_from, authored_to)]
         if all(
-            candidate.argument_count == 0 for candidate in candidates_by_name.values()
+            definition.argument_count == 0
+            for definition, _invocation in candidates_by_name.values()
         ) and any(
             outer_from <= authored_from
             and authored_to <= outer_to
@@ -863,22 +945,23 @@ def _user_macro_candidates(
             for outer_from, outer_to in spans
         ):
             continue
-        candidates = [
-            _macro_invocation(candidates_by_name[name])
-            for name in sorted(candidates_by_name)
-        ]
-        if len(candidates) == 1:
-            message = (
-                "This manual construction may be replaceable by a known user macro: "
-                + candidates[0]
-                + "."
-            )
+        names = sorted(candidates_by_name)
+        quoted = [f"`{name}`" for name in names]
+        if len(quoted) == 1:
+            message = f"This can be written with your macro {quoted[0]}."
         else:
             message = (
-                "This manual construction may be replaceable by known user macros: "
-                + ", ".join(candidates)
+                "This can be written with your macros "
+                + ", ".join(quoted[:-1])
+                + " or "
+                + quoted[-1]
                 + "."
             )
+        suggestions = tuple(
+            Suggestion(f"Use `{invocation}`", invocation)
+            for name in names
+            if (invocation := candidates_by_name[name][1]) is not None
+        )
         findings.append(
             RuleFinding(
                 "math/user-macro-candidates",
@@ -886,10 +969,34 @@ def _user_macro_candidates(
                 message,
                 authored_from,
                 authored_to,
-                data={"candidates": tuple(candidates)},
+                suggestions=suggestions,
+                data={
+                    "candidates": tuple(
+                        _macro_invocation(candidates_by_name[name][0]) for name in names
+                    )
+                },
             )
         )
     return findings
+
+
+def _concrete_invocation(
+    definition: _MacroDefinition,
+    match: re.Match[str],
+    source: str,
+    normalized: _NormalizedTex,
+) -> str | None:
+    """The macro call that reproduces ``match``, with each argument taken from the source."""
+
+    arguments: list[str] = []
+    for number in range(1, definition.argument_count + 1):
+        group = f"a{number}"
+        if group not in match.re.groupindex or match.start(group) == match.end(group):
+            return None
+        first = normalized.positions[match.start(group)]
+        last = normalized.positions[match.end(group) - 1]
+        arguments.append("{" + source[first : last + 1] + "}")
+    return definition.name + "".join(arguments)
 
 
 def _authorial_residue(
@@ -906,8 +1013,7 @@ def _authorial_residue(
                 RuleFinding(
                     "document/authorial-residue",
                     "info",
-                    f"Possible authoring residue: {match.group(0)!r} "
-                    + f"({description.casefold()}).",
+                    f"{description}: `{match.group(0)}`.",
                     match.start(),
                     match.end(),
                     data={"kind": kind, "marker": match.group(0)},
@@ -1092,8 +1198,8 @@ def _tex_missing_resource(
                     RuleFinding(
                         "tex/missing-resource",
                         "warning",
-                        f"No TeX {kind} matching {authored!r} was found relative to "
-                        + "this document or the available TeX search paths.",
+                        f"Can't find `{authored}` for `{match.group('cmd')}` relative to "
+                        + "this document or on the TeX search path.",
                         path_start,
                         path_start + len(authored),
                         data={"kind": kind, "path": authored},
@@ -1173,9 +1279,9 @@ def _div_rule_findings(context: RuleContext, rule: str) -> list[RuleFinding]:
                 RuleFinding(
                     rule,
                     "error",
-                    f"This fenced div declares multiple theorem classes: {', '.join(refs)}. "
-                    + "These classes assign competing numbering/reference types; remove "
-                    + "the classes that do not apply.",
+                    "Div has more than one theorem class ("
+                    + ", ".join(f"`.{name}`" for name in refs)
+                    + "), so its numbering is ambiguous. Keep one.",
                     start,
                     end,
                 )
@@ -1185,9 +1291,8 @@ def _div_rule_findings(context: RuleContext, rule: str) -> list[RuleFinding]:
                 RuleFinding(
                     rule,
                     "error",
-                    f'This fenced div declares both "{refs[0]}" (numbered) and '
-                    + f'"{proofs[0]}" (unnumbered). These classifications conflict; '
-                    + "remove one of them.",
+                    f"Div is both a numbered `.{refs[0]}` and an unnumbered "
+                    + f"`.{proofs[0]}`. Remove one class.",
                     start,
                     end,
                 )
@@ -1197,8 +1302,8 @@ def _div_rule_findings(context: RuleContext, rule: str) -> list[RuleFinding]:
                 RuleFinding(
                     rule,
                     "info",
-                    f'Proof blocks are unnumbered, so "#{identifier}" does not create '
-                    + "a reference target here.",
+                    f"`#{identifier}` cannot be referenced: `.{proofs[0]}` blocks are "
+                    + "unnumbered.",
                     start,
                     end,
                 )
@@ -1211,13 +1316,20 @@ def _div_rule_findings(context: RuleContext, rule: str) -> list[RuleFinding]:
         ):
             family = _reference_family(identifier, data)
             if family in theorem_families:
+                family_classes = sorted(
+                    str(class_name)
+                    for class_name, prefix in _mapping(
+                        data.get("theorem_class_to_prefix")
+                    ).items()
+                    if prefix == family
+                )
+                example = f", e.g. `.{family_classes[0]}`," if family_classes else ""
                 findings.append(
                     RuleFinding(
                         rule,
                         "error",
-                        f'The ID "#{identifier}" uses theorem-family prefix "{family}", '
-                        + "but this fenced div has no theorem class. Either change the ID "
-                        + "family or add the corresponding theorem class.",
+                        f"`#{identifier}` is a `{family}:` ID, but the div has no theorem "
+                        + f"class. Add one{example} or change the ID.",
                         start,
                         end,
                         data={
@@ -1266,8 +1378,7 @@ def _snapshot_rule_findings(context: RuleContext, rule: str) -> list[RuleFinding
                     RuleFinding(
                         rule,
                         "error",
-                        f'Reference "{key}" is defined in more than one place: '
-                        + f"{', '.join(sites)}.",
+                        f"`#{key}` is defined more than once: {', '.join(sites)}.",
                         start,
                         end,
                         data={"key": key, "definition_paths": tuple(sites)},
@@ -1289,16 +1400,17 @@ def _snapshot_rule_findings(context: RuleContext, rule: str) -> list[RuleFinding
                     parts = _reference_parts(key)
                     separator = ":" if parts is None else parts[1]
                     remainder = key if parts is None else parts[2]
+                    corrected = f"#{expected}{separator}{remainder}"
                     findings.append(
                         RuleFinding(
                             rule,
                             "error",
-                            f'The block class "{authored}" uses reference family '
-                            + f'"{expected}", but its ID is "#{key}". Make the class and '
-                            + "ID family agree; for this class the corresponding ID is "
-                            + f'"#{expected}{separator}{remainder}".',
+                            f"A `.{authored}` div takes a `{expected}{separator}` ID, but "
+                            + f"this one is `#{key}`. Change the ID to `{corrected}` or "
+                            + "change the class.",
                             start,
                             end,
+                            suggestions=(Suggestion(f"Use `{corrected}`", corrected),),
                         )
                     )
 
@@ -1341,28 +1453,26 @@ def _snapshot_rule_findings(context: RuleContext, rule: str) -> list[RuleFinding
                     and candidate_remainder == remainder
                 ):
                     cross_family.append(candidate)
-            suffix = ""
-            if cross_family:
-                suffix = (
-                    " A definition with the same stem exists under another reference "
-                    + "family: "
-                    + ", ".join("@" + item for item in sorted(cross_family))
-                    + ". This may be a reference-family mismatch."
+            # A same-stem key under another prefix is the likeliest intent; then
+            # the same-prefix keys closest to this one.
+            likely = sorted(cross_family) or [
+                str(choice)
+                for choice, _distance, _index in process.extract(
+                    key, candidates, scorer=OSA.distance, limit=3
                 )
-            elif candidates:
-                suffix = (
-                    " Similar defined references: "
-                    + ", ".join(sorted(candidates))
-                    + "."
-                )
+            ]
             start, end = _range(occurrence.get("range"))
             findings.append(
                 RuleFinding(
                     rule,
                     "warning",
-                    f'Reference "@{key}" is not defined in the workspace.{suffix}',
+                    f"Undefined reference `@{key}`."
+                    + _did_you_mean([f"@{item}" for item in likely]),
                     start,
                     end,
+                    suggestions=tuple(
+                        Suggestion(f"Use `@{item}`", f"@{item}") for item in likely
+                    ),
                     data={
                         "key": key,
                         "same_family_candidates": tuple(sorted(candidates)),
@@ -1437,9 +1547,9 @@ def _citation_findings(context: RuleContext, rule: str) -> list[RuleFinding]:
                 RuleFinding(
                     rule,
                     "warning",
-                    "This citation group mixes bibliography entries and cross-references. "
-                    + "Use separate [...] groups so each reference system can interpret "
-                    + "its own entries.",
+                    "These brackets mix bibliography citations and cross-references, "
+                    + "which are resolved separately. Put each kind in its own brackets, "
+                    + "e.g. `[@smith2020] [@thm:main]`.",
                     start,
                     end,
                 )
@@ -1454,13 +1564,28 @@ def _citation_findings(context: RuleContext, rule: str) -> list[RuleFinding]:
                     key_source = "@" + key
                     relative = cluster.find(key_source)
                 key_start = start if relative < 0 else start + relative
+                similar = _similar_names(key, citation_keys, frozenset())
+                braced = key_source.startswith("@{")
+                suggestions = (
+                    tuple(
+                        Suggestion(
+                            f"Use `@{name}`",
+                            "@{" + name + "}" if braced else "@" + name,
+                        )
+                        for name in similar
+                    )
+                    if relative >= 0
+                    else ()
+                )
                 findings.append(
                     RuleFinding(
                         rule,
                         "error",
-                        f'Bibliography entry "@{key}" was not found.',
+                        f"`@{key}` is not in the bibliography."
+                        + _did_you_mean([f"@{name}" for name in similar]),
                         key_start,
                         key_start + (len(key_source) if relative >= 0 else 0),
+                        suggestions=suggestions,
                         data={"key": key},
                     )
                 )
@@ -1536,30 +1661,30 @@ def register_authoring_rules(registry: RuleRegistry) -> None:
         (
             LintRule(
                 "tex/unknown-command",
-                "Math contains a TeX control word with no available definition.",
+                "TeX command in math that no loaded package or macro defines.",
                 check=_unknown_tex_commands,
             ),
             LintRule(
                 "math/notation-consistency",
-                "Document mixes paired notation variants.",
+                "Document uses both forms of a symbol, e.g. \\epsilon and \\varepsilon.",
                 RuleLevel.INFO,
                 _notation_consistency,
             ),
             LintRule(
                 "math/user-macro-candidates",
-                "A manual mathematical construction matches one or more known user macros.",
+                "Math that one of the user's macros can express.",
                 RuleLevel.INFO,
                 _user_macro_candidates,
             ),
             LintRule(
                 "document/authorial-residue",
-                "Document contains TODO/citation-placeholder residue.",
+                "Unfinished notes and placeholders: TODO, FIXME, ???, citation needed.",
                 RuleLevel.INFO,
                 _authorial_residue,
             ),
             LintRule(
                 "tex/missing-resource",
-                "Static TeX input or graphic cannot be resolved.",
+                "File named by \\input, \\include or \\includegraphics cannot be found.",
                 check=_tex_missing_resource,
             ),
             LintRule(
@@ -1576,47 +1701,47 @@ def register_authoring_rules(registry: RuleRegistry) -> None:
             ),
             LintRule(
                 "reference/proof-id-no-target",
-                "Proof-like fenced div carries an ID which is not a reference target.",
+                "Proof div has an ID, but proofs cannot be referenced.",
                 RuleLevel.INFO,
                 _div_check("reference/proof-id-no-target"),
             ),
             LintRule(
                 "reference/missing-theorem-class",
-                "Theorem-family ID appears on a div without a theorem class.",
+                "Div has a theorem ID but no theorem class.",
                 RuleLevel.ERROR,
                 _div_check("reference/missing-theorem-class"),
             ),
             LintRule(
                 "reference/duplicate-workspace-definition",
-                "Reference key has multiple workspace definitions.",
+                "Cross-reference ID defined more than once.",
                 RuleLevel.ERROR,
                 _snapshot_check("reference/duplicate-workspace-definition"),
             ),
             LintRule(
                 "reference/class-family-mismatch",
-                "Theorem div class and authored reference family disagree.",
+                "Theorem class and ID prefix disagree.",
                 RuleLevel.ERROR,
                 _snapshot_check("reference/class-family-mismatch"),
             ),
             LintRule(
                 "reference/missing-workspace-definition",
-                "Reference occurrence has no workspace definition.",
+                "Cross-reference to an ID that no document defines.",
                 check=_snapshot_check("reference/missing-workspace-definition"),
             ),
             LintRule(
                 "citation/mixed-reference-types",
-                "Citation cluster mixes bibliography citations and cross-references.",
+                "One pair of brackets mixes bibliography citations and cross-references.",
                 check=_citation_check("citation/mixed-reference-types"),
             ),
             LintRule(
                 "citation/missing-bibliography-entry",
-                "Bibliography citation key is absent from the active bibliography.",
+                "Citation key is not in the bibliography.",
                 RuleLevel.ERROR,
                 _citation_check("citation/missing-bibliography-entry"),
             ),
             LintRule(
                 "tikz/compile-error",
-                "TikZ compiler reported an authored-source error.",
+                "TikZ diagram does not compile.",
                 RuleLevel.ERROR,
                 _tikz_compile_errors,
             ),

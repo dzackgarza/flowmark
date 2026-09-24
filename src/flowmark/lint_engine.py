@@ -35,6 +35,19 @@ def _empty_mapping() -> dict[str, object]:
 
 
 @dataclass(frozen=True)
+class Suggestion:
+    """One candidate fix: replace the finding's whole source range with ``replacement``.
+
+    ``title`` is the short imperative an editor shows on its fix button, e.g.
+    "Use `\\sin`". Modeled on ESLint suggestions (``desc`` + fix) and rustc's
+    ``help`` suggestions.
+    """
+
+    title: str
+    replacement: str
+
+
+@dataclass(frozen=True)
 class RuleFinding:
     """One lint finding at a half-open source range."""
 
@@ -43,7 +56,7 @@ class RuleFinding:
     message: str
     start: int
     end: int
-    replacement: str | None = None
+    suggestions: tuple[Suggestion, ...] = ()
     data: Mapping[str, object] = field(default_factory=_empty_mapping)
 
 
@@ -229,7 +242,7 @@ def apply_rule_policy(
                 message=finding.message,
                 start=finding.start,
                 end=finding.end,
-                replacement=finding.replacement,
+                suggestions=finding.suggestions,
                 data=finding.data,
             )
         )
@@ -266,7 +279,7 @@ def run_registered_rules(
                     message=finding.message,
                     start=finding.start,
                     end=finding.end,
-                    replacement=finding.replacement,
+                    suggestions=finding.suggestions,
                     data=finding.data,
                 )
             )
@@ -293,6 +306,7 @@ __all__ = (
     "RuleLevel",
     "RuleRegistry",
     "RuleSetting",
+    "Suggestion",
     "apply_rule_policy",
     "effective_rule_level",
     "load_lint_plugins",

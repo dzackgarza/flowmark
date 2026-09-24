@@ -37,6 +37,7 @@ from flowmark.lint_engine import (
     RuleLevel,
     RuleRegistry,
     RuleSetting,
+    Suggestion,
     apply_rule_policy,
     load_lint_plugins,
     normalize_rule_settings,
@@ -78,7 +79,7 @@ class LintDiagnostic:
     column: int
     end_line: int
     end_column: int
-    replacement: str | None = None
+    suggestions: tuple[Suggestion, ...] = ()
     data: Mapping[str, object] = field(default_factory=_empty_object_mapping)
 
     def to_json(self) -> dict[str, object]:
@@ -141,7 +142,7 @@ def _diagnostics_from_findings(
                 column=column,
                 end_line=end_line,
                 end_column=end_column,
-                replacement=finding.replacement,
+                suggestions=finding.suggestions,
                 data=finding.data,
             )
         )
