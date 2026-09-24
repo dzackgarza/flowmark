@@ -63,19 +63,12 @@ from typing import cast
 
 from flowmark.formats.frontmatter import split_frontmatter
 from flowmark.linewrapping.tag_handling import is_tag_only_line
+from flowmark.pandoc_dialect import PANDOC_FORMAT
 
 PandocJson = (
     str | int | float | bool | None | list["PandocJson"] | dict[str, "PandocJson"]
 )
 """One node of pandoc's JSON AST, exactly as `json.loads` produces it."""
-
-PANDOC_FORMAT = "markdown"
-"""Pandoc's own markdown dialect -- the one these documents are written in.
-
-Deliberately not `commonmark_x`, which is the only dialect that can emit source
-positions but which parses fenced divs differently: it terminates a div at a
-`:::` inside a fenced code block, where `markdown` does not.
-"""
 
 
 class PandocUnavailableError(RuntimeError):
