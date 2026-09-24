@@ -157,3 +157,29 @@ def test_cli_reports_suggestions_in_json_and_as_help_lines(
 
     assert main(["--exit-zero", "--no-config", str(document)]) == 0
     assert "\n  help: Use `\\sin`" in capsys.readouterr().out
+
+
+def _mixed_citation(source: str) -> LintDiagnostic:
+    context: dict[str, object] = {
+        "references": {"reference_families": ["fig"], "citation_keys": ["smith2020"]}
+    }
+    return only(
+        lint_text(source, LintOptions(context=context, discover_plugins=False)),
+        "citation/mixed-reference-types",
+    )
+
+
+def test_cross_reference_and_citation_in_one_group_are_joined_with_a_word() -> None:
+    # Adjacent groups would render "fig. 1 (Smith 2020)", which credits the
+    # figure to Smith; "fig. 1 and (Smith 2020)" names two separate things.
+    source = "Compare [@fig:a; @smith2020].\n"
+    diagnostic = _mixed_citation(source)
+    assert (
+        apply_fix(source, diagnostic, "Use `@fig:a and [@smith2020]`")
+        == "Compare @fig:a and [@smith2020].\n"
+    )
+
+
+def test_group_with_a_locator_gets_no_automatic_rewrite() -> None:
+    diagnostic = _mixed_citation("Compare [@fig:a; @smith2020, p. 3].\n")
+    assert diagnostic.suggestions == ()

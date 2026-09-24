@@ -1503,6 +1503,21 @@ def _cite_items(node: Mapping[str, object]) -> list[str]:
     return result
 
 
+def _cite_is_plain(node: Mapping[str, object]) -> bool:
+    """Whether every citation in the group is a bare `@key`: no prefix, suffix or
+    locator, and not author-suppressed or in-text. Only such a group can be
+    rewritten from its keys alone without losing authored text."""
+
+    content = cast(list[object], node.get("c"))
+    for citation in cast(list[object], content[0]):
+        item = _mapping(citation)
+        if item.get("citationPrefix") or item.get("citationSuffix"):
+            return False
+        if _mapping(item.get("citationMode")).get("t") != "NormalCitation":
+            return False
+    return True
+
+
 def _cite_source(node: Mapping[str, object]) -> str:
     content = node.get("c")
     if not isinstance(content, list):
@@ -1543,15 +1558,40 @@ def _citation_findings(context: RuleContext, rule: str) -> list[RuleFinding]:
             and supported > 0
             and supported < len(keys)
         ):
+            # Rendered, `[@fig:a; @smith2020]` is "fig. 1, (Smith 2020)" and two
+            # adjacent brackets are "fig. 1 (Smith 2020)": both read as the figure
+            # being credited to the source. A connecting word keeps them apart:
+            # "fig. 1 and (Smith 2020)".
+            references = [
+                key for key, family in zip(keys, families, strict=True) if family
+            ]
+            citations = [
+                key for key, family in zip(keys, families, strict=True) if not family
+            ]
+            reference_text = (
+                f"@{references[0]}"
+                if len(references) == 1
+                else "[" + "; ".join(f"@{key}" for key in references) + "]"
+            )
+            citation_text = "[" + "; ".join(f"@{key}" for key in citations) + "]"
+            parts = [reference_text, citation_text]
+            if families[0] is None:
+                parts.reverse()
+            rewrite = " and ".join(parts)
             findings.append(
                 RuleFinding(
                     rule,
                     "warning",
-                    "These brackets mix bibliography citations and cross-references, "
-                    + "which are resolved separately. Put each kind in its own brackets, "
-                    + "e.g. `[@smith2020] [@thm:main]`.",
+                    "These brackets combine a cross-reference and a bibliography "
+                    + "citation, so the output reads as if the referenced item comes "
+                    + f"from the cited work. Join them with a word: `{rewrite}`.",
                     start,
                     end,
+                    suggestions=(
+                        (Suggestion(f"Use `{rewrite}`", rewrite),)
+                        if _cite_is_plain(node_mapping)
+                        else ()
+                    ),
                 )
             )
         if rule == "citation/missing-bibliography-entry" and citation_keys is not None:
@@ -1730,7 +1770,7 @@ def register_authoring_rules(registry: RuleRegistry) -> None:
             ),
             LintRule(
                 "citation/mixed-reference-types",
-                "One pair of brackets mixes bibliography citations and cross-references.",
+                "One citation group holds both a cross-reference and a bibliography citation.",
                 check=_citation_check("citation/mixed-reference-types"),
             ),
             LintRule(
